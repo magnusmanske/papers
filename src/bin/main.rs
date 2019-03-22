@@ -111,6 +111,31 @@ impl WikidataPapers {
         }
 
         // TODO Paranoia check via search (eg haswbstatement:P4012=059932554) but doesn't work on Wikidata right now
+        // https://www.wikidata.org/w/api.php?action=query&list=search&srnamespace=0&format=json&srsearch=haswbstatement:P4012=2277912
+        let query: String = "haswbstatement:P4012=".to_owned() + &ss_author_id;
+        let params: HashMap<_, _> = vec![
+            ("action", "query"),
+            ("list", "search"),
+            ("srnamespace", "0"),
+            ("srsearch", &query.as_str()),
+        ]
+        .into_iter()
+        .collect();
+        let res = mw_api.get_query_api_json(&params).unwrap();
+        match res["query"]["search"].as_array() {
+            Some(items) => {
+                if items.len() > 0 {
+                    let author_q = items[0]["title"].as_str()?;
+                    self.semaniticscholars_author_cache
+                        .insert(query, author_q.to_string());
+                    //println!("=> {}", &author_q);
+                    return Some(author_q.to_string());
+                }
+                //println!("{}", ::serde_json::to_string_pretty(&res).unwrap());
+            }
+            None => {}
+        }
+
         None
     }
 
