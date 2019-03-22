@@ -5,10 +5,14 @@ authors = ["Magnus Manske <magnusmanske@googlemail.com>"]
 edition = "2018"
 
 [dependencies]
-crossref = "0.1.0"
+#crossref = "0.1.0"
+crossref = { git = "https://github.com/MattsSe/crossref-rs" }
 serde_json = "1.0.39"
 reqwest = "0.9.11"
 #user_agent = "0.6.6"
 config = "0.9.2"
+#wikibase = "0.3.0"
 wikibase = { path = "../wikibase_rs" }
 mediawiki = { path = "../mediawiki" }
+regex = "1"
+lazy_static = "1"

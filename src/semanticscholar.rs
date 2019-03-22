@@ -1,9 +1,9 @@
 /// Implements an author
 #[derive(Debug)]
 pub struct Author {
-    author_id: Option<String>,
-    name: Option<String>,
-    url: Option<String>,
+    pub author_id: Option<String>,
+    pub name: Option<String>,
+    pub url: Option<String>,
 }
 
 impl Author {
