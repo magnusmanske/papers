@@ -110,8 +110,13 @@ impl WikidataPapers {
             return Some(self.semaniticscholars_author_cache[&ss_author_id].to_string());
         }
 
-        let mut claims: Vec<Statement> = vec![];
-        claims.push(Statement::new(
+        let mut new_item = Entity::new_empty();
+        new_item.set_label(LocaleString::new("en", &ss_author_name));
+        if ss_author_name != *author_name {
+            new_item.add_alias(LocaleString::new("en", &author_name));
+        }
+
+        new_item.add_claim(Statement::new(
             "statement",
             StatementRank::Normal,
             Snak::new(
@@ -126,7 +131,7 @@ impl WikidataPapers {
             vec![],
             vec![],
         ));
-        claims.push(Statement::new(
+        new_item.add_claim(Statement::new(
             "statement",
             StatementRank::Normal,
             Snak::new(
@@ -142,29 +147,12 @@ impl WikidataPapers {
             vec![],
         ));
 
-        let mut new_item = Entity::new_empty();
-        new_item.set_label(LocaleString::new("en", &ss_author_name));
-        if ss_author_name != *author_name {
-            new_item.add_alias(LocaleString::new("en", &author_name));
-        }
-        new_item.set_claims(claims);
+        let empty = Entity::new_empty();
+        let diff_params = mediawiki::entity_diff::EntityDiffParams::all();
+        let diff = mediawiki::entity_diff::EntityDiff::new(&empty, &new_item, &diff_params);
+        println!("{:?}\n", &new_item);
+        println!("{}\n", diff.as_str().unwrap());
 
-        println!("{:?}", &new_item);
-        /*
-                // create new item for author
-                let token = mw_api.get_edit_token().unwrap();
-                let params: HashMap<_, _> = vec![
-                ("action", "wbeditentity"),
-                ("id", "Q4115189"),
-                ("data",r#"{"claims":[{"mainsnak":{"snaktype":"value","property":"P1810","datavalue":{"value":"ExampleString","type":"string"}},"type":"statement","rank":"normal"}]}"#),
-                ("token", &token),
-            ]
-            .into_iter()
-            .collect();
-                let res = mw_api.post_query_api_json(&params).unwrap();
-                println!("{}", &res);
-                panic!("It's OK!");
-        */
         Some("testing".to_string())
     }
 
@@ -200,8 +188,8 @@ impl WikidataPapers {
             self.try_wikidata_edit(mw_api, item, params, num_tries_left - 1)
         } else {
             Err(From::from(format!(
-                "Failed to edit with params '{:?}'",
-                &params
+                "Failed to edit with params '{:?}', result:{:?}",
+                &params, &res
             )))
         }
     }
