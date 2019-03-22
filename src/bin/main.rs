@@ -9,6 +9,7 @@ extern crate serde_json;
 
 use config::{Config, File};
 use crossref::Crossref;
+use mediawiki::entity_diff;
 use regex::Regex;
 use std::collections::HashMap;
 use wikibase::*;
@@ -75,13 +76,11 @@ impl WikidataPapers {
         false
     }
 
-    fn get_or_create_semanticscholar_author_item_id(
+    fn get_semanticscholar_author_item_id(
         &mut self,
         ss_author: &papers::semanticscholar::Author,
-        author_name: &str,
-        mw_api: &mut mediawiki::api::Api,
+        mw_api: &mediawiki::api::Api,
     ) -> Option<String> {
-        let ss_author_name = ss_author.name.clone()?;
         let ss_author_id = ss_author.author_id.clone()?;
 
         // Load semanticscholars from Wikidata, if not done so already
@@ -103,6 +102,7 @@ impl WikidataPapers {
             }
         }
 
+        // Check cache
         if self
             .semaniticscholars_author_cache
             .contains_key(&ss_author_id)
@@ -110,6 +110,32 @@ impl WikidataPapers {
             return Some(self.semaniticscholars_author_cache[&ss_author_id].to_string());
         }
 
+        // TODO Paranoia check via search (eg haswbstatement:P4012=059932554) but doesn't work on Wikidata right now
+        None
+    }
+
+    fn get_or_create_semanticscholar_author_item_id(
+        &mut self,
+        ss_author: &papers::semanticscholar::Author,
+        author_name: &str,
+        mw_api: &mut mediawiki::api::Api,
+    ) -> Option<String> {
+        match self.get_semanticscholar_author_item_id(ss_author, mw_api) {
+            Some(author_q) => Some(author_q),
+            None => self.create_semanticscholar_author_item_id(ss_author, author_name, mw_api),
+        }
+    }
+
+    fn create_semanticscholar_author_item_id(
+        &mut self,
+        ss_author: &papers::semanticscholar::Author,
+        author_name: &str,
+        mw_api: &mut mediawiki::api::Api,
+    ) -> Option<String> {
+        let ss_author_name = ss_author.name.clone()?;
+        let ss_author_id = ss_author.author_id.clone()?;
+
+        // Create new author item
         let mut new_item = Entity::new_empty();
         new_item.set_label(LocaleString::new("en", &ss_author_name));
         if ss_author_name != *author_name {
@@ -140,7 +166,7 @@ impl WikidataPapers {
                 SnakType::Value,
                 Some(DataValue::new(
                     DataValueType::StringType,
-                    Value::StringValue(ss_author_id),
+                    Value::StringValue(ss_author_id.clone()),
                 )),
             ),
             vec![],
@@ -148,12 +174,24 @@ impl WikidataPapers {
         ));
 
         let empty = Entity::new_empty();
-        let diff_params = mediawiki::entity_diff::EntityDiffParams::all();
-        let diff = mediawiki::entity_diff::EntityDiff::new(&empty, &new_item, &diff_params);
+        let diff_params = entity_diff::EntityDiffParams::all();
+        let diff = entity_diff::EntityDiff::new(&empty, &new_item, &diff_params);
         println!("{:?}\n", &new_item);
         println!("{}\n", diff.as_str().unwrap());
 
-        Some("testing".to_string())
+        // Apply diff
+        let new_json = entity_diff::EntityDiff::apply_diff(
+            mw_api,
+            &diff,
+            entity_diff::EditTarget::New("item".to_string()),
+        )
+        .unwrap();
+        let entity_id = entity_diff::EntityDiff::get_entity_id(&new_json).unwrap();
+        self.semaniticscholars_author_cache
+            .insert(ss_author_id, entity_id.clone());
+        println!("=> {}", &entity_id);
+
+        Some(entity_id)
     }
 
     fn try_wikidata_edit(
@@ -271,7 +309,10 @@ impl WikidataPapers {
             let ss_author = &ss_work.authors[ss_candidates[0]];
             let author_q =
                 self.get_or_create_semanticscholar_author_item_id(&ss_author, &author_name, mw_api);
-            dbg!(&author_q);
+            match author_q {
+                Some(q) => println!("Found author: https://www.wikidata.org/wiki/{}", &q),
+                None => println!("Found no author '{:?}'", &ss_author),
+            }
         }
     }
 
