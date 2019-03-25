@@ -102,7 +102,6 @@ impl WikidataPapers {
                 _ => continue,
             };
             adapter2work_id.insert(adapter_id, publication_id.clone());
-            //println!( "Found publication ID '{}' for item {}", &publication_id, item.id() );
             self.adapters[adapter_id]
                 .update_statements_for_publication_id(&publication_id, &mut item);
         }
@@ -114,6 +113,7 @@ impl WikidataPapers {
         adapter2work_id: &HashMap<usize, String>,
         mw_api: &mut mediawiki::api::Api,
     ) {
+        let mut entities = mediawiki::entity_container::EntityContainer::new();
         // SS authors (P50) match
 
         // SS authors (P2093) match
@@ -133,8 +133,12 @@ impl WikidataPapers {
             // TODO copy reference(s)
             let mut author_q: Option<String> = None;
             for adapter_num in 0..self.adapters.len() {
-                let work_id = adapter2work_id.get(&adapter_num);
-                match self.adapters[adapter_num].author2item_id(&author_name, mw_api, work_id) {
+                match self.adapters[adapter_num].author2item(
+                    &author_name,
+                    mw_api,
+                    adapter2work_id.get(&adapter_num),
+                    None,
+                ) {
                     Some(q) => {
                         author_q = Some(q);
                         break;
@@ -142,10 +146,55 @@ impl WikidataPapers {
                     None => continue,
                 }
             }
-            let _author_q = match author_q {
-                Some(q) => q,
-                None => continue,
+
+            let mut item: Entity;
+            let original_item: Entity;
+            let target;
+            match author_q {
+                Some(q) => {
+                    if entities.load_entities(&mw_api, &vec![q.clone()]).is_err() {
+                        continue;
+                    }
+                    item = match entities.get_entity(q.clone()) {
+                        Some(the_item) => the_item.clone(),
+                        None => continue,
+                    };
+                    original_item = item.clone();
+                    target = EditTarget::Entity(q);
+                }
+                None => {
+                    original_item = Entity::new_empty();
+                    item = Entity::new_empty();
+                    target = EditTarget::New("item".to_string());
+                }
             };
+
+            for adapter_num in 0..self.adapters.len() {
+                self.adapters[adapter_num].author2item(
+                    &author_name,
+                    mw_api,
+                    adapter2work_id.get(&adapter_num),
+                    Some(&mut item),
+                );
+            }
+
+            let mut diff_params = EntityDiffParams::none();
+            diff_params.labels.add = vec!["*".to_string()];
+            diff_params.aliases.add = vec!["*".to_string()];
+            diff_params.descriptions.add = vec!["*".to_string()];
+            diff_params.claims.add = vec!["*".to_string()];
+
+            let diff = EntityDiff::new(&original_item, &item, &diff_params);
+            if diff.is_empty() {
+                println!("No change for author");
+                continue;
+            }
+            println!("{:?}", &diff);
+            println!("{:?}", &target);
+            //let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
+            //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
+            //let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
+            //println!("https://www.wikidata.org/wiki/{}", &entity_id);
         }
     }
 
@@ -155,7 +204,7 @@ impl WikidataPapers {
             "statement",
             StatementRank::Normal,
             Snak::new(
-                "string",
+                "external-id",
                 "P356",
                 SnakType::Value,
                 Some(DataValue::new(
@@ -220,7 +269,7 @@ impl WikidataPapers {
             let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
             //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
             let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
-            println!("https://www.wikidata.org/wiki/{}", entity_id);
+            println!("https://www.wikidata.org/wiki/{}", &entity_id);
         }
     }
 

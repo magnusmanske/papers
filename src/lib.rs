@@ -3,7 +3,7 @@ extern crate reqwest;
 #[macro_use]
 extern crate lazy_static;
 
-use mediawiki::entity_diff::{EntityDiff, EntityDiffParams};
+use mediawiki::entity_diff::*;
 use regex::Regex;
 use std::collections::HashMap;
 use wikibase::Entity;
@@ -27,12 +27,15 @@ pub trait ScientificPublicationAdapter {
 
     // Pre-filled methods
 
-    fn create_item(&self, item: &Entity, _mw_api: &mut mediawiki::api::Api) -> Option<String> {
+    fn create_item(&self, item: &Entity, mw_api: &mut mediawiki::api::Api) -> Option<String> {
         let params = EntityDiffParams::all();
         let diff = EntityDiff::new(&Entity::new_empty(), item, &params);
-        println!("{}", diff.to_string_pretty().unwrap());
-        //let res = mw_api.post_query_api_json(&params).unwrap();
-        None
+        if diff.is_empty() {
+            return None;
+        }
+        let new_json =
+            EntityDiff::apply_diff(mw_api, &diff, EditTarget::New("item".to_string())).unwrap();
+        EntityDiff::get_entity_id(&new_json)
     }
 
     fn author_names_match(&self, name1: &str, name2: &str) -> bool {
@@ -68,11 +71,12 @@ pub trait ScientificPublicationAdapter {
         self.author_cache().is_empty()
     }
 
-    fn author2item_id(
+    fn author2item(
         &mut self,
         _author_name: &String,
         _mw_api: &mut mediawiki::api::Api,
         _publication_id: Option<&String>,
+        _item: Option<&mut Entity>,
     ) -> Option<String> {
         None
     }

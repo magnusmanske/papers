@@ -29,17 +29,9 @@ impl Semanticscholar2Wikidata {
         self.work_cache.get(publication_id)
     }
 
-    fn create_author_item(
-        &mut self,
-        author: &Author,
-        author_name: &String,
-        mw_api: &mut mediawiki::api::Api,
-    ) -> Option<String> {
-        let semanticscholar_author_name: String = author.name.clone()?;
-        let author_id = author.author_id.clone()?;
-
-        // Create new author item
-        let mut item = Entity::new_empty();
+    fn update_author_item(&mut self, author: &Author, author_name: &String, item: &mut Entity) {
+        let semanticscholar_author_name: String = author.name.clone().unwrap();
+        let author_id = author.author_id.clone().unwrap();
         item.set_label(LocaleString::new("en", &semanticscholar_author_name));
         if semanticscholar_author_name != *author_name {
             item.add_alias(LocaleString::new("en", &author_name));
@@ -75,7 +67,6 @@ impl Semanticscholar2Wikidata {
             vec![],
             vec![],
         ));
-        self.create_item(&item, mw_api)
     }
 }
 
@@ -163,11 +154,12 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         }
     }
 
-    fn author2item_id(
+    fn author2item(
         &mut self,
         author_name: &String,
         mw_api: &mut mediawiki::api::Api,
         publication_id: Option<&String>,
+        item: Option<&mut Entity>,
     ) -> Option<String> {
         let work: Work;
         match publication_id {
@@ -200,15 +192,12 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         }
         let author = &work.authors[candidates[0]];
         let author_id = author.author_id.clone().unwrap();
-        match self.get_author_item_id(&author_id, mw_api) {
-            Some(q) => Some(q.clone()),
-            None => match self.create_author_item(&author, author_name, mw_api) {
-                Some(q) => {
-                    self.set_author_cache_entry(&author_id, &q);
-                    Some(q)
-                }
-                None => None,
-            },
+        match item {
+            None => self.get_author_item_id(&author_id, mw_api),
+            Some(item) => {
+                self.update_author_item(&author, author_name, item);
+                None
+            }
         }
     }
 }
