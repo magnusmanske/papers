@@ -5,7 +5,7 @@ extern crate serde_json;
 
 use crate::ScientificPublicationAdapter;
 use crossref::Crossref;
-use regex::Regex;
+use mediawiki::entity_diff::*;
 use std::collections::HashMap;
 use wikibase::*;
 
@@ -53,26 +53,6 @@ impl WikidataPapers {
         }
     }
 
-    fn _author_names_match(&self, name1: &str, name2: &str) -> bool {
-        lazy_static! {
-            static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b").unwrap();
-        }
-        if RE1.is_match(name1) && RE1.is_match(name2) {
-            let mut parts1: Vec<String> = vec![];
-            for cap in RE1.captures_iter(name1) {
-                parts1.push(cap[1].to_string());
-            }
-            parts1.sort();
-            let mut parts2: Vec<String> = vec![];
-            for cap in RE1.captures_iter(name2) {
-                parts2.push(cap[1].to_string());
-            }
-            parts2.sort();
-            return parts1 == parts2;
-        }
-        false
-    }
-
     fn _try_wikidata_edit(
         &self,
         mw_api: &mut mediawiki::api::Api,
@@ -111,22 +91,29 @@ impl WikidataPapers {
         }
     }
 
-    pub fn update_item_from_adapters(&mut self, mut item: &mut Entity) {
-        for adapter in &mut self.adapters {
-            let publication_id = match adapter.publication_id_from_item(item) {
+    pub fn update_item_from_adapters(
+        &mut self,
+        mut item: &mut Entity,
+        adapter2work_id: &mut HashMap<usize, String>,
+    ) {
+        for adapter_id in 0..self.adapters.len() {
+            let publication_id = match self.adapters[adapter_id].publication_id_from_item(item) {
                 Some(id) => id,
                 _ => continue,
             };
-            println!(
-                "Found publication ID '{}' for item {}",
-                &publication_id,
-                item.id()
-            );
-            adapter.update_statements_for_publication_id(&publication_id, &mut item);
+            adapter2work_id.insert(adapter_id, publication_id.clone());
+            //println!( "Found publication ID '{}' for item {}", &publication_id, item.id() );
+            self.adapters[adapter_id]
+                .update_statements_for_publication_id(&publication_id, &mut item);
         }
     }
 
-    pub fn update_authors_from_adapters(&mut self, item: &mut Entity) {
+    pub fn update_authors_from_adapters(
+        &mut self,
+        item: &mut Entity,
+        adapter2work_id: &HashMap<usize, String>,
+        mw_api: &mut mediawiki::api::Api,
+    ) {
         // SS authors (P50) match
 
         // SS authors (P2093) match
@@ -138,36 +125,27 @@ impl WikidataPapers {
                 Some(dv) => dv,
                 None => continue,
             };
-            let _author_name = match datavalue.value() {
+            let author_name = match datavalue.value() {
                 Value::StringValue(s) => s,
                 _ => continue,
             };
-            /*
-                        let mut ss_candidates: Vec<usize> = vec![];
-                        for num in 0..ss_work.authors.len() {
-                            let ss_author = &ss_work.authors[num];
-                            if None == ss_author.author_id {
-                                continue;
-                            }
-                            let ss_author_name = match &ss_author.name {
-                                Some(s) => s,
-                                _ => continue,
-                            };
-                            if self.author_names_match(&author_name, &ss_author_name) {
-                                ss_candidates.push(num);
-                            }
-                        }
-                        if ss_candidates.len() != 1 {
-                            continue;
-                        }
-                        let ss_author = &ss_work.authors[ss_candidates[0]];
-                        let author_q =
-                            self.get_or_create_semanticscholar_author_item_id(&ss_author, &author_name, mw_api);
-                        match author_q {
-                            Some(q) => println!("Found author: https://www.wikidata.org/wiki/{}", &q),
-                            None => println!("Found no author '{:?}'", &ss_author),
-                        }
-            */
+            // TODO qualifier
+            // TODO copy reference(s)
+            let mut author_q: Option<String> = None;
+            for adapter_num in 0..self.adapters.len() {
+                let work_id = adapter2work_id.get(&adapter_num);
+                match self.adapters[adapter_num].author2item_id(&author_name, mw_api, work_id) {
+                    Some(q) => {
+                        author_q = Some(q);
+                        break;
+                    }
+                    None => continue,
+                }
+            }
+            let _author_q = match author_q {
+                Some(q) => q,
+                None => continue,
+            };
         }
     }
 
@@ -197,24 +175,52 @@ impl WikidataPapers {
 
         for doi in dois {
             let mut item;
+            let original_item;
+            let target;
             match self.get_wikidata_item_for_doi(&mw_api, &doi.to_string()) {
                 Some(q) => {
                     if entities.load_entities(&mw_api, &vec![q.clone()]).is_err() {
                         continue;
                     }
 
-                    let item_opt = entities.get_entity(q.clone());
-                    item = match item_opt {
+                    item = match entities.get_entity(q.clone()) {
                         Some(the_item) => the_item.clone(),
                         None => continue,
                     };
+                    original_item = item.clone();
+                    target = EditTarget::Entity(q);
                 }
                 None => {
+                    original_item = Entity::new_empty();
                     item = self.create_blank_item_for_publication_from_doi(&doi.to_string());
+                    target = EditTarget::New("item".to_string());
                 }
             };
-            self.update_item_from_adapters(&mut item);
-            self.update_authors_from_adapters(&mut item);
+            let mut adapter2work_id = HashMap::new();
+            self.update_item_from_adapters(&mut item, &mut adapter2work_id);
+            self.update_authors_from_adapters(&mut item, &adapter2work_id, mw_api);
+
+            let mut diff_params = EntityDiffParams::none();
+            diff_params.labels.add = vec!["*".to_string()];
+            diff_params.aliases.add = vec!["*".to_string()];
+            diff_params.descriptions.add = vec!["*".to_string()];
+            for adapter in &self.adapters {
+                match adapter.publication_property() {
+                    Some(p) => diff_params.claims.add.push(p),
+                    None => {}
+                }
+            }
+
+            let diff = EntityDiff::new(&original_item, &item, &diff_params);
+            if diff.is_empty() {
+                println!("No change");
+                continue;
+            }
+            println!("{:?}", &diff);
+            let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
+            //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
+            let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
+            println!("https://www.wikidata.org/wiki/{}", entity_id);
         }
     }
 

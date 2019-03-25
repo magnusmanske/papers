@@ -22,14 +22,13 @@ struct AuthorRepresentation {
 
 fn main() {
     let mut mw_api = mediawiki::api::Api::new("https://www.wikidata.org/w/api.php").unwrap();
-    if true {
-        let mut settings = Config::default();
-        // File::with_name(..) is shorthand for File::from(Path::new(..))
-        settings.merge(File::with_name("test.ini")).unwrap();
-        let lgname = settings.get_str("user.user").unwrap();
-        let lgpass = settings.get_str("user.pass").unwrap();
-        mw_api.login(lgname, lgpass).unwrap();
-    }
+
+    let mut settings = Config::default();
+    // File::with_name(..) is shorthand for File::from(Path::new(..))
+    settings.merge(File::with_name("test.ini")).unwrap();
+    let lgname = settings.get_str("user.user").unwrap();
+    let lgpass = settings.get_str("user.pass").unwrap();
+    mw_api.login(lgname, lgpass).unwrap();
 
     let mut wdp = WikidataPapers::new();
     wdp.adapters_mut()

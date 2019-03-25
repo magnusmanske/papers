@@ -1,5 +1,5 @@
 /// Implements an author
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Author {
     pub author_id: Option<String>,
     pub name: Option<String>,
@@ -23,7 +23,7 @@ impl Author {
 }
 
 /// Implements a topic
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Topic {
     pub topic: Option<String>,
     pub topic_id: Option<String>,
@@ -47,7 +47,7 @@ impl Topic {
 }
 
 /// Implements a work (=paper)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Work {
     pub arxiv_id: Option<String>,
     pub authors: Vec<Author>,
@@ -109,7 +109,7 @@ impl Work {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Client {}
 
 impl Client {

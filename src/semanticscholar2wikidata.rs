@@ -2,6 +2,7 @@ extern crate config;
 extern crate mediawiki;
 extern crate serde_json;
 
+use crate::semanticscholar::*;
 use crate::ScientificPublicationAdapter;
 use std::collections::HashMap;
 use wikibase::*;
@@ -28,18 +29,19 @@ impl Semanticscholar2Wikidata {
         self.work_cache.get(publication_id)
     }
 
-    fn _create_author_item(
+    fn create_author_item(
         &mut self,
-        ss_author: &crate::semanticscholar::Author,
-        author_name: &str,
-    ) -> Option<Entity> {
-        let ss_author_name = ss_author.name.clone()?;
-        let ss_author_id = ss_author.author_id.clone()?;
+        author: &Author,
+        author_name: &String,
+        mw_api: &mut mediawiki::api::Api,
+    ) -> Option<String> {
+        let semanticscholar_author_name: String = author.name.clone()?;
+        let author_id = author.author_id.clone()?;
 
         // Create new author item
         let mut item = Entity::new_empty();
-        item.set_label(LocaleString::new("en", &ss_author_name));
-        if ss_author_name != *author_name {
+        item.set_label(LocaleString::new("en", &semanticscholar_author_name));
+        if semanticscholar_author_name != *author_name {
             item.add_alias(LocaleString::new("en", &author_name));
         }
 
@@ -62,44 +64,31 @@ impl Semanticscholar2Wikidata {
             "statement",
             StatementRank::Normal,
             Snak::new(
-                "string",
-                "P4012",
+                "external-id",
+                &self.author_property().unwrap(),
                 SnakType::Value,
                 Some(DataValue::new(
                     DataValueType::StringType,
-                    Value::StringValue(ss_author_id.clone()),
+                    Value::StringValue(author_id.clone()),
                 )),
             ),
             vec![],
             vec![],
         ));
-        Some(item)
-        /*
-                let empty = Entity::new_empty();
-                let diff_params = entity_diff::EntityDiffParams::all();
-                let diff = entity_diff::EntityDiff::new(&empty, &new_item, &diff_params);
-                println!("{:?}\n", &new_item);
-                println!("{}\n", diff.as_str().unwrap());
-
-                // Apply diff
-                let new_json = entity_diff::EntityDiff::apply_diff(
-                    mw_api,
-                    &diff,
-                    entity_diff::EditTarget::New("item".to_string()),
-                )
-                .unwrap();
-                let entity_id = entity_diff::EntityDiff::get_entity_id(&new_json).unwrap();
-                //self.semaniticscholars_author_cache.insert(ss_author_id, entity_id.clone());
-                //println!("=> {}", &entity_id);
-
-                Some(entity_id)
-        */
+        self.create_item(&item, mw_api)
     }
 }
 
 impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
-    fn author_property(&self) -> String {
-        return "P4012".to_string();
+    fn author_property(&self) -> Option<String> {
+        return Some("P4012".to_string());
+    }
+    fn publication_property(&self) -> Option<String> {
+        return Some("P4011".to_string());
+    }
+
+    fn topic_property(&self) -> Option<String> {
+        return Some("P6611".to_string());
     }
 
     fn author_cache(&self) -> &HashMap<String, String> {
@@ -151,17 +140,17 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
         let _work = match self.get_publication_from_id(publication_id) {
             Some(w) => w,
-            _ => return,
+            None => return,
         };
 
         // SS paper ID
-        if !item.has_claims_with_property("P4011") {
+        if !item.has_claims_with_property(self.publication_property().unwrap()) {
             item.add_claim(Statement::new(
                 "statement",
                 StatementRank::Normal,
                 Snak::new(
-                    "string",
-                    "P4011",
+                    "external-id",
+                    &self.publication_property().unwrap(),
                     SnakType::Value,
                     Some(DataValue::new(
                         DataValueType::StringType,
@@ -171,22 +160,55 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
                 vec![],
                 vec![],
             ));
+        }
+    }
 
-            //            let json = json!({"claims":[{"mainsnak":{"snaktype":"value","property":"P4011","datavalue":{"value":ss_paper_id,"type":"string"}},"type":"statement","rank":"normal"}]});
-            //            let json = json.to_string();
-            /*
-                        let token = mw_api.get_edit_token().unwrap();
-                        let params: HashMap<_, _> = vec![
-                            ("action", "wbeditentity"),
-                            ("id", &q),
-                            ("data", &json),
-                            ("token", &token),
-                        ]
-                        .into_iter()
-                        .collect();
-                        dbg!(&params);
-                        self.try_wikidata_edit(mw_api, item, &params, 3).unwrap();
-            */
+    fn author2item_id(
+        &mut self,
+        author_name: &String,
+        mw_api: &mut mediawiki::api::Api,
+        publication_id: Option<&String>,
+    ) -> Option<String> {
+        let work: Work;
+        match publication_id {
+            Some(id) => {
+                let publication_id_option = self.get_publication_from_id(id).to_owned();
+                work = match publication_id_option {
+                    Some(w) => w.clone(),
+                    None => return None,
+                };
+            }
+            None => return None,
+        }
+
+        let mut candidates: Vec<usize> = vec![];
+        for num in 0..work.authors.len() {
+            let author = &work.authors[num];
+            if None == author.author_id {
+                continue;
+            }
+            let current_author_name = match &author.name {
+                Some(s) => s,
+                _ => continue,
+            };
+            if self.author_names_match(&author_name, &current_author_name) {
+                candidates.push(num);
+            }
+        }
+        if candidates.len() != 1 {
+            return None;
+        }
+        let author = &work.authors[candidates[0]];
+        let author_id = author.author_id.clone().unwrap();
+        match self.get_author_item_from_cache(&author_id) {
+            Some(q) => Some(q.clone()),
+            None => match self.create_author_item(&author, author_name, mw_api) {
+                Some(q) => {
+                    self.set_author_cache_entry(&author_id, &q);
+                    Some(q)
+                }
+                None => None,
+            },
         }
     }
 }

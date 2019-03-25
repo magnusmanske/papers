@@ -3,19 +3,57 @@ extern crate reqwest;
 #[macro_use]
 extern crate lazy_static;
 
+use mediawiki::entity_diff::{EntityDiff, EntityDiffParams};
+use regex::Regex;
 use std::collections::HashMap;
 use wikibase::Entity;
 
 pub mod semanticscholar;
 
 pub trait ScientificPublicationAdapter {
-    fn author_property(&self) -> String;
+    fn author_property(&self) -> Option<String> {
+        None
+    }
+    fn publication_property(&self) -> Option<String> {
+        None
+    }
+    fn topic_property(&self) -> Option<String> {
+        None
+    }
     fn author_cache(&self) -> &HashMap<String, String>;
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String>;
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String>;
     fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity);
 
     // Pre-filled methods
+
+    fn create_item(&self, item: &Entity, _mw_api: &mut mediawiki::api::Api) -> Option<String> {
+        let params = EntityDiffParams::all();
+        let diff = EntityDiff::new(&Entity::new_empty(), item, &params);
+        println!("{}", diff.to_string_pretty().unwrap());
+        //let res = mw_api.post_query_api_json(&params).unwrap();
+        None
+    }
+
+    fn author_names_match(&self, name1: &str, name2: &str) -> bool {
+        lazy_static! {
+            static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b").unwrap();
+        }
+        if RE1.is_match(name1) && RE1.is_match(name2) {
+            let mut parts1: Vec<String> = vec![];
+            for cap in RE1.captures_iter(name1) {
+                parts1.push(cap[1].to_string());
+            }
+            parts1.sort();
+            let mut parts2: Vec<String> = vec![];
+            for cap in RE1.captures_iter(name2) {
+                parts2.push(cap[1].to_string());
+            }
+            parts2.sort();
+            return parts1 == parts2;
+        }
+        false
+    }
 
     fn set_author_cache_entry(&mut self, catalog_author_id: &String, q: &String) {
         self.author_cache_mut()
@@ -30,18 +68,29 @@ pub trait ScientificPublicationAdapter {
         self.author_cache().is_empty()
     }
 
+    fn author2item_id(
+        &mut self,
+        _author_name: &String,
+        _mw_api: &mut mediawiki::api::Api,
+        _publication_id: Option<&String>,
+    ) -> Option<String> {
+        None
+    }
+
     fn get_author_item_id(
         &mut self,
         catalog_author_id: &String,
         mw_api: &mediawiki::api::Api,
     ) -> Option<String> {
-        let author_property = self.author_property();
-        // Load all semanticscholar authors from Wikidata, if not done so already
+        let author_property = match self.author_property() {
+            Some(p) => p,
+            None => return None,
+        };
+        // Load all authors from Wikidata, if not done so already
         if self.author_cache_is_empty() {
             let res = mw_api
                 .sparql_query(&("SELECT ?q ?id { ?q wdt:".to_owned() + &author_property + " ?id }"))
                 .unwrap();
-            //println!("{}", ::serde_json::to_string_pretty(&res).unwrap());
 
             for b in res["results"]["bindings"].as_array().unwrap() {
                 match (b["q"]["value"].as_str(), b["id"]["value"].as_str()) {
