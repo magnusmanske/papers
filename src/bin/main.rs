@@ -35,6 +35,6 @@ fn main() {
         .push(Box::new(Semanticscholar2Wikidata::new()));
     wdp.update_dois(
         &mut mw_api,
-        &vec!["10.1038/nrn3241"], //"10.1016/j.bpj.2008.12.3951"
+        &vec!["10.1016/j.bpj.2008.12.3951"], //"10.1038/nrn3241"
     );
 }

@@ -169,13 +169,18 @@ impl WikidataPapers {
                 }
             };
 
+            let mut adapter_new_author: HashMap<usize, String> = HashMap::new();
             for adapter_num in 0..self.adapters.len() {
-                self.adapters[adapter_num].author2item(
+                let res = self.adapters[adapter_num].author2item(
                     &author_name,
                     mw_api,
                     adapter2work_id.get(&adapter_num),
                     Some(&mut item),
                 );
+                match res {
+                    Some(author_id) => adapter_new_author.insert(adapter_num, author_id),
+                    None => continue,
+                };
             }
 
             let mut diff_params = EntityDiffParams::none();
@@ -189,12 +194,19 @@ impl WikidataPapers {
                 println!("No change for author");
                 continue;
             }
-            println!("{:?}", &diff);
-            println!("{:?}", &target);
-            //let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
-            //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
-            //let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
-            //println!("https://www.wikidata.org/wiki/{}", &entity_id);
+            let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
+            println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
+            let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
+            println!("https://www.wikidata.org/wiki/{}", &entity_id);
+
+            for adapter_num in 0..self.adapters.len() {
+                match adapter_new_author.get(&adapter_num) {
+                    Some(author_id) => {
+                        self.adapters[adapter_num].set_author_cache_entry(&author_id, &entity_id);
+                    }
+                    None => continue,
+                }
+            }
         }
     }
 

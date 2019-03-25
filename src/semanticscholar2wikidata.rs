@@ -161,6 +161,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         publication_id: Option<&String>,
         item: Option<&mut Entity>,
     ) -> Option<String> {
+        // RETURNS WIKIDATA ITEM ID, CATALOG AUHTOR ID, OR None, DEPENDING ON CONTEXT
         let work: Work;
         match publication_id {
             Some(id) => {
@@ -193,10 +194,10 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         let author = &work.authors[candidates[0]];
         let author_id = author.author_id.clone().unwrap();
         match item {
-            None => self.get_author_item_id(&author_id, mw_api),
+            None => self.get_author_item_id(&author_id, mw_api), // RETURNS ITEM ID
             Some(item) => {
                 self.update_author_item(&author, author_name, item);
-                None
+                Some(author_id) // RETURNS AUTHOR ID
             }
         }
     }
