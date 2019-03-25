@@ -197,10 +197,8 @@ impl WikidataPapers {
 
         for doi in dois {
             let mut item;
-            let q;
             match self.get_wikidata_item_for_doi(&mw_api, &doi.to_string()) {
-                Some(i) => {
-                    q = i;
+                Some(q) => {
                     if entities.load_entities(&mw_api, &vec![q.clone()]).is_err() {
                         continue;
                     }
