@@ -200,7 +200,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         }
         let author = &work.authors[candidates[0]];
         let author_id = author.author_id.clone().unwrap();
-        match self.get_author_item_from_cache(&author_id) {
+        match self.get_author_item_id(&author_id, mw_api) {
             Some(q) => Some(q.clone()),
             None => match self.create_author_item(&author, author_name, mw_api) {
                 Some(q) => {
