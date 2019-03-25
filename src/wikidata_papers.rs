@@ -171,6 +171,27 @@ impl WikidataPapers {
         }
     }
 
+    fn create_blank_item_for_publication_from_doi(&self, doi: &String) -> Entity {
+        let mut item = Entity::new_empty();
+        item.add_claim(Statement::new(
+            "statement",
+            StatementRank::Normal,
+            Snak::new(
+                "string",
+                "P356",
+                SnakType::Value,
+                Some(DataValue::new(
+                    DataValueType::StringType,
+                    Value::StringValue(doi.clone()),
+                )),
+            ),
+            vec![],
+            vec![],
+        ));
+
+        item
+    }
+
     pub fn update_dois(&mut self, mw_api: &mut mediawiki::api::Api, dois: &Vec<&str>) {
         let mut entities = mediawiki::entity_container::EntityContainer::new();
 
@@ -191,8 +212,7 @@ impl WikidataPapers {
                     };
                 }
                 None => {
-                    // TODO create blank item
-                    continue;
+                    item = self.create_blank_item_for_publication_from_doi(&doi.to_string());
                 }
             };
             self.update_item_from_adapters(&mut item);

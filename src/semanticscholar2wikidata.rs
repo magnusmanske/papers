@@ -121,7 +121,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
                     Some(dv) => {
                         let value = dv.value().clone();
                         match &value {
-                            Value::StringValue(s) => doi = Some(s.to_string()),
+                            Value::StringValue(s) => doi = Some(s.to_string().to_lowercase()),
                             _ => continue,
                         }
                     }
