@@ -7,6 +7,7 @@ use crate::ScientificPublicationAdapter;
 use crossref::Crossref;
 use mediawiki::entity_diff::*;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use wikibase::*;
 
 pub struct WikidataPapers {
@@ -107,16 +108,6 @@ impl WikidataPapers {
         }
     }
 
-    pub fn replace_p2093_with_p50(
-        &mut self,
-        _claim: &Statement,
-        _item: &mut Entity,
-        _author_item_q: &String,
-        _mw_api: &mut mediawiki::api::Api,
-    ) {
-
-    }
-
     pub fn update_authors_from_adapters(
         &mut self,
         item: &mut Entity,
@@ -124,17 +115,39 @@ impl WikidataPapers {
         mw_api: &mut mediawiki::api::Api,
     ) {
         let mut entities = mediawiki::entity_container::EntityContainer::new();
+        let mut claims = item.claims().to_owned();
+
         // SS authors (P50) match
+        let mut p50_authors: HashSet<String> = HashSet::new();
+        for claim_num in 0..claims.len() {
+            let claim = &claims[claim_num];
+            if claim.claim_type() != "statement"
+                || claim.main_snak().datatype() != "wikibase-item"
+                || claim.main_snak().property() != "P50"
+            {
+                continue;
+            }
+            let datavalue = match claim.main_snak().data_value() {
+                Some(dv) => dv,
+                None => continue,
+            };
+            match datavalue.value() {
+                Value::Entity(entity) => {
+                    let q = entity.id();
+                    p50_authors.insert(q.into());
+                }
+                _ => continue,
+            }
+        }
 
         // SS authors (P2093) match
-        let mut claims = item.claims().to_owned();
         let mut claims_to_replace = vec![];
         for claim_num in 0..claims.len() {
             let claim = &claims[claim_num];
-            if claim.claim_type() != "statement" || claim.main_snak().datatype() != "string" {
-                continue;
-            }
-            if claim.main_snak().property() != "P2093" {
+            if claim.claim_type() != "statement"
+                || claim.main_snak().datatype() != "string"
+                || claim.main_snak().property() != "P2093"
+            {
                 continue;
             }
             let datavalue = match claim.main_snak().data_value() {
@@ -166,6 +179,10 @@ impl WikidataPapers {
             let target;
             match author_q {
                 Some(q) => {
+                    if p50_authors.contains(&q) {
+                        // Paranoia
+                        continue;
+                    }
                     if entities.load_entities(&mw_api, &vec![q.clone()]).is_err() {
                         continue;
                     }
@@ -211,7 +228,6 @@ impl WikidataPapers {
                     author_item.id()
                 );
                 claims_to_replace.push((claim_num, author_item.id().to_string()));
-                //self.replace_P2093_with_P50(&claim, item, &author_item.id().to_string(), mw_api);
                 continue;
             }
             let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
@@ -229,10 +245,10 @@ impl WikidataPapers {
                 }
             }
 
-            //self.replace_P2093_with_P50(&claim, item, &entity_id, mw_api);
             claims_to_replace.push((claim_num, entity_id.to_string()));
         }
 
+        // Replace P2093 claims with P50
         if claims_to_replace.is_empty() {
             // Nothing to do
             return;
