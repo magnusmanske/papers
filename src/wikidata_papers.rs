@@ -107,6 +107,16 @@ impl WikidataPapers {
         }
     }
 
+    pub fn replace_p2093_with_p50(
+        &mut self,
+        _claim: &Statement,
+        _item: &mut Entity,
+        _author_item_q: &String,
+        _mw_api: &mut mediawiki::api::Api,
+    ) {
+
+    }
+
     pub fn update_authors_from_adapters(
         &mut self,
         item: &mut Entity,
@@ -117,8 +127,14 @@ impl WikidataPapers {
         // SS authors (P50) match
 
         // SS authors (P2093) match
-        for claim in item.claims_with_property("P2093") {
+        let mut claims = item.claims().to_owned();
+        let mut claims_to_replace = vec![];
+        for claim_num in 0..claims.len() {
+            let claim = &claims[claim_num];
             if claim.claim_type() != "statement" || claim.main_snak().datatype() != "string" {
+                continue;
+            }
+            if claim.main_snak().property() != "P2093" {
                 continue;
             }
             let datavalue = match claim.main_snak().data_value() {
@@ -129,8 +145,6 @@ impl WikidataPapers {
                 Value::StringValue(s) => s,
                 _ => continue,
             };
-            // TODO qualifier
-            // TODO copy reference(s)
             let mut author_q: Option<String> = None;
             for adapter_num in 0..self.adapters.len() {
                 match self.adapters[adapter_num].author2item(
@@ -147,7 +161,7 @@ impl WikidataPapers {
                 }
             }
 
-            let mut item: Entity;
+            let mut author_item: Entity;
             let original_item: Entity;
             let target;
             match author_q {
@@ -155,16 +169,16 @@ impl WikidataPapers {
                     if entities.load_entities(&mw_api, &vec![q.clone()]).is_err() {
                         continue;
                     }
-                    item = match entities.get_entity(q.clone()) {
+                    author_item = match entities.get_entity(q.clone()) {
                         Some(the_item) => the_item.clone(),
                         None => continue,
                     };
-                    original_item = item.clone();
+                    original_item = author_item.clone();
                     target = EditTarget::Entity(q);
                 }
                 None => {
                     original_item = Entity::new_empty();
-                    item = Entity::new_empty();
+                    author_item = Entity::new_empty();
                     target = EditTarget::New("item".to_string());
                 }
             };
@@ -175,7 +189,7 @@ impl WikidataPapers {
                     &author_name,
                     mw_api,
                     adapter2work_id.get(&adapter_num),
-                    Some(&mut item),
+                    Some(&mut author_item),
                 );
                 match res {
                     Some(author_id) => adapter_new_author.insert(adapter_num, author_id),
@@ -189,9 +203,15 @@ impl WikidataPapers {
             diff_params.descriptions.add = vec!["*".to_string()];
             diff_params.claims.add = vec!["*".to_string()];
 
-            let diff = EntityDiff::new(&original_item, &item, &diff_params);
+            let diff = EntityDiff::new(&original_item, &author_item, &diff_params);
             if diff.is_empty() {
-                println!("No change for author");
+                println!(
+                    "No change for author '{}' https://www.wikidata.org/wiki/{}",
+                    &author_name,
+                    author_item.id()
+                );
+                claims_to_replace.push((claim_num, author_item.id().to_string()));
+                //self.replace_P2093_with_P50(&claim, item, &author_item.id().to_string(), mw_api);
                 continue;
             }
             let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
@@ -199,6 +219,7 @@ impl WikidataPapers {
             let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
             println!("https://www.wikidata.org/wiki/{}", &entity_id);
 
+            // Update author caches
             for adapter_num in 0..self.adapters.len() {
                 match adapter_new_author.get(&adapter_num) {
                     Some(author_id) => {
@@ -207,7 +228,63 @@ impl WikidataPapers {
                     None => continue,
                 }
             }
+
+            //self.replace_P2093_with_P50(&claim, item, &entity_id, mw_api);
+            claims_to_replace.push((claim_num, entity_id.to_string()));
         }
+
+        if claims_to_replace.is_empty() {
+            // Nothing to do
+            return;
+        }
+        while !claims_to_replace.is_empty() {
+            let (claim_num, q) = claims_to_replace.pop().unwrap();
+            let claim = claims[claim_num].to_owned();
+            let datavalue = match claim.main_snak().data_value() {
+                Some(dv) => dv,
+                None => continue,
+            };
+            let author_name = match datavalue.value() {
+                Value::StringValue(s) => s,
+                _ => continue,
+            };
+            let mut qualifiers = claim.qualifiers().to_owned();
+            let references = claim.references().to_owned();
+
+            qualifiers.push(Snak::new(
+                "string",
+                "P1810",
+                SnakType::Value,
+                Some(DataValue::new(
+                    DataValueType::StringType,
+                    Value::StringValue(author_name.to_string()),
+                )),
+            ));
+
+            let new_claim = Statement::new(
+                "statement",
+                StatementRank::Normal,
+                Snak::new(
+                    "wikibase-item",
+                    "P50",
+                    SnakType::Value,
+                    Some(DataValue::new(
+                        DataValueType::EntityId,
+                        Value::Entity(EntityValue::new(EntityType::Item, q)),
+                    )),
+                ),
+                qualifiers,
+                references,
+            );
+
+            // Add new claim
+            println!("{:?}", &new_claim);
+            claims.push(new_claim);
+
+            // Remove string claim
+            claims.remove(claim_num);
+        }
+        item.set_claims(claims);
     }
 
     fn create_blank_item_for_publication_from_doi(&self, doi: &String) -> Entity {
@@ -271,17 +348,22 @@ impl WikidataPapers {
                     None => {}
                 }
             }
+            diff_params.claims.add.push("P50".to_string());
+            diff_params.claims.remove.push("P2093".to_string());
 
             let diff = EntityDiff::new(&original_item, &item, &diff_params);
             if diff.is_empty() {
                 println!("No change");
                 continue;
             }
-            println!("{:?}", &diff);
-            let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
-            //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
-            let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
-            println!("https://www.wikidata.org/wiki/{}", &entity_id);
+            dbg!(&target);
+            println!("{}", diff.to_string_pretty().unwrap());
+            /*
+                        let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
+                        //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
+                        let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
+                        println!("https://www.wikidata.org/wiki/{}", &entity_id);
+            */
         }
     }
 
