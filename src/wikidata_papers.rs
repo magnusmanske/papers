@@ -5,7 +5,6 @@ extern crate serde_json;
 
 use crate::AuthorItemInfo;
 use crate::ScientificPublicationAdapter;
-use crossref::Crossref;
 use mediawiki::entity_diff::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -55,44 +54,45 @@ impl WikidataPapers {
         }
     }
 
-    fn _try_wikidata_edit(
-        &self,
-        mw_api: &mut mediawiki::api::Api,
-        item: &mut wikibase::Entity,
-        params: &HashMap<&str, &str>,
-        num_tries_left: i64,
-    ) -> Result<(), Box<::std::error::Error>> {
-        let res = mw_api.post_query_api_json(&params).unwrap();
+    /*
+        fn try_wikidata_edit(
+            &self,
+            mw_api: &mut mediawiki::api::Api,
+            item: &mut wikibase::Entity,
+            params: &HashMap<&str, &str>,
+            num_tries_left: i64,
+        ) -> Result<(), Box<::std::error::Error>> {
+            let res = mw_api.post_query_api_json(&params).unwrap();
 
-        match res["success"].as_i64() {
-            Some(num) => {
-                if num == 1 {
-                    // Success, now use updated item JSON
-                    match &res["entity"] {
-                        serde_json::Value::Null => {}
-                        entity_json => {
-                            //entity_json => entities.set_entity_from_json(&entity_json).unwrap(),
-                            let x = from_json::entity_from_json(entity_json).unwrap();
-                            *item = x;
-                            return Ok(());
-                        }
-                    };
+            match res["success"].as_i64() {
+                Some(num) => {
+                    if num == 1 {
+                        // Success, now use updated item JSON
+                        match &res["entity"] {
+                            serde_json::Value::Null => {}
+                            entity_json => {
+                                //entity_json => entities.set_entity_from_json(&entity_json).unwrap(),
+                                let x = from_json::entity_from_json(entity_json).unwrap();
+                                *item = x;
+                                return Ok(());
+                            }
+                        };
+                    }
                 }
+                None => {}
             }
-            None => {}
-        }
 
-        if num_tries_left > 0 {
-            // TODO sleep 5 sec
-            self._try_wikidata_edit(mw_api, item, params, num_tries_left - 1)
-        } else {
-            Err(From::from(format!(
-                "Failed to edit with params '{:?}', result:{:?}",
-                &params, &res
-            )))
+            if num_tries_left > 0 {
+                // TODO sleep 5 sec
+                self.try_wikidata_edit(mw_api, item, params, num_tries_left - 1)
+            } else {
+                Err(From::from(format!(
+                    "Failed to edit with params '{:?}', result:{:?}",
+                    &params, &res
+                )))
+            }
         }
-    }
-
+    */
     pub fn update_item_from_adapters(
         &mut self,
         mut item: &mut Entity,
@@ -271,31 +271,11 @@ impl WikidataPapers {
             let references = claim.references().to_owned();
 
             // Add original name as qualifier
-            qualifiers.push(Snak::new(
-                "string",
-                "P1932", // or rather P1810?
-                SnakType::Value,
-                Some(DataValue::new(
-                    DataValueType::StringType,
-                    Value::StringValue(author_name.to_string()),
-                )),
-            ));
+            // or rather P1810?
+            qualifiers.push(Snak::new_string("P1932", author_name));
 
-            let new_claim = Statement::new(
-                "statement",
-                StatementRank::Normal,
-                Snak::new(
-                    "wikibase-item",
-                    "P50",
-                    SnakType::Value,
-                    Some(DataValue::new(
-                        DataValueType::EntityId,
-                        Value::Entity(EntityValue::new(EntityType::Item, q)),
-                    )),
-                ),
-                qualifiers,
-                references,
-            );
+            let new_claim =
+                Statement::new_normal(Snak::new_item("P50", &q), qualifiers, references);
 
             // Add new claim
             claims.push(new_claim);
@@ -308,18 +288,8 @@ impl WikidataPapers {
 
     fn create_blank_item_for_publication_from_doi(&self, doi: &String) -> Entity {
         let mut item = Entity::new_empty();
-        item.add_claim(Statement::new(
-            "statement",
-            StatementRank::Normal,
-            Snak::new(
-                "external-id",
-                "P356",
-                SnakType::Value,
-                Some(DataValue::new(
-                    DataValueType::StringType,
-                    Value::StringValue(doi.clone()),
-                )),
-            ),
+        item.add_claim(Statement::new_normal(
+            Snak::new_external_id("P356", doi),
             vec![],
             vec![],
         ));
@@ -383,11 +353,5 @@ impl WikidataPapers {
             let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
             println!("https://www.wikidata.org/wiki/{}", &entity_id);
         }
-    }
-
-    pub fn _test_crossref() {
-        let client = Crossref::builder().build().unwrap();
-        let work = client.work("10.1037/0003-066X.59.1.29").unwrap();
-        dbg!(work);
     }
 }

@@ -2,16 +2,16 @@ extern crate config;
 extern crate mediawiki;
 extern crate serde_json;
 
-use crate::semanticscholar::*;
 use crate::AuthorItemInfo;
 use crate::ScientificPublicationAdapter;
+use semanticscholar::*;
 use std::collections::HashMap;
 use wikibase::*;
 
 pub struct Semanticscholar2Wikidata {
     author_cache: HashMap<String, String>,
-    work_cache: HashMap<String, crate::semanticscholar::Work>,
-    client: crate::semanticscholar::Client,
+    work_cache: HashMap<String, Work>,
+    client: Client,
 }
 
 impl Semanticscholar2Wikidata {
@@ -19,14 +19,11 @@ impl Semanticscholar2Wikidata {
         Semanticscholar2Wikidata {
             author_cache: HashMap::new(),
             work_cache: HashMap::new(),
-            client: crate::semanticscholar::Client::new(),
+            client: Client::new(),
         }
     }
 
-    pub fn get_publication_from_id(
-        &self,
-        publication_id: &String,
-    ) -> Option<&crate::semanticscholar::Work> {
+    pub fn get_cached_publication_from_id(&self, publication_id: &String) -> Option<&Work> {
         self.work_cache.get(publication_id)
     }
 
@@ -38,35 +35,15 @@ impl Semanticscholar2Wikidata {
             item.add_alias(LocaleString::new("en", &author_name));
         }
 
-        item.add_claim(Statement::new(
-            "statement",
-            StatementRank::Normal,
-            Snak::new(
-                "wikibase-item",
-                "P31",
-                SnakType::Value,
-                Some(DataValue::new(
-                    DataValueType::EntityId,
-                    Value::Entity(EntityValue::new(EntityType::Item, "Q5")),
-                )),
-            ),
+        item.add_claim(Statement::new_normal(
+            Snak::new_item("P31", "Q5"),
             vec![],
-            vec![],
+            self.reference(),
         ));
-        item.add_claim(Statement::new(
-            "statement",
-            StatementRank::Normal,
-            Snak::new(
-                "external-id",
-                &self.author_property().unwrap(),
-                SnakType::Value,
-                Some(DataValue::new(
-                    DataValueType::StringType,
-                    Value::StringValue(author_id.clone()),
-                )),
-            ),
+        item.add_claim(Statement::new_normal(
+            Snak::new_external_id(self.author_property().unwrap(), author_id),
             vec![],
-            vec![],
+            self.reference(),
         ));
     }
 }
@@ -75,6 +52,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     fn author_property(&self) -> Option<String> {
         return Some("P4012".to_string());
     }
+
     fn publication_property(&self) -> Option<String> {
         return Some("P4011".to_string());
     }
@@ -93,25 +71,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
 
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         // TODO other ID types than DOI?
-        let mut doi: Option<String> = None;
-        for claim in item.claims() {
-            if claim.main_snak().property() == "P356"
-                && claim.main_snak().snak_type().to_owned() == SnakType::Value
-            {
-                match claim.main_snak().data_value() {
-                    Some(dv) => {
-                        let value = dv.value().clone();
-                        match &value {
-                            Value::StringValue(s) => doi = Some(s.to_string().to_lowercase()),
-                            _ => continue,
-                        }
-                    }
-                    None => continue,
-                }
-                break;
-            }
-        }
-        let doi = match doi {
+        let doi = match self.get_external_identifier_from_item(item, "P356") {
             Some(s) => s,
             None => return None,
         };
@@ -130,24 +90,17 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     }
 
     fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
-        let _work = match self.get_publication_from_id(publication_id) {
+        let _work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
         };
 
         // SS paper ID
         if !item.has_claims_with_property(self.publication_property().unwrap()) {
-            item.add_claim(Statement::new(
-                "statement",
-                StatementRank::Normal,
-                Snak::new(
-                    "external-id",
-                    &self.publication_property().unwrap(),
-                    SnakType::Value,
-                    Some(DataValue::new(
-                        DataValueType::StringType,
-                        Value::StringValue(publication_id.clone()),
-                    )),
+            item.add_claim(Statement::new_normal(
+                Snak::new_external_id(
+                    self.publication_property().unwrap(),
+                    publication_id.to_string(),
                 ),
                 vec![],
                 vec![],
@@ -166,7 +119,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         let work: Work;
         match publication_id {
             Some(id) => {
-                let publication_id_option = self.get_publication_from_id(id).to_owned();
+                let publication_id_option = self.get_cached_publication_from_id(id).to_owned();
                 work = match publication_id_option {
                     Some(w) => w.clone(),
                     None => return AuthorItemInfo::None,

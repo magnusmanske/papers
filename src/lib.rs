@@ -3,12 +3,10 @@ extern crate reqwest;
 #[macro_use]
 extern crate lazy_static;
 
-use mediawiki::entity_diff::*;
+//use mediawiki::entity_diff::*;
 use regex::Regex;
 use std::collections::HashMap;
-use wikibase::Entity;
-
-pub mod semanticscholar;
+use wikibase::{Entity, Reference, SnakType, Value};
 
 pub enum AuthorItemInfo {
     WikidataItem(String),
@@ -32,18 +30,44 @@ pub trait ScientificPublicationAdapter {
     fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity);
 
     // Pre-filled methods
-
-    fn create_item(&self, item: &Entity, mw_api: &mut mediawiki::api::Api) -> Option<String> {
-        let params = EntityDiffParams::all();
-        let diff = EntityDiff::new(&Entity::new_empty(), item, &params);
-        if diff.is_empty() {
-            return None;
+    /*
+        fn create_item(&self, item: &Entity, mw_api: &mut mediawiki::api::Api) -> Option<String> {
+            let params = EntityDiffParams::all();
+            let diff = EntityDiff::new(&Entity::new_empty(), item, &params);
+            if diff.is_empty() {
+                return None;
+            }
+            let new_json =
+                EntityDiff::apply_diff(mw_api, &diff, EditTarget::New("item".to_string())).unwrap();
+            EntityDiff::get_entity_id(&new_json)
         }
-        let new_json =
-            EntityDiff::apply_diff(mw_api, &diff, EditTarget::New("item".to_string())).unwrap();
-        EntityDiff::get_entity_id(&new_json)
+    */
+
+    fn reference(&self) -> Vec<Reference> {
+        vec![]
     }
 
+    fn get_external_identifier_from_item(&self, item: &Entity, property: &str) -> Option<String> {
+        for claim in item.claims() {
+            if claim.main_snak().property() == property
+                && claim.main_snak().snak_type().to_owned() == SnakType::Value
+            {
+                match claim.main_snak().data_value() {
+                    Some(dv) => {
+                        let value = dv.value().clone();
+                        match &value {
+                            Value::StringValue(s) => return Some(s.to_string()),
+                            _ => continue,
+                        }
+                    }
+                    None => continue,
+                }
+            }
+        }
+        None
+    }
+
+    /// Compares long (3+ characters) name parts and returns true if identical
     fn author_names_match(&self, name1: &str, name2: &str) -> bool {
         lazy_static! {
             static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b").unwrap();
@@ -59,7 +83,7 @@ pub trait ScientificPublicationAdapter {
                 parts2.push(cap[1].to_string());
             }
             parts2.sort();
-            return parts1 == parts2;
+            return !parts1.is_empty() && parts1 == parts2;
         }
         false
     }
@@ -146,5 +170,6 @@ pub trait ScientificPublicationAdapter {
     }
 }
 
+pub mod crossref2wikidata;
 pub mod semanticscholar2wikidata;
 pub mod wikidata_papers;

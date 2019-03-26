@@ -8,17 +8,9 @@ extern crate regex;
 extern crate serde_json;
 
 use config::{Config, File};
+use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::semanticscholar2wikidata::Semanticscholar2Wikidata;
 use papers::wikidata_papers::WikidataPapers;
-
-/*
-struct AuthorRepresentation {
-    name: String,
-    alt_names: Vec<String>,
-    extnernal_id: String,
-    Property: String,
-}
-*/
 
 fn main() {
     let mut mw_api = mediawiki::api::Api::new("https://www.wikidata.org/w/api.php").unwrap();
@@ -33,6 +25,7 @@ fn main() {
     let mut wdp = WikidataPapers::new();
     wdp.adapters_mut()
         .push(Box::new(Semanticscholar2Wikidata::new()));
+    wdp.adapters_mut().push(Box::new(Crossref2Wikidata::new()));
     wdp.update_dois(
         &mut mw_api,
         &vec!["10.1016/j.bpj.2008.12.3951"], //"10.1038/nrn3241"
