@@ -251,9 +251,10 @@ impl WikidataPapers {
             let mut qualifiers = claim.qualifiers().to_owned();
             let references = claim.references().to_owned();
 
+            // Add original name as qualifier
             qualifiers.push(Snak::new(
                 "string",
-                "P1810",
+                "P1932", // or rather P1810?
                 SnakType::Value,
                 Some(DataValue::new(
                     DataValueType::StringType,
@@ -278,7 +279,6 @@ impl WikidataPapers {
             );
 
             // Add new claim
-            println!("{:?}", &new_claim);
             claims.push(new_claim);
 
             // Remove string claim
@@ -356,14 +356,13 @@ impl WikidataPapers {
                 println!("No change");
                 continue;
             }
-            dbg!(&target);
-            println!("{}", diff.to_string_pretty().unwrap());
-            /*
-                        let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
-                        //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
-                        let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
-                        println!("https://www.wikidata.org/wiki/{}", &entity_id);
-            */
+            //dbg!(&target);
+            //println!("{}", diff.to_string_pretty().unwrap());
+
+            let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
+            //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
+            let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
+            println!("https://www.wikidata.org/wiki/{}", &entity_id);
         }
     }
 
