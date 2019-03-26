@@ -3,6 +3,7 @@ extern crate mediawiki;
 extern crate serde_json;
 
 use crate::semanticscholar::*;
+use crate::AuthorItemInfo;
 use crate::ScientificPublicationAdapter;
 use std::collections::HashMap;
 use wikibase::*;
@@ -160,7 +161,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         mw_api: &mut mediawiki::api::Api,
         publication_id: Option<&String>,
         item: Option<&mut Entity>,
-    ) -> Option<String> {
+    ) -> AuthorItemInfo {
         // RETURNS WIKIDATA ITEM ID, CATALOG AUHTOR ID, OR None, DEPENDING ON CONTEXT
         let work: Work;
         match publication_id {
@@ -168,10 +169,10 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
                 let publication_id_option = self.get_publication_from_id(id).to_owned();
                 work = match publication_id_option {
                     Some(w) => w.clone(),
-                    None => return None,
+                    None => return AuthorItemInfo::None,
                 };
             }
-            None => return None,
+            None => return AuthorItemInfo::None,
         }
 
         let mut candidates: Vec<usize> = vec![];
@@ -189,15 +190,21 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
             }
         }
         if candidates.len() != 1 {
-            return None;
+            return AuthorItemInfo::None;
         }
         let author = &work.authors[candidates[0]];
         let author_id = author.author_id.clone().unwrap();
         match item {
-            None => self.get_author_item_id(&author_id, mw_api), // RETURNS ITEM ID
+            None => {
+                match self.get_author_item_id(&author_id, mw_api) {
+                    Some(x) => return AuthorItemInfo::WikidataItem(x), // RETURNS ITEM ID
+                    None => return AuthorItemInfo::None,
+                }
+            }
+
             Some(item) => {
                 self.update_author_item(&author, author_name, item);
-                Some(author_id) // RETURNS AUTHOR ID
+                AuthorItemInfo::CatalogId(author_id) // RETURNS AUTHOR ID
             }
         }
     }

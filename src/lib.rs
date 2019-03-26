@@ -10,6 +10,12 @@ use wikibase::Entity;
 
 pub mod semanticscholar;
 
+pub enum AuthorItemInfo {
+    WikidataItem(String),
+    CatalogId(String),
+    None,
+}
+
 pub trait ScientificPublicationAdapter {
     fn author_property(&self) -> Option<String> {
         None
@@ -77,8 +83,8 @@ pub trait ScientificPublicationAdapter {
         _mw_api: &mut mediawiki::api::Api,
         _publication_id: Option<&String>,
         _item: Option<&mut Entity>,
-    ) -> Option<String> {
-        None
+    ) -> AuthorItemInfo {
+        AuthorItemInfo::None
     }
 
     fn get_author_item_id(

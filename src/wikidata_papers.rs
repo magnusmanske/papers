@@ -3,6 +3,7 @@ extern crate mediawiki;
 extern crate regex;
 extern crate serde_json;
 
+use crate::AuthorItemInfo;
 use crate::ScientificPublicationAdapter;
 use crossref::Crossref;
 use mediawiki::entity_diff::*;
@@ -166,11 +167,11 @@ impl WikidataPapers {
                     adapter2work_id.get(&adapter_num),
                     None,
                 ) {
-                    Some(q) => {
+                    AuthorItemInfo::WikidataItem(q) => {
                         author_q = Some(q);
                         break;
                     }
-                    None => continue,
+                    _ => continue,
                 }
             }
 
@@ -209,8 +210,10 @@ impl WikidataPapers {
                     Some(&mut author_item),
                 );
                 match res {
-                    Some(author_id) => adapter_new_author.insert(adapter_num, author_id),
-                    None => continue,
+                    AuthorItemInfo::CatalogId(author_id) => {
+                        adapter_new_author.insert(adapter_num, author_id)
+                    }
+                    _ => continue,
                 };
             }
 
