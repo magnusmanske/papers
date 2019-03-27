@@ -2,12 +2,13 @@ extern crate config;
 extern crate mediawiki;
 extern crate regex;
 extern crate serde_json;
+extern crate wikibase;
 
 use crate::AuthorItemInfo;
 use crate::ScientificPublicationAdapter;
-use mediawiki::entity_diff::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use wikibase::entity_diff::*;
 use wikibase::*;
 
 pub struct WikidataPapers {
@@ -115,7 +116,7 @@ impl WikidataPapers {
         adapter2work_id: &HashMap<usize, String>,
         mw_api: &mut mediawiki::api::Api,
     ) {
-        let mut entities = mediawiki::entity_container::EntityContainer::new();
+        let mut entities = entity_container::EntityContainer::new();
         let mut claims = item.claims().to_owned();
 
         // SS authors (P50) match
@@ -298,7 +299,7 @@ impl WikidataPapers {
     }
 
     pub fn update_dois(&mut self, mw_api: &mut mediawiki::api::Api, dois: &Vec<&str>) {
-        let mut entities = mediawiki::entity_container::EntityContainer::new();
+        let mut entities = wikibase::entity_container::EntityContainer::new();
 
         for doi in dois {
             let mut item;

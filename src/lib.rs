@@ -153,6 +153,7 @@ pub trait ScientificPublicationAdapter {
             ("srsearch", &query.as_str()),
         ]
         .into_iter()
+        .map(|(x, y)| (x.to_string(), y.to_string()))
         .collect();
         let res = mw_api.get_query_api_json(&params).unwrap();
         match res["query"]["search"].as_array() {
