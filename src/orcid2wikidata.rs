@@ -69,7 +69,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
         let work = PseudoWork {
             author_ids: author_ids,
         };
-        dbg!(&work);
+        //dbg!(&work);
         let publication_id = doi;
         self.work_cache.insert(publication_id.clone(), work);
         Some(publication_id)

@@ -8,9 +8,9 @@ extern crate regex;
 extern crate serde_json;
 
 use config::{Config, File};
-//use papers::pubmed2wikidata::Crossref2Wikidata;
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::orcid2wikidata::Orcid2Wikidata;
+use papers::pubmed2wikidata::Pubmed2Wikidata;
 use papers::semanticscholar2wikidata::Semanticscholar2Wikidata;
 use papers::wikidata_papers::WikidataPapers;
 
@@ -28,6 +28,7 @@ fn main() {
     wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
     wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
+    wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
     wdp.update_dois(
         &mut mw_api,
         &vec!["10.1016/j.bpj.2008.12.3951"], //"10.1038/nrn3241"

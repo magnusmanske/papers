@@ -86,7 +86,6 @@ pub trait ScientificPublicationAdapter {
                     vec![],
                     self.reference(),
                 )),
-
                 None => {}
             },
             _ => {}
