@@ -116,6 +116,8 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
             None => return AuthorItemInfo::None,
         }
 
+        let author_name = self.sanitize_author_name(author_name);
+
         let mut candidates: Vec<usize> = vec![];
         for num in 0..work.authors.len() {
             let author = &work.authors[num];
@@ -144,7 +146,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
             }
 
             Some(item) => {
-                self.update_author_item(&author, author_name, item);
+                self.update_author_item(&author, &author_name, item);
                 AuthorItemInfo::CatalogId(author_id) // RETURNS AUTHOR ID
             }
         }

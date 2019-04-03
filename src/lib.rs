@@ -52,6 +52,14 @@ pub trait ScientificPublicationAdapter {
         vec![]
     }
 
+    fn sanitize_author_name(&self, author_name: &String) -> String {
+        author_name
+            .replace("†", "")
+            .replace("‡", "")
+            .trim()
+            .to_string()
+    }
+
     fn update_statements_for_publication_id_default(
         &self,
         publication_id: &String,
