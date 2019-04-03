@@ -236,5 +236,7 @@ pub trait ScientificPublicationAdapter {
 }
 
 pub mod crossref2wikidata;
+pub mod orcid2wikidata;
+pub mod pubmed2wikidata;
 pub mod semanticscholar2wikidata;
 pub mod wikidata_papers;
