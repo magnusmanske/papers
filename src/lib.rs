@@ -3,10 +3,11 @@ extern crate reqwest;
 #[macro_use]
 extern crate lazy_static;
 
-//use mediawiki::entity_diff::*;
+//use crate::wikidata_papers;
+use crate::wikidata_papers::WikidataPapersCache;
 use regex::Regex;
 use std::collections::HashMap;
-use wikibase::{Entity, Reference, SnakType, Value};
+use wikibase::{Entity, Reference, Snak, SnakType, Statement, Value};
 
 pub enum AuthorItemInfo {
     WikidataItem(String),
@@ -22,6 +23,9 @@ pub trait ScientificPublicationAdapter {
         None
     }
     fn topic_property(&self) -> Option<String> {
+        None
+    }
+    fn get_work_issn(&self, _publication_id: &String) -> Option<String> {
         None
     }
     fn author_cache(&self) -> &HashMap<String, String>;
@@ -44,7 +48,59 @@ pub trait ScientificPublicationAdapter {
     */
 
     fn reference(&self) -> Vec<Reference> {
+        // TODO
         vec![]
+    }
+
+    fn update_statements_for_publication_id_default(
+        &self,
+        publication_id: &String,
+        item: &mut Entity,
+        caches: &WikidataPapersCache,
+    ) {
+        self.update_work_item_with_property(publication_id, item);
+        self.update_work_item_with_journal(publication_id, item, caches);
+    }
+
+    fn update_work_item_with_journal(
+        &self,
+        publication_id: &String,
+        item: &mut Entity,
+        caches: &WikidataPapersCache,
+    ) {
+        if item.has_claims_with_property("P1433") {
+            return;
+        }
+        match self.get_work_issn(publication_id) {
+            Some(issn) => match caches.issn2q(&issn) {
+                Some(q) => item.add_claim(Statement::new_normal(
+                    Snak::new_string("P1433", &q),
+                    vec![],
+                    self.reference(),
+                )),
+
+                None => {}
+            },
+            _ => {}
+        }
+    }
+
+    fn update_work_item_with_property(&self, publication_id: &String, item: &mut Entity) {
+        match self.publication_property() {
+            Some(prop) => {
+                if !item.has_claims_with_property(prop) {
+                    item.add_claim(Statement::new_normal(
+                        Snak::new_external_id(
+                            self.publication_property().unwrap(),
+                            publication_id.to_string(),
+                        ),
+                        vec![],
+                        self.reference(),
+                    ));
+                }
+            }
+            _ => {}
+        }
     }
 
     fn get_external_identifier_from_item(&self, item: &Entity, property: &str) -> Option<String> {

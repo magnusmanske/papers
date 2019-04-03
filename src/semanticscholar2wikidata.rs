@@ -89,23 +89,11 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         Some(publication_id)
     }
 
-    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
+    fn update_statements_for_publication_id(&self, publication_id: &String, _item: &mut Entity) {
         let _work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
         };
-
-        // SS paper ID
-        if !item.has_claims_with_property(self.publication_property().unwrap()) {
-            item.add_claim(Statement::new_normal(
-                Snak::new_external_id(
-                    self.publication_property().unwrap(),
-                    publication_id.to_string(),
-                ),
-                vec![],
-                vec![],
-            ));
-        }
     }
 
     fn author2item(

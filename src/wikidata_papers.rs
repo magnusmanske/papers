@@ -11,17 +11,89 @@ use std::collections::HashSet;
 use wikibase::entity_diff::*;
 use wikibase::*;
 
+pub struct WikidataPapersCache {
+    issn2q: HashMap<String, String>,
+    is_initialized: bool,
+}
+
+impl WikidataPapersCache {
+    pub fn new() -> Self {
+        Self {
+            issn2q: HashMap::new(),
+            is_initialized: false,
+        }
+    }
+
+    pub fn issn2q(&self, issn: &String) -> Option<String> {
+        match self.issn2q.get(issn) {
+            Some(q) => {
+                if q.is_empty() {
+                    None
+                } else {
+                    Some(q.to_string())
+                }
+            }
+            None => None,
+        }
+    }
+
+    pub fn init(&mut self, mw_api: &mediawiki::api::Api) {
+        if self.is_initialized {
+            return;
+        }
+        self.init_issn_cache(mw_api);
+        self.is_initialized = true;
+    }
+
+    fn init_issn_cache(&mut self, mw_api: &mediawiki::api::Api) {
+        match mw_api.sparql_query("SELECT ?q ?issn { ?q wdt:P236 ?issn }") {
+            Ok(sparql_result) => {
+                for b in sparql_result["results"]["bindings"].as_array().unwrap() {
+                    match b["q"]["value"].as_str() {
+                        Some(entity_url) => {
+                            let q = mw_api.extract_entity_from_uri(entity_url).unwrap();
+                            match b["issn"]["value"].as_str() {
+                                Some(issn) => {
+                                    if self.issn2q.contains_key(issn) {
+                                        self.issn2q.insert(issn.to_string(), "".to_string());
+                                    } else {
+                                        self.issn2q.insert(issn.to_string(), q);
+                                    }
+                                }
+                                None => {}
+                            }
+                        }
+                        None => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+        //println!("ISSN cache size: {}", self.issn2q.len());
+    }
+}
+
 pub struct WikidataPapers {
     adapters: Vec<Box<ScientificPublicationAdapter>>,
+    caches: WikidataPapersCache,
 }
 
 impl WikidataPapers {
     pub fn new() -> WikidataPapers {
-        WikidataPapers { adapters: vec![] }
+        WikidataPapers {
+            adapters: vec![],
+            caches: WikidataPapersCache::new(),
+        }
     }
 
+    /*
     pub fn adapters_mut(&mut self) -> &mut Vec<Box<ScientificPublicationAdapter>> {
         &mut self.adapters
+    }
+    */
+
+    pub fn add_adapter(&mut self, adapter_box: Box<ScientificPublicationAdapter>) {
+        self.adapters.push(adapter_box);
     }
 
     pub fn get_wikidata_item_for_doi(
@@ -105,6 +177,11 @@ impl WikidataPapers {
                 _ => continue,
             };
             adapter2work_id.insert(adapter_id, publication_id.clone());
+            self.adapters[adapter_id].update_statements_for_publication_id_default(
+                &publication_id,
+                &mut item,
+                &mut self.caches,
+            );
             self.adapters[adapter_id]
                 .update_statements_for_publication_id(&publication_id, &mut item);
         }
@@ -124,7 +201,7 @@ impl WikidataPapers {
         for claim_num in 0..claims.len() {
             let claim = &claims[claim_num];
             if claim.claim_type() != "statement"
-                || claim.main_snak().datatype() != "wikibase-item"
+                || *claim.main_snak().datatype() != wikibase::SnakDataType::WikibaseItem
                 || claim.main_snak().property() != "P50"
             {
                 continue;
@@ -147,7 +224,7 @@ impl WikidataPapers {
         for claim_num in 0..claims.len() {
             let claim = &claims[claim_num];
             if claim.claim_type() != "statement"
-                || claim.main_snak().datatype() != "string"
+                || *claim.main_snak().datatype() != wikibase::SnakDataType::String
                 || claim.main_snak().property() != "P2093"
             {
                 continue;
@@ -299,6 +376,7 @@ impl WikidataPapers {
     }
 
     pub fn update_dois(&mut self, mw_api: &mut mediawiki::api::Api, dois: &Vec<&str>) {
+        self.caches.init(mw_api);
         let mut entities = wikibase::entity_container::EntityContainer::new();
 
         for doi in dois {

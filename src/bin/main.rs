@@ -23,9 +23,8 @@ fn main() {
     mw_api.login(lgname, lgpass).unwrap();
 
     let mut wdp = WikidataPapers::new();
-    wdp.adapters_mut()
-        .push(Box::new(Semanticscholar2Wikidata::new()));
-    wdp.adapters_mut().push(Box::new(Crossref2Wikidata::new()));
+    wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
+    wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
     wdp.update_dois(
         &mut mw_api,
         &vec!["10.1016/j.bpj.2008.12.3951"], //"10.1038/nrn3241"

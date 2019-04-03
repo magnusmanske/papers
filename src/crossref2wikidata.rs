@@ -34,6 +34,20 @@ impl Crossref2Wikidata {
 }
 
 impl ScientificPublicationAdapter for Crossref2Wikidata {
+    fn get_work_issn(&self, publication_id: &String) -> Option<String> {
+        let work = match self.get_cached_publication_from_id(publication_id) {
+            Some(w) => w,
+            None => return None,
+        };
+        match &work.issn {
+            Some(array) => match array.len() {
+                0 => None,
+                _ => Some(array[0].clone()),
+            },
+            _ => None,
+        }
+    }
+
     fn author_cache(&self) -> &HashMap<String, String> {
         &self.author_cache
     }

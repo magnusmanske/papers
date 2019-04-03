@@ -9,7 +9,7 @@ crossref = { git = "https://github.com/MattsSe/crossref-rs" }
 serde_json = "1.0.39"
 reqwest = "0.9.11"
 config = "0.9.2"
-mediawiki = "0.1.5"
+mediawiki = "0.1.7"
 wikibase = { path = "../wikibase_rs" }
 semanticscholar = "0.1"
 regex = "1"
