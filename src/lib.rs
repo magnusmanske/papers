@@ -100,6 +100,12 @@ pub trait ScientificPublicationAdapter {
         self.update_work_item_with_journal(publication_id, item, caches);
     }
 
+    fn titles_are_equal(&self, t1: &String, t2: &String) -> bool {
+        (t1 == t2)
+            || (t1.to_owned() + "." == t2.to_owned())
+            || (t1.to_owned() == t2.to_owned() + ".")
+    }
+
     fn update_work_item_with_title(&self, publication_id: &String, item: &mut Entity) {
         let mut titles = self.get_work_titles(publication_id);
         if titles.len() == 0 {
@@ -108,7 +114,7 @@ pub trait ScientificPublicationAdapter {
 
         // Add title
         match item.label_in_locale("en") {
-            Some(t) => titles.retain(|x| x.to_string() != t.to_string()), // Title exists, remove from title list
+            Some(t) => titles.retain(|x| !self.titles_are_equal(&x.to_string(), &t.to_string())), // Title exists, remove from title list
             None => item.set_label(LocaleString::new("en", &titles.swap_remove(0))), // No title, add and remove from title list
         }
 
