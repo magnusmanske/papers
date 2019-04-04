@@ -41,10 +41,16 @@ impl WikidataPapersCache {
         if self.is_initialized {
             return;
         }
-        self.init_issn_cache(mw_api);
+
+        // DEACTIVATE FOR TESTING
+        if false {
+            self.init_issn_cache(mw_api);
+        }
+
         self.is_initialized = true;
     }
 
+    /// Loads all ISSNs from Wikidata via SPARQL
     fn init_issn_cache(&mut self, mw_api: &mediawiki::api::Api) {
         match mw_api.sparql_query("SELECT ?q ?issn { ?q wdt:P236 ?issn }") {
             Ok(sparql_result) => {
