@@ -2,6 +2,8 @@ extern crate crossref;
 extern crate reqwest;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate serde_json;
 
 //use crate::wikidata_papers;
 use crate::wikidata_papers::WikidataPapersCache;
@@ -108,6 +110,38 @@ pub trait ScientificPublicationAdapter {
             }
             _ => {}
         }
+    }
+
+    fn get_wb_time_from_partial(
+        &self,
+        property: String,
+        year: u32,
+        month: Option<u8>,
+        day: Option<u8>,
+    ) -> Statement {
+        let mut precision: u64 = 9; // Year; default
+        let mut time = "+".to_string();
+        time += &year.to_string();
+        match month {
+            Some(x) => {
+                time += &format!("-{:02}", x);
+                precision = 10
+            }
+            None => time += "-01",
+        };
+        match day {
+            Some(x) => {
+                time += &format!("-{:02}", x);
+                precision = 11
+            }
+            None => time += "-01",
+        };
+        time += "T00:00:00Z";
+        Statement::new_normal(
+            Snak::new_time(property, time, precision),
+            vec![],
+            self.reference(),
+        )
     }
 
     fn get_external_identifier_from_item(&self, item: &Entity, property: &str) -> Option<String> {

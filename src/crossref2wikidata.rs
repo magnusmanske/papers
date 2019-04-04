@@ -35,16 +35,15 @@ impl Crossref2Wikidata {
 
 impl ScientificPublicationAdapter for Crossref2Wikidata {
     fn get_work_issn(&self, publication_id: &String) -> Option<String> {
-        let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w,
-            None => return None,
-        };
-        match &work.issn {
-            Some(array) => match array.len() {
-                0 => None,
-                _ => Some(array[0].clone()),
+        match self.get_cached_publication_from_id(publication_id) {
+            Some(work) => match &work.issn {
+                Some(array) => match array.len() {
+                    0 => None,
+                    _ => Some(array[0].clone()),
+                },
+                _ => None,
             },
-            _ => None,
+            None => None,
         }
     }
 
@@ -83,13 +82,48 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
             None => return,
         };
 
+        // Title
         if work.title.len() > 0 {
+            // TODO check language
             match item.label_in_locale("en") {
                 Some(_) => {}
                 None => item.set_label(LocaleString::new("en", &work.title[0])),
             }
         }
 
+        // Date
+        if !item.has_claims_with_property("P577") {
+            let j = json!(work.issued);
+            match j["date-parts"][0].as_array() {
+                Some(dp) => {
+                    if dp.len() > 0 {
+                        match dp[0].as_u64() {
+                            Some(year) => {
+                                let month: Option<u8> = match dp.len() {
+                                    1 => None,
+                                    _ => Some(dp[1].as_u64().unwrap() as u8),
+                                };
+                                let day: Option<u8> = match dp.len() {
+                                    3 => Some(dp[2].as_u64().unwrap() as u8),
+                                    _ => None,
+                                };
+                                let statement = self.get_wb_time_from_partial(
+                                    "P577".to_string(),
+                                    year as u32,
+                                    month,
+                                    day,
+                                );
+                                item.add_claim(statement);
+                            }
+                            None => {}
+                        }
+                    }
+                }
+                None => {}
+            }
+        }
+
+        // Issue/volume/page
         let string_options = vec![
             ("P433", &work.issue),
             ("P478", &work.volume),
@@ -109,5 +143,19 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
                 }
             }
         }
+
+        match &work.subject {
+            Some(subjects) => {
+                for subject in subjects {
+                    println!("Subject:{}", &subject);
+                }
+            }
+            None => {}
+        }
+
+        // TODO subject
+        // TODO journal (already done via ISSN?)
+        // TODO ISBN
+        // TODO authors
     }
 }
