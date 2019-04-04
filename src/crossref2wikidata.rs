@@ -34,6 +34,10 @@ impl Crossref2Wikidata {
 }
 
 impl ScientificPublicationAdapter for Crossref2Wikidata {
+    fn name(&self) -> &str {
+        "Crossref2Wikidata"
+    }
+
     fn get_work_issn(&self, publication_id: &String) -> Option<String> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(work) => match &work.issn {
@@ -41,7 +45,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
                     0 => None,
                     _ => Some(array[0].clone()),
                 },
-                _ => None,
+                None => None,
             },
             None => None,
         }
@@ -76,20 +80,18 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         vec![Reference::new(vec![Snak::new_time("P813", &now, 11)])]
     }
 
+    fn get_work_titles(&self, publication_id: &String) -> Vec<String> {
+        match self.get_cached_publication_from_id(publication_id) {
+            Some(work) => work.title.clone(),
+            None => vec![],
+        }
+    }
+
     fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
         };
-
-        // Title
-        if work.title.len() > 0 {
-            // TODO check language
-            match item.label_in_locale("en") {
-                Some(_) => {}
-                None => item.set_label(LocaleString::new("en", &work.title[0])),
-            }
-        }
 
         // Date
         if !item.has_claims_with_property("P577") {

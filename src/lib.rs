@@ -5,11 +5,10 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_json;
 
-//use crate::wikidata_papers;
 use crate::wikidata_papers::WikidataPapersCache;
 use regex::Regex;
 use std::collections::HashMap;
-use wikibase::{Entity, Reference, Snak, SnakType, Statement, Value};
+use wikibase::{Entity, LocaleString, Reference, Snak, SnakType, Statement, Value};
 
 pub enum AuthorItemInfo {
     WikidataItem(String),
@@ -18,24 +17,52 @@ pub enum AuthorItemInfo {
 }
 
 pub trait ScientificPublicationAdapter {
+    // You will need to implement these yourself
+
+    /// Returns the name of the resource; internal/debugging use only
+    fn name(&self) -> &str;
+
+    /// Returns a cache object reference for the author_id => wikidata_item mapping; this is handled automatically
+    fn author_cache(&self) -> &HashMap<String, String>;
+
+    /// Returns a mutable cache object reference for the author_id => wikidata_item mapping; this is handled automatically
+    fn author_cache_mut(&mut self) -> &mut HashMap<String, String>;
+
+    /// Tries to determine the publication ID of the resource, from a Wikidata item
+    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String>;
+
+    /// Adds/updates "special" statements of an item from the resource, given the publication ID.
+    /// Many common statements, title, aliases etc are automatically handeled via `update_statements_for_publication_id_default`
+    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity);
+
+    // You should implement these yourself, where applicable
+
+    /// Returns the property for an author ID of the resource as a `String`, e.g. P4012 for Semantic Scholar
     fn author_property(&self) -> Option<String> {
         None
     }
+
+    /// Returns the property for a publication ID of the resource as a `String`, e.g. P4011 for Semantic Scholar
     fn publication_property(&self) -> Option<String> {
         None
     }
+
+    /// Returns the property for a topic ID of the resource as a `String`, e.g. P6611 for Semantic Scholar
     fn topic_property(&self) -> Option<String> {
         None
     }
+
+    // For a publication ID, return the ISSN as a `String`, if known
     fn get_work_issn(&self, _publication_id: &String) -> Option<String> {
         None
     }
-    fn author_cache(&self) -> &HashMap<String, String>;
-    fn author_cache_mut(&mut self) -> &mut HashMap<String, String>;
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String>;
-    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity);
 
-    // Pre-filled methods
+    // For a publication ID, return all known titles as a `Vec<String>`, main title first, all English
+    fn get_work_titles(&self, _publication_id: &String) -> Vec<String> {
+        vec![]
+    }
+
+    // Pre-filled methods; no need to implement them unless there is a need
     /*
         fn create_item(&self, item: &Entity, mw_api: &mut mediawiki::api::Api) -> Option<String> {
             let params = EntityDiffParams::all();
@@ -66,17 +93,48 @@ pub trait ScientificPublicationAdapter {
         &self,
         publication_id: &String,
         item: &mut Entity,
-        caches: &WikidataPapersCache,
+        caches: &mut WikidataPapersCache,
     ) {
+        self.update_work_item_with_title(publication_id, item);
         self.update_work_item_with_property(publication_id, item);
         self.update_work_item_with_journal(publication_id, item, caches);
+    }
+
+    fn update_work_item_with_title(&self, publication_id: &String, item: &mut Entity) {
+        let mut titles = self.get_work_titles(publication_id);
+        if titles.len() == 0 {
+            return;
+        }
+
+        // Add title
+        match item.label_in_locale("en") {
+            Some(t) => titles.retain(|x| x.to_string() != t.to_string()), // Title exists, remove from title list
+            None => item.set_label(LocaleString::new("en", &titles.swap_remove(0))), // No title, add and remove from title list
+        }
+
+        // Add other potential titles as aliases
+        titles
+            .iter()
+            .for_each(|t| item.add_alias(LocaleString::new("en", t)));
+
+        // Add P1476 (title)
+        if !item.has_claims_with_property("P1476") {
+            match item.label_in_locale("en") {
+                Some(title) => item.add_claim(Statement::new_normal(
+                    Snak::new_monolingual_text("P1476", "en", title),
+                    vec![],
+                    self.reference(),
+                )),
+                None => {}
+            }
+        }
     }
 
     fn update_work_item_with_journal(
         &self,
         publication_id: &String,
         item: &mut Entity,
-        caches: &WikidataPapersCache,
+        caches: &mut wikidata_papers::WikidataPapersCache,
     ) {
         if item.has_claims_with_property("P1433") {
             return;

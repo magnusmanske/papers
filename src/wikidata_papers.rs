@@ -14,6 +14,7 @@ use wikibase::*;
 pub struct WikidataPapersCache {
     issn2q: HashMap<String, String>,
     is_initialized: bool,
+    mw_api: Option<mediawiki::api::Api>,
 }
 
 impl WikidataPapersCache {
@@ -21,10 +22,24 @@ impl WikidataPapersCache {
         Self {
             issn2q: HashMap::new(),
             is_initialized: false,
+            mw_api: None,
         }
     }
 
-    pub fn issn2q(&self, issn: &String) -> Option<String> {
+    fn search_issn2q(&mut self, issn: &String) -> Option<String> {
+        match self.search_wikibase(&("haswbstatement:P236=".to_string() + issn)) {
+            Ok(items) => match items.len() {
+                1 => Some(items[0].to_string()),
+                _ => None,
+            },
+            Err(e) => {
+                println!("ERROR:{}", e);
+                None
+            }
+        }
+    }
+
+    pub fn issn2q(&mut self, issn: &String) -> Option<String> {
         match self.issn2q.get(issn) {
             Some(q) => {
                 if q.is_empty() {
@@ -33,7 +48,37 @@ impl WikidataPapersCache {
                     Some(q.to_string())
                 }
             }
-            None => None,
+            None => match self.search_issn2q(issn) {
+                Some(q) => {
+                    self.issn2q.insert(issn.to_string(), q.clone());
+                    Some(q)
+                }
+                None => None,
+            },
+        }
+    }
+
+    pub fn search_wikibase(&self, query: &String) -> Result<Vec<String>, String> {
+        let mw_api = match &self.mw_api {
+            Some(x) => x,
+            None => return Err("no mw_api set in WikidataPapersCache".to_string()),
+        };
+        let params: HashMap<_, _> = vec![
+            ("action", "query"),
+            ("list", "search"),
+            ("srnamespace", "0"),
+            ("srsearch", &query.as_str()),
+        ]
+        .into_iter()
+        .map(|(x, y)| (x.to_string(), y.to_string()))
+        .collect();
+        let res = mw_api.get_query_api_json(&params).unwrap();
+        match res["query"]["search"].as_array() {
+            Some(items) => Ok(items
+                .iter()
+                .map(|item| item["title"].as_str().unwrap().to_string())
+                .collect()),
+            None => Ok(vec![]),
         }
     }
 
@@ -42,9 +87,11 @@ impl WikidataPapersCache {
             return;
         }
 
+        self.mw_api = Some(mw_api.clone());
+
         // DEACTIVATE FOR TESTING
         if false {
-            self.init_issn_cache(mw_api);
+            self.init_issn_cache(&mw_api);
         }
 
         self.is_initialized = true;
@@ -182,14 +229,18 @@ impl WikidataPapers {
                 Some(id) => id,
                 _ => continue,
             };
+
+            let adapter = &self.adapters[adapter_id];
             adapter2work_id.insert(adapter_id, publication_id.clone());
-            self.adapters[adapter_id].update_statements_for_publication_id_default(
+            println!("Applying adapter {}", adapter.name());
+
+            adapter.update_statements_for_publication_id_default(
                 &publication_id,
                 &mut item,
                 &mut self.caches,
             );
-            self.adapters[adapter_id]
-                .update_statements_for_publication_id(&publication_id, &mut item);
+            adapter.update_statements_for_publication_id(&publication_id, &mut item);
+            //println!("{}", serde_json::to_string_pretty(&new_item).unwrap());
         }
     }
 

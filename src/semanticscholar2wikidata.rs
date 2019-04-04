@@ -49,6 +49,10 @@ impl Semanticscholar2Wikidata {
 }
 
 impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
+    fn name(&self) -> &str {
+        "Semanticscholar2Wikidata"
+    }
+
     fn author_property(&self) -> Option<String> {
         return Some("P4012".to_string());
     }

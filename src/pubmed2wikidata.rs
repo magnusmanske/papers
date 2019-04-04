@@ -35,6 +35,10 @@ impl Pubmed2Wikidata {
 }
 
 impl ScientificPublicationAdapter for Pubmed2Wikidata {
+    fn name(&self) -> &str {
+        "Pubmed2Wikidata"
+    }
+
     fn author_property(&self) -> Option<String> {
         return Some("P496".to_string());
     }

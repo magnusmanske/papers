@@ -43,6 +43,10 @@ impl Orcid2Wikidata {
 }
 
 impl ScientificPublicationAdapter for Orcid2Wikidata {
+    fn name(&self) -> &str {
+        "Orcid2Wikidata"
+    }
+
     fn author_property(&self) -> Option<String> {
         return Some("P496".to_string());
     }
