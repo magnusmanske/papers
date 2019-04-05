@@ -80,9 +80,13 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         vec![Reference::new(vec![Snak::new_time("P813", &now, 11)])]
     }
 
-    fn get_work_titles(&self, publication_id: &String) -> Vec<String> {
+    fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
         match self.get_cached_publication_from_id(publication_id) {
-            Some(work) => work.title.clone(),
+            Some(work) => work
+                .title
+                .iter()
+                .map(|t| LocaleString::new("en", t))
+                .collect(),
             None => vec![],
         }
     }

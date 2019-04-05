@@ -482,12 +482,13 @@ impl WikidataPapers {
                 continue;
             }
             //dbg!(&target);
-            //println!("{}", diff.to_string_pretty().unwrap());
-
-            let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
-            //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
-            let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
-            println!("https://www.wikidata.org/wiki/{}", &entity_id);
+            println!("{}", diff.to_string_pretty().unwrap());
+            if false {
+                let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
+                //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
+                let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
+                println!("https://www.wikidata.org/wiki/{}", &entity_id);
+            }
         }
     }
 }

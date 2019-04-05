@@ -57,8 +57,8 @@ pub trait ScientificPublicationAdapter {
         None
     }
 
-    // For a publication ID, return all known titles as a `Vec<String>`, main title first, all English
-    fn get_work_titles(&self, _publication_id: &String) -> Vec<String> {
+    // For a publication ID, return all known titles as a `Vec<LocaleString>`, main title first (per language)
+    fn get_work_titles(&self, _publication_id: &String) -> Vec<LocaleString> {
         vec![]
     }
 
@@ -101,37 +101,70 @@ pub trait ScientificPublicationAdapter {
     }
 
     fn titles_are_equal(&self, t1: &String, t2: &String) -> bool {
-        (t1 == t2)
-            || (t1.to_owned() + "." == t2.to_owned())
-            || (t1.to_owned() == t2.to_owned() + ".")
+        // Maybe it's easy...
+        if t1 == t2 {
+            return true;
+        }
+        // Not so easy then...
+        let t1 = t1
+            .clone()
+            .to_lowercase()
+            .trim_end_matches('.')
+            .to_string()
+            .trim()
+            .to_string();
+        let t2 = t2
+            .clone()
+            .to_lowercase()
+            .trim_end_matches('.')
+            .to_string()
+            .trim()
+            .to_string();
+        return t1 == t2;
     }
 
     fn update_work_item_with_title(&self, publication_id: &String, item: &mut Entity) {
-        let mut titles = self.get_work_titles(publication_id);
+        let titles = self.get_work_titles(publication_id);
         if titles.len() == 0 {
             return;
         }
 
-        // Add title
-        match item.label_in_locale("en") {
-            Some(t) => titles.retain(|x| !self.titles_are_equal(&x.to_string(), &t.to_string())), // Title exists, remove from title list
-            None => item.set_label(LocaleString::new("en", &titles.swap_remove(0))), // No title, add and remove from title list
-        }
+        // Re-org
+        let mut by_lang: HashMap<String, Vec<String>> = HashMap::new();
+        titles.iter().for_each(|t| {
+            let lv = by_lang.entry(t.language().to_string()).or_insert(vec![]);
+            lv.push(t.value().to_string())
+        });
 
-        // Add other potential titles as aliases
-        titles
-            .iter()
-            .for_each(|t| item.add_alias(LocaleString::new("en", t)));
+        for (language, titles) in by_lang.iter() {
+            let mut titles = titles.clone();
+            // Add title
+            match item.label_in_locale(&language) {
+                Some(t) => {
+                    titles.retain(|x| !self.titles_are_equal(&x.to_string(), &t.to_string()))
+                } // Title exists, remove from title list
+                None => item.set_label(LocaleString::new("en", &titles.swap_remove(0))), // No title, add and remove from title list
+            }
+            let main_title = item.label_in_locale("en").unwrap_or("").to_string();
 
-        // Add P1476 (title)
-        if !item.has_claims_with_property("P1476") {
-            match item.label_in_locale("en") {
-                Some(title) => item.add_claim(Statement::new_normal(
-                    Snak::new_monolingual_text("P1476", "en", title),
-                    vec![],
-                    self.reference(),
-                )),
-                None => {}
+            // Add other potential titles as aliases
+            titles
+                .iter()
+                .filter(|t| !dbg!(self.titles_are_equal(t, &main_title)))
+                .for_each(|t| {
+                    item.add_alias(LocaleString::new(language.to_string(), t.to_string()))
+                });
+
+            // Add P1476 (title)
+            if !item.has_claims_with_property("P1476") {
+                match item.label_in_locale(&language) {
+                    Some(title) => item.add_claim(Statement::new_normal(
+                        Snak::new_monolingual_text("P1476", &language, title),
+                        vec![],
+                        self.reference(),
+                    )),
+                    None => {}
+                }
             }
         }
     }
