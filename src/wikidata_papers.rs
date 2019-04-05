@@ -303,6 +303,12 @@ impl WikidataPapers {
                     None,
                 ) {
                     AuthorItemInfo::WikidataItem(q) => {
+                        println!(
+                            "{}: {} => {}",
+                            self.adapters[adapter_num].name(),
+                            &author_name,
+                            &q
+                        );
                         author_q = Some(q);
                         break;
                     }
@@ -360,6 +366,10 @@ impl WikidataPapers {
 
             let diff = EntityDiff::new(&original_item, &author_item, &diff_params);
             if diff.is_empty() {
+                if author_item.id().is_empty() {
+                    // Diff is empty, no ID => don't bother
+                    continue;
+                }
                 println!(
                     "No change for author '{}' https://www.wikidata.org/wiki/{}",
                     &author_name,
@@ -368,6 +378,7 @@ impl WikidataPapers {
                 claims_to_replace.push((claim_num, author_item.id().to_string()));
                 continue;
             }
+            //println!("{:?}", &diff_params);
             let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
             println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
             let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
@@ -386,6 +397,15 @@ impl WikidataPapers {
             claims_to_replace.push((claim_num, entity_id.to_string()));
         }
 
+        self.replace_author_string_with_author_items(&mut claims_to_replace, &mut claims);
+        item.set_claims(claims);
+    }
+
+    pub fn replace_author_string_with_author_items(
+        &mut self,
+        claims_to_replace: &mut std::vec::Vec<(usize, std::string::String)>,
+        claims: &mut Vec<Statement>,
+    ) {
         // Replace P2093 claims with P50
         if claims_to_replace.is_empty() {
             // Nothing to do
@@ -393,6 +413,9 @@ impl WikidataPapers {
         }
         while !claims_to_replace.is_empty() {
             let (claim_num, q) = claims_to_replace.pop().unwrap();
+            if q.is_empty() {
+                continue; // Paranoia
+            }
             let claim = claims[claim_num].to_owned();
             let datavalue = match claim.main_snak().data_value() {
                 Some(dv) => dv,
@@ -418,7 +441,6 @@ impl WikidataPapers {
             // Remove string claim
             claims.remove(claim_num);
         }
-        item.set_claims(claims);
     }
 
     fn create_blank_item_for_publication_from_doi(&self, doi: &String) -> Entity {
@@ -481,9 +503,8 @@ impl WikidataPapers {
                 println!("No change");
                 continue;
             }
-            //dbg!(&target);
-            println!("{}", diff.to_string_pretty().unwrap());
-            if false {
+            //println!("{}", diff.to_string_pretty().unwrap());
+            if true {
                 let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
                 //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
                 let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();

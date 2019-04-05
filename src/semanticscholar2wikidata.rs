@@ -26,26 +26,12 @@ impl Semanticscholar2Wikidata {
     pub fn get_cached_publication_from_id(&self, publication_id: &String) -> Option<&Work> {
         self.work_cache.get(publication_id)
     }
-
-    fn update_author_item(&mut self, author: &Author, author_name: &String, item: &mut Entity) {
-        let semanticscholar_author_name: String = author.name.clone().unwrap();
-        let author_id = author.author_id.clone().unwrap();
-        item.set_label(LocaleString::new("en", &semanticscholar_author_name));
-        if semanticscholar_author_name != *author_name {
-            item.add_alias(LocaleString::new("en", &author_name));
+    /*
+        fn update_author_item(&mut self, author: &Author, author_name: &String, item: &mut Entity) {
+            let semanticscholar_author_name: String = author.name.clone().unwrap();
+            let author_id = author.author_id.clone().unwrap();
         }
-
-        item.add_claim(Statement::new_normal(
-            Snak::new_item("P31", "Q5"),
-            vec![],
-            self.reference(),
-        ));
-        item.add_claim(Statement::new_normal(
-            Snak::new_external_id(self.author_property().unwrap(), author_id),
-            vec![],
-            self.reference(),
-        ));
-    }
+    */
 }
 
 impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
@@ -91,6 +77,16 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
 
         self.work_cache.insert(publication_id.clone(), work);
         Some(publication_id)
+    }
+
+    fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
+        match self.get_cached_publication_from_id(publication_id) {
+            Some(work) => match &work.title {
+                Some(title) => dbg!(vec![LocaleString::new("en", &title)]),
+                None => vec![],
+            },
+            None => vec![],
+        }
     }
 
     fn update_statements_for_publication_id(&self, publication_id: &String, _item: &mut Entity) {
@@ -150,7 +146,13 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
             }
 
             Some(item) => {
-                self.update_author_item(&author, &author_name, item);
+                let semanticscholar_author_name: String = author.name.clone().unwrap();
+                self.update_author_item(
+                    &semanticscholar_author_name,
+                    &author_id,
+                    &author_name,
+                    item,
+                );
                 AuthorItemInfo::CatalogId(author_id) // RETURNS AUTHOR ID
             }
         }

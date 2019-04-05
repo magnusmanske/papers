@@ -261,19 +261,38 @@ pub trait ScientificPublicationAdapter {
         None
     }
 
+    fn asciify_string(&self, s: &str) -> String {
+        // As long as some sources insist on using ASCII only for names :-(
+        s.to_lowercase()
+            .replace('ä', "a")
+            .replace('ö', "o")
+            .replace('ü', "u")
+            .replace('á', "a")
+            .replace('à', "a")
+            .replace('â', "a")
+            .replace('é', "e")
+            .replace('è', "e")
+            .replace('ñ', "n")
+            .replace('ï', "i")
+            .replace('ç', "c")
+            .replace('ß', "ss")
+    }
+
     /// Compares long (3+ characters) name parts and returns true if identical
     fn author_names_match(&self, name1: &str, name2: &str) -> bool {
         lazy_static! {
             static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b").unwrap();
         }
-        if RE1.is_match(name1) && RE1.is_match(name2) {
+        let name1_mod = self.asciify_string(name1);
+        let name2_mod = self.asciify_string(name2);
+        if RE1.is_match(&name1_mod) && RE1.is_match(&name2_mod) {
             let mut parts1: Vec<String> = vec![];
-            for cap in RE1.captures_iter(name1) {
+            for cap in RE1.captures_iter(&name1_mod) {
                 parts1.push(cap[1].to_string());
             }
             parts1.sort();
             let mut parts2: Vec<String> = vec![];
-            for cap in RE1.captures_iter(name2) {
+            for cap in RE1.captures_iter(&name2_mod) {
                 parts2.push(cap[1].to_string());
             }
             parts2.sort();
@@ -303,6 +322,39 @@ pub trait ScientificPublicationAdapter {
         _item: Option<&mut Entity>,
     ) -> AuthorItemInfo {
         AuthorItemInfo::None
+    }
+
+    fn update_author_item(
+        &mut self,
+        source_author_name: &String,
+        author_id: &String,
+        author_name: &String,
+        item: &mut Entity,
+    ) {
+        item.set_label(LocaleString::new("en", &source_author_name));
+        if source_author_name != author_name {
+            item.add_alias(LocaleString::new("en", &author_name));
+        }
+
+        if !item.has_claims_with_property("P31") {
+            item.add_claim(Statement::new_normal(
+                Snak::new_item("P31", "Q5"),
+                vec![],
+                self.reference(),
+            ));
+        }
+        match self.author_property() {
+            Some(prop) => {
+                if !item.has_claims_with_property("P31") {
+                    item.add_claim(Statement::new_normal(
+                        Snak::new_external_id(prop, author_id.to_string()),
+                        vec![],
+                        self.reference(),
+                    ));
+                }
+            }
+            None => {}
+        }
     }
 
     fn get_author_item_id(

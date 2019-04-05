@@ -3,7 +3,7 @@ extern crate config;
 extern crate mediawiki;
 extern crate serde_json;
 
-//use crate::AuthorItemInfo;
+use crate::AuthorItemInfo;
 use crate::ScientificPublicationAdapter;
 //use chrono::prelude::*;
 use orcid::*;
@@ -26,6 +26,7 @@ pub struct Orcid2Wikidata {
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, PseudoWork>,
     client: Client,
+    author_data: HashMap<String, Option<Author>>,
 }
 
 impl Orcid2Wikidata {
@@ -34,11 +35,59 @@ impl Orcid2Wikidata {
             author_cache: HashMap::new(),
             work_cache: HashMap::new(),
             client: Client::new(),
+            author_data: HashMap::new(),
         }
     }
 
     pub fn get_cached_publication_from_id(&self, publication_id: &String) -> Option<&PseudoWork> {
         self.work_cache.get(publication_id)
+    }
+
+    pub fn get_or_load_author_data(&mut self, orcid_author_id: &String) -> &Option<Author> {
+        if !self.author_data.contains_key(orcid_author_id) {
+            match self.client.author(orcid_author_id) {
+                Ok(data) => self
+                    .author_data
+                    .insert(orcid_author_id.to_string(), Some(data)),
+                Err(_) => self.author_data.insert(orcid_author_id.to_string(), None),
+            };
+        }
+        self.author_data.get(orcid_author_id).unwrap()
+    }
+
+    fn get_author_name_variations(&self, author: &Author) -> Vec<String> {
+        let mut ret: Vec<String> = vec![];
+
+        match author.credit_name() {
+            Some(name) => ret.push(name.to_string()),
+            None => {}
+        }
+
+        match author.json()["person"]["name"].as_object() {
+            Some(n) => {
+                let family_name = n["family-name"]["value"]
+                    .as_str()
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                let given_names = n["given-names"]["value"]
+                    .as_str()
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if !family_name.is_empty() {
+                    if given_names.is_empty() {
+                        ret.push(family_name);
+                    } else {
+                        ret.push(given_names + " " + &family_name);
+                        // TODO initials?
+                    }
+                }
+            }
+            None => {}
+        }
+
+        ret
     }
 }
 
@@ -85,13 +134,68 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
             None => return,
         };
     }
-    /*
-        fn author2item(
-            &mut self,
-            author_name: &String,
-            mw_api: &mut mediawiki::api::Api,
-            publication_id: Option<&String>,
-            item: Option<&mut Entity>,
-        ) -> AuthorItemInfo {
-    */
+
+    fn author2item(
+        &mut self,
+        author_name: &String,
+        mw_api: &mut mediawiki::api::Api,
+        publication_id: Option<&String>,
+        item: Option<&mut Entity>,
+    ) -> AuthorItemInfo {
+        // RETURNS WIKIDATA ITEM ID, CATALOG AUHTOR ID, OR None, DEPENDING ON CONTEXT
+        let work: PseudoWork;
+        match publication_id {
+            Some(id) => {
+                let publication_id_option = self.get_cached_publication_from_id(id).to_owned();
+                work = match publication_id_option {
+                    Some(w) => w.clone(),
+                    None => return AuthorItemInfo::None,
+                };
+            }
+            None => return AuthorItemInfo::None,
+        }
+
+        let author_name = self.sanitize_author_name(author_name);
+
+        let mut candidates: Vec<usize> = vec![];
+        for num in 0..work.author_ids.len() {
+            let orcid_author_id = &work.author_ids[num];
+            let author = self.get_or_load_author_data(orcid_author_id).to_owned();
+            let author = match author {
+                Some(author) => author,
+                None => continue,
+            };
+            if self
+                .get_author_name_variations(&author)
+                .iter()
+                .filter(|a| self.author_names_match(&author_name, &a))
+                .count()
+                > 0
+            {
+                candidates.push(num);
+            }
+        }
+        if candidates.len() != 1 {
+            return AuthorItemInfo::None;
+        }
+
+        let author_id = &work.author_ids[candidates[0]];
+        let author = self.get_or_load_author_data(&author_id).clone().unwrap();
+        let author = self.get_author_name_variations(&author).clone();
+        let author = author.first().unwrap();
+
+        match item {
+            None => {
+                match self.get_author_item_id(&author_id, mw_api) {
+                    Some(x) => return AuthorItemInfo::WikidataItem(x), // RETURNS ITEM ID
+                    None => return AuthorItemInfo::None,
+                }
+            }
+
+            Some(item) => {
+                self.update_author_item(&author, &author_id, &author_name, item);
+                AuthorItemInfo::CatalogId(author_id.to_string()) // RETURNS AUTHOR ID
+            }
+        }
+    }
 }

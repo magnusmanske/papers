@@ -72,6 +72,22 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         Some(publication_id.to_string())
     }
 
+    fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
+        match self.get_cached_publication_from_id(publication_id) {
+            Some(work) => match &work.medline_citation {
+                Some(citation) => match &citation.article {
+                    Some(article) => match &article.title {
+                        Some(title) => vec![LocaleString::new("en", &title)],
+                        None => vec![],
+                    },
+                    None => vec![],
+                },
+                None => vec![],
+            },
+            None => vec![],
+        }
+    }
+
     fn get_work_issn(&self, publication_id: &String) -> Option<String> {
         let work = self
             .get_cached_publication_from_id(publication_id)?
