@@ -16,4 +16,4 @@ chrono = "0.4.6"
 crossref = { git = "https://github.com/MattsSe/crossref-rs" }
 semanticscholar = "0.1"
 orcid="0.1.2"
-pubmed="0.1.0"
+pubmed="0.1"
