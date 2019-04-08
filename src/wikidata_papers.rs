@@ -336,8 +336,8 @@ impl WikidataPapers {
                     target = EditTarget::Entity(q);
                 }
                 None => {
-                    original_item = Entity::new_empty();
-                    author_item = Entity::new_empty();
+                    original_item = Entity::new_empty_item();
+                    author_item = Entity::new_empty_item();
                     target = EditTarget::New("item".to_string());
                 }
             };
@@ -444,7 +444,7 @@ impl WikidataPapers {
     }
 
     fn create_blank_item_for_publication_from_doi(&self, doi: &String) -> Entity {
-        let mut item = Entity::new_empty();
+        let mut item = Entity::new_empty_item();
         item.add_claim(Statement::new_normal(
             Snak::new_external_id("P356", doi),
             vec![],
@@ -476,7 +476,7 @@ impl WikidataPapers {
                     target = EditTarget::Entity(q);
                 }
                 None => {
-                    original_item = Entity::new_empty();
+                    original_item = Entity::new_empty_item();
                     item = self.create_blank_item_for_publication_from_doi(&doi.to_string());
                     target = EditTarget::New("item".to_string());
                 }
