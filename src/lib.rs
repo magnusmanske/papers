@@ -10,6 +10,26 @@ use regex::Regex;
 use std::collections::HashMap;
 use wikibase::{Entity, LocaleString, Reference, Snak, SnakType, Statement, Value};
 
+#[derive(Debug, Clone)]
+pub struct GenericAuthorInfo {
+    pub name: Option<String>,
+    pub catalog_id: Option<String>,
+    pub wikidata_item: Option<String>,
+    pub list_number: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum GenericWorkType {
+    Property(String),
+    Item,
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericWorkIdentifier {
+    pub catalog_type: GenericWorkType,
+    pub catalog_id: String,
+}
+
 pub enum AuthorItemInfo {
     WikidataItem(String),
     CatalogId(String),
@@ -36,6 +56,16 @@ pub trait ScientificPublicationAdapter {
     fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity);
 
     // You should implement these yourself, where applicable
+
+    /// Returns a list of the authors, if available, with list number, name, catalog-specific author ID, and WIkidata ID, as available
+    fn get_author_list(&self, _publication_id: &String) -> Vec<GenericAuthorInfo> {
+        vec![]
+    }
+
+    /// Returns a list of IDs for that paper (PMID, DOI etc.)
+    fn get_identifier_list(&self, _publication_id: &String) -> Vec<GenericWorkIdentifier> {
+        vec![]
+    }
 
     /// Returns the property for an author ID of the resource as a `String`, e.g. P4012 for Semantic Scholar
     fn author_property(&self) -> Option<String> {

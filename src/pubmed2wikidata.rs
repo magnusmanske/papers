@@ -4,11 +4,11 @@ extern crate mediawiki;
 extern crate serde_json;
 
 //use crate::AuthorItemInfo;
-use crate::ScientificPublicationAdapter;
 //use chrono::prelude::*;
+//use wikibase::*;
+use crate::*;
 use pubmed::*;
 use std::collections::HashMap;
-use wikibase::*;
 
 #[derive(Debug, Clone)]
 pub struct Pubmed2Wikidata {
@@ -32,6 +32,21 @@ impl Pubmed2Wikidata {
     ) -> Option<&PubmedArticle> {
         self.work_cache.get(publication_id)
     }
+
+    fn get_author_name_string(&self, author: &Author) -> Option<String> {
+        let mut ret: String = match &author.last_name {
+            Some(s) => s.to_string(),
+            None => return None,
+        };
+        match &author.fore_name {
+            Some(s) => ret = s.to_string() + " " + &ret,
+            None => match &author.initials {
+                Some(s) => ret = s.to_string() + " " + &ret,
+                None => {}
+            },
+        }
+        Some(ret)
+    }
 }
 
 impl ScientificPublicationAdapter for Pubmed2Wikidata {
@@ -51,7 +66,21 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         &mut self.author_cache
     }
 
+    fn publication_property(&self) -> Option<String> {
+        Some("P698".to_string())
+    }
+
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+        // Check PubMed ID
+        match self.get_external_identifier_from_item(item, &self.publication_property().unwrap()) {
+            Some(publication_id) => {
+                let pub_id_u64 = publication_id.parse::<u64>().unwrap();
+                let work = self.client.article(pub_id_u64).unwrap();
+                self.work_cache.insert(publication_id.clone(), work);
+                return Some(publication_id);
+            }
+            None => {}
+        };
         // TODO other ID types than DOI?
         let doi = match self.get_external_identifier_from_item(item, "P356") {
             Some(s) => s,
@@ -97,6 +126,85 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         let journal = article.journal?.to_owned();
         let issn = journal.issn?.to_owned();
         Some(issn)
+    }
+
+    fn get_author_list(&self, publication_id: &String) -> Vec<GenericAuthorInfo> {
+        let work = match self.get_cached_publication_from_id(publication_id) {
+            Some(w) => w,
+            None => return vec![],
+        };
+        let mut ret: Vec<GenericAuthorInfo> = vec![];
+
+        let medline_citation = match &work.medline_citation {
+            Some(x) => x,
+            None => return ret,
+        };
+        let article = match &medline_citation.article {
+            Some(x) => x,
+            None => return ret,
+        };
+        let author_list = match &article.author_list {
+            Some(x) => x,
+            None => return ret,
+        };
+
+        if !author_list.complete {
+            return ret;
+        }
+
+        let mut list_num = 1;
+        for author in &author_list.authors {
+            ret.push(GenericAuthorInfo {
+                name: self.get_author_name_string(&author),
+                catalog_id: None,
+                wikidata_item: None,
+                list_number: Some(list_num.to_string()),
+            });
+            list_num = list_num + 1;
+        }
+
+        ret
+    }
+
+    fn get_identifier_list(&self, publication_id: &String) -> Vec<GenericWorkIdentifier> {
+        let mut ret: Vec<GenericWorkIdentifier> = vec![];
+
+        let work = match self.get_cached_publication_from_id(publication_id) {
+            Some(w) => w,
+            None => return ret,
+        };
+
+        ret.push(GenericWorkIdentifier {
+            catalog_type: GenericWorkType::Property(self.publication_property().unwrap()),
+            catalog_id: publication_id.clone(),
+        });
+
+        let medline_citation = match &work.medline_citation {
+            Some(x) => x,
+            None => return ret,
+        };
+        let article = match &medline_citation.article {
+            Some(x) => x,
+            None => return ret,
+        };
+
+        for elid in &article.e_location_ids {
+            if !elid.valid {
+                continue;
+            }
+            match (&elid.e_id_type, &elid.id) {
+                (Some(id_type), Some(id)) => match id_type.as_str() {
+                    "doi" => ret.push(GenericWorkIdentifier {
+                        catalog_type: GenericWorkType::Property("P356".to_string()),
+                        catalog_id: id.clone(),
+                    }),
+                    _ => {}
+                },
+                _ => continue,
+            }
+        }
+
+        ret
     }
 
     fn update_statements_for_publication_id(&self, publication_id: &String, _item: &mut Entity) {

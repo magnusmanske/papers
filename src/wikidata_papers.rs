@@ -7,10 +7,14 @@ extern crate wikibase;
 use crate::AuthorItemInfo;
 use crate::ScientificPublicationAdapter;
 use multimap::MultiMap;
+use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use wikibase::entity_diff::*;
 use wikibase::*;
+
+const PUBLICATION_KEYS2PROPERTY: &'static [(&'static str, &'static str)] =
+    &[("PMID", "P698"), ("PMCID", "P932"), ("DOI", "P356")];
 
 pub struct WikidataPapersCache {
     issn2q: HashMap<String, String>,
@@ -130,6 +134,7 @@ impl WikidataPapersCache {
 pub struct WikidataPapers {
     adapters: Vec<Box<ScientificPublicationAdapter>>,
     caches: WikidataPapersCache,
+    id_cache: HashMap<String, String>,
 }
 
 impl WikidataPapers {
@@ -137,6 +142,7 @@ impl WikidataPapers {
         WikidataPapers {
             adapters: vec![],
             caches: WikidataPapersCache::new(),
+            id_cache: HashMap::new(),
         }
     }
 
@@ -151,21 +157,69 @@ impl WikidataPapers {
     }
 
     pub fn get_wikidata_items_for_doi(
-        &self,
+        &mut self,
         mw_api: &mediawiki::api::Api,
         doi: &String,
     ) -> Vec<String> {
+        self.get_wikidata_items_for_property(mw_api, doi, "P356")
+    }
+
+    pub fn get_wikidata_items_for_pmid(
+        &mut self,
+        mw_api: &mediawiki::api::Api,
+        pmid: &String,
+    ) -> Vec<String> {
+        self.get_wikidata_items_for_property(mw_api, pmid, "P698")
+    }
+
+    fn fix_paper_id_prefix(&self, s: &String) -> String {
+        // Automatically remove leading PMC, if any
+        lazy_static! {
+            static ref RE1: Regex = Regex::new(r"^[Pp][Mm][Cc]").unwrap();
+        }
+        RE1.replace(s, "").to_string()
+    }
+
+    pub fn get_wikidata_items_for_pmcid(
+        &mut self,
+        mw_api: &mediawiki::api::Api,
+        pmcid: &String,
+    ) -> Vec<String> {
+        let pmcid = self.fix_paper_id_prefix(&pmcid);
+        self.get_wikidata_items_for_property(mw_api, &pmcid, "P932")
+    }
+
+    fn generate_id_property_cache_key(&self, id: &String, property: &str) -> String {
+        property.to_string() + ":" + &id.trim().to_lowercase()
+    }
+
+    fn get_wikidata_items_for_property(
+        &mut self,
+        mw_api: &mediawiki::api::Api,
+        id: &String,
+        property: &str,
+    ) -> Vec<String> {
+        let cache_key = self.generate_id_property_cache_key(id, property);
+        match self.id_cache.get(&cache_key) {
+            Some(qs) => return qs.split('|').map(|s| s.to_string()).collect(),
+            None => {}
+        }
+
+        // TODO use search instead, where applicable (DOIs don't seem to work with haswbstatement)
         let sparql = format!(
-            "SELECT DISTINCT ?q {{ VALUES ?doi {{ '{}' '{}' '{}' }} . ?q wdt:P356 ?doi }}",
-            doi,
-            doi.to_uppercase(),
-            doi.to_lowercase()
+            "SELECT DISTINCT ?q {{ VALUES ?id {{ '{}' '{}' '{}' }} . ?q wdt:{} ?id }}",
+            id,
+            id.to_uppercase(),
+            id.to_lowercase(),
+            &property
         ); // DOIs in Wikidata can be any upper/lowercase :-(
         let res = match mw_api.sparql_query(&sparql) {
             Ok(res) => res,
             _ => return vec![],
         };
-        mw_api.entities_from_sparql_result(&res, "q")
+        let ret: Vec<String> = mw_api.entities_from_sparql_result(&res, "q");
+        self.id_cache.insert(cache_key, ret.join("|"));
+        ret
     }
 
     /*
@@ -228,6 +282,16 @@ impl WikidataPapers {
                 &mut self.caches,
             );
             adapter.update_statements_for_publication_id(&publication_id, &mut item);
+
+            let authors = adapter.get_author_list(&publication_id);
+            if !authors.is_empty() {
+                println!("!!Authors: {:?}", &authors);
+            }
+
+            let publication_ids = adapter.get_identifier_list(&publication_id);
+            if !publication_ids.is_empty() {
+                println!("!!PubIDs: {:?}", &publication_ids);
+            }
             //println!("{}", serde_json::to_string_pretty(&new_item).unwrap());
         }
     }
@@ -440,16 +504,56 @@ impl WikidataPapers {
         item
     }
 
-    // ID keys need to be uppercase (e.g. "PMID","DOI")
-    pub fn update_from_paper_ids(
+    fn create_blank_item_for_publication_from_ids(
+        &self,
+        ids: &MultiMap<&str, &str>,
+    ) -> wikibase::Entity {
+        let mut item = Entity::new_empty_item();
+        PUBLICATION_KEYS2PROPERTY
+            .iter()
+            .for_each(|(key, prop)| match ids.get_vec(key) {
+                Some(v) => {
+                    v.iter().for_each(|id| {
+                        let id = self.fix_paper_id_prefix(&id.to_string());
+                        item.add_claim(Statement::new_normal(
+                            Snak::new_external_id(prop.to_string(), id),
+                            vec![],
+                            vec![],
+                        ));
+                    });
+                }
+                None => {}
+            });
+        item
+    }
+
+    pub fn get_entities_for_paper_ids(
         &mut self,
         mw_api: &mut mediawiki::api::Api,
         ids: &MultiMap<&str, &str>,
-    ) {
+    ) -> Vec<String> {
         let mut qs = HashSet::new();
         match ids.get_vec("PMID") {
             Some(v) => {
-                println!("{:?}", &v);
+                for pmid in v {
+                    self.get_wikidata_items_for_pmid(&mw_api, &pmid.to_string())
+                        .iter()
+                        .for_each(|q| {
+                            qs.insert(q.clone());
+                        });
+                }
+            }
+            None => {}
+        }
+        match ids.get_vec("PMCID") {
+            Some(v) => {
+                for pmcid in v {
+                    self.get_wikidata_items_for_pmcid(&mw_api, &pmcid.to_string())
+                        .iter()
+                        .for_each(|q| {
+                            qs.insert(q.clone());
+                        });
+                }
             }
             None => {}
         }
@@ -459,15 +563,98 @@ impl WikidataPapers {
                     self.get_wikidata_items_for_doi(&mw_api, &doi.to_string())
                         .iter()
                         .for_each(|q| {
-                            println!("DOI {} is {}", &doi, &q);
                             qs.insert(q.clone());
                         });
                 }
             }
             None => {}
         }
-        println!("Found: {:?}", &qs);
-        //ids.iter_all().for_each(|x| println!("{:?}", x));
+
+        let ret: Vec<String> = qs.iter().map(|s| s.to_string()).collect();
+        ret
+    }
+
+    // ID keys need to be uppercase (e.g. "PMID","DOI")
+    pub fn update_from_paper_ids(
+        &mut self,
+        mw_api: &mut mediawiki::api::Api,
+        ids: &MultiMap<&str, &str>,
+    ) {
+        let qs = self.get_entities_for_paper_ids(mw_api, ids);
+
+        let mut entities = wikibase::entity_container::EntityContainer::new();
+        let mut item: wikibase::Entity;
+        let original_item;
+
+        match qs.len() {
+            0 => {
+                original_item = Entity::new_empty_item();
+                item = self.create_blank_item_for_publication_from_ids(&ids);
+            }
+            1 => {
+                let q = qs.iter().last().unwrap();
+                if entities.load_entities(&mw_api, &vec![q.clone()]).is_err() {
+                    return;
+                }
+
+                match entities.get_entity(q.clone()) {
+                    Some(the_item) => {
+                        item = the_item.clone();
+                    }
+                    None => return,
+                };
+                original_item = item.clone();
+            }
+            n => {
+                println!("{} items for IDs {:?}", &n, &ids);
+                return;
+            }
+        };
+        let mut adapter2work_id = HashMap::new();
+        self.update_item_from_adapters(&mut item, &mut adapter2work_id);
+        //self.update_authors_from_adapters(&mut item, &adapter2work_id, mw_api);
+        self.apply_changes(mw_api, &item, &original_item);
+    }
+
+    fn apply_changes(
+        &mut self,
+        mw_api: &mut mediawiki::api::Api,
+        item: &wikibase::Entity,
+        original_item: &wikibase::Entity,
+    ) {
+        let mut diff_params = EntityDiffParams::none();
+        diff_params.labels.add = EntityDiffParamState::All;
+        diff_params.aliases.add = EntityDiffParamState::All;
+        diff_params.descriptions.add = EntityDiffParamState::All;
+        let mut claims_add: Vec<String> = PUBLICATION_KEYS2PROPERTY
+            .iter()
+            .map(|s| s.1.to_string())
+            .collect();
+        let mut claims_remove = vec![];
+        for adapter in &self.adapters {
+            match adapter.publication_property() {
+                Some(p) => claims_add.push(p),
+                None => {}
+            }
+        }
+        claims_add.push("P50".to_string());
+        claims_remove.push("P2093".to_string());
+
+        diff_params.claims.add = EntityDiffParamState::Some(claims_add);
+        diff_params.claims.remove = EntityDiffParamState::Some(claims_remove);
+
+        let diff = EntityDiff::new(&original_item, &item, &diff_params);
+        if diff.is_empty() {
+            println!("No change");
+            return;
+        }
+        println!("{}", diff.to_string_pretty().unwrap());
+        if false {
+            let new_json = diff.apply_diff(mw_api, &diff).unwrap();
+            //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
+            let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
+            println!("https://www.wikidata.org/wiki/{}", &entity_id);
+        }
     }
 
     pub fn update_dois(&mut self, mw_api: &mut mediawiki::api::Api, dois: &Vec<&str>) {
@@ -504,37 +691,7 @@ impl WikidataPapers {
             let mut adapter2work_id = HashMap::new();
             self.update_item_from_adapters(&mut item, &mut adapter2work_id);
             self.update_authors_from_adapters(&mut item, &adapter2work_id, mw_api);
-
-            let mut diff_params = EntityDiffParams::none();
-            diff_params.labels.add = EntityDiffParamState::All;
-            diff_params.aliases.add = EntityDiffParamState::All;
-            diff_params.descriptions.add = EntityDiffParamState::All;
-            let mut claims_add = vec![];
-            let mut claims_remove = vec![];
-            for adapter in &self.adapters {
-                match adapter.publication_property() {
-                    Some(p) => claims_add.push(p),
-                    None => {}
-                }
-            }
-            claims_add.push("P50".to_string());
-            claims_remove.push("P2093".to_string());
-
-            diff_params.claims.add = EntityDiffParamState::Some(claims_add);
-            diff_params.claims.remove = EntityDiffParamState::Some(claims_remove);
-
-            let diff = EntityDiff::new(&original_item, &item, &diff_params);
-            if diff.is_empty() {
-                println!("No change");
-                continue;
-            }
-            //println!("{}", diff.to_string_pretty().unwrap());
-            if true {
-                let new_json = diff.apply_diff(mw_api, &diff).unwrap();
-                //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
-                let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
-                println!("https://www.wikidata.org/wiki/{}", &entity_id);
-            }
+            self.apply_changes(mw_api, &item, &original_item);
         }
     }
 }
