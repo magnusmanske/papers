@@ -287,11 +287,14 @@ impl WikidataPapers {
             if !authors.is_empty() {
                 println!("!!Authors: {:?}", &authors);
             }
+            // TODO use authors
 
             let publication_ids = adapter.get_identifier_list(&publication_id);
             if !publication_ids.is_empty() {
                 println!("!!PubIDs: {:?}", &publication_ids);
             }
+            // TODO add to item, re-run all adapters
+
             //println!("{}", serde_json::to_string_pretty(&new_item).unwrap());
         }
     }

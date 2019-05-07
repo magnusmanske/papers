@@ -13,7 +13,7 @@ use wikibase::{Entity, LocaleString, Reference, Snak, SnakType, Statement, Value
 #[derive(Debug, Clone)]
 pub struct GenericAuthorInfo {
     pub name: Option<String>,
-    pub catalog_id: Option<String>,
+    pub prop2id: HashMap<String, String>,
     pub wikidata_item: Option<String>,
     pub list_number: Option<String>,
 }

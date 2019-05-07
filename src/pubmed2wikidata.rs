@@ -154,9 +154,21 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
 
         let mut list_num = 1;
         for author in &author_list.authors {
+            let mut prop2id: HashMap<String, String> = HashMap::new();
+            for aid in &author.identifiers {
+                match (&aid.source, &aid.id) {
+                    (Some(source), Some(id)) => match source.as_str() {
+                        "ORCID" => {
+                            prop2id.insert("P496".to_string(), id.to_string());
+                        }
+                        other => println!("Unknown author source: {}:{}", &other, &id),
+                    },
+                    _ => {}
+                }
+            }
             ret.push(GenericAuthorInfo {
                 name: self.get_author_name_string(&author),
-                catalog_id: None,
+                prop2id: prop2id,
                 wikidata_item: None,
                 list_number: Some(list_num.to_string()),
             });
