@@ -6,6 +6,7 @@ extern crate wikibase;
 
 use crate::AuthorItemInfo;
 use crate::ScientificPublicationAdapter;
+use multimap::MultiMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use wikibase::entity_diff::*;
@@ -318,7 +319,6 @@ impl WikidataPapers {
 
             let mut author_item: Entity;
             let original_item: Entity;
-            let target;
             match author_q {
                 Some(q) => {
                     if p50_authors.contains(&q) {
@@ -333,12 +333,10 @@ impl WikidataPapers {
                         None => continue,
                     };
                     original_item = author_item.clone();
-                    target = EditTarget::Entity(q);
                 }
                 None => {
                     original_item = Entity::new_empty_item();
                     author_item = Entity::new_empty_item();
-                    target = EditTarget::New("item".to_string());
                 }
             };
 
@@ -359,10 +357,10 @@ impl WikidataPapers {
             }
 
             let mut diff_params = EntityDiffParams::none();
-            diff_params.labels.add = vec!["*".to_string()];
-            diff_params.aliases.add = vec!["*".to_string()];
-            diff_params.descriptions.add = vec!["*".to_string()];
-            diff_params.claims.add = vec!["*".to_string()];
+            diff_params.labels.add = EntityDiffParamState::All;
+            diff_params.aliases.add = EntityDiffParamState::All;
+            diff_params.descriptions.add = EntityDiffParamState::All;
+            diff_params.claims.add = EntityDiffParamState::All;
 
             let diff = EntityDiff::new(&original_item, &author_item, &diff_params);
             if diff.is_empty() {
@@ -378,8 +376,9 @@ impl WikidataPapers {
                 claims_to_replace.push((claim_num, author_item.id().to_string()));
                 continue;
             }
+
             //println!("{:?}", &diff_params);
-            let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
+            let new_json = diff.apply_diff(mw_api, &diff).unwrap(); // target?
             println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
             let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
             println!("https://www.wikidata.org/wiki/{}", &entity_id);
@@ -454,6 +453,37 @@ impl WikidataPapers {
         item
     }
 
+    // ID keys need to be uppercase (e.g. "PMID","DOI")
+    pub fn update_from_paper_ids(
+        &mut self,
+        mw_api: &mut mediawiki::api::Api,
+        ids: &MultiMap<&str, &str>,
+    ) {
+        let mut qs = HashSet::new();
+        match ids.get_vec("PMID") {
+            Some(v) => {
+                println!("{:?}", &v);
+            }
+            None => {}
+        }
+        match ids.get_vec("DOI") {
+            Some(v) => {
+                for doi in v {
+                    match self.get_wikidata_item_for_doi(&mw_api, &doi.to_string()) {
+                        Some(q) => {
+                            println!("DOI {} is {}", &doi, &q);
+                            qs.insert(q.clone());
+                        }
+                        None => println!("DOI not found in WD: {}", &doi),
+                    }
+                }
+            }
+            None => {}
+        }
+        println!("Found: {:?}", &qs);
+        //ids.iter_all().for_each(|x| println!("{:?}", x));
+    }
+
     pub fn update_dois(&mut self, mw_api: &mut mediawiki::api::Api, dois: &Vec<&str>) {
         self.caches.init(mw_api);
         let mut entities = wikibase::entity_container::EntityContainer::new();
@@ -461,7 +491,6 @@ impl WikidataPapers {
         for doi in dois {
             let mut item;
             let original_item;
-            let target;
             match self.get_wikidata_item_for_doi(&mw_api, &doi.to_string()) {
                 Some(q) => {
                     if entities.load_entities(&mw_api, &vec![q.clone()]).is_err() {
@@ -473,12 +502,10 @@ impl WikidataPapers {
                         None => continue,
                     };
                     original_item = item.clone();
-                    target = EditTarget::Entity(q);
                 }
                 None => {
                     original_item = Entity::new_empty_item();
                     item = self.create_blank_item_for_publication_from_doi(&doi.to_string());
-                    target = EditTarget::New("item".to_string());
                 }
             };
             let mut adapter2work_id = HashMap::new();
@@ -486,17 +513,22 @@ impl WikidataPapers {
             self.update_authors_from_adapters(&mut item, &adapter2work_id, mw_api);
 
             let mut diff_params = EntityDiffParams::none();
-            diff_params.labels.add = vec!["*".to_string()];
-            diff_params.aliases.add = vec!["*".to_string()];
-            diff_params.descriptions.add = vec!["*".to_string()];
+            diff_params.labels.add = EntityDiffParamState::All;
+            diff_params.aliases.add = EntityDiffParamState::All;
+            diff_params.descriptions.add = EntityDiffParamState::All;
+            let mut claims_add = vec![];
+            let mut claims_remove = vec![];
             for adapter in &self.adapters {
                 match adapter.publication_property() {
-                    Some(p) => diff_params.claims.add.push(p),
+                    Some(p) => claims_add.push(p),
                     None => {}
                 }
             }
-            diff_params.claims.add.push("P50".to_string());
-            diff_params.claims.remove.push("P2093".to_string());
+            claims_add.push("P50".to_string());
+            claims_remove.push("P2093".to_string());
+
+            diff_params.claims.add = EntityDiffParamState::Some(claims_add);
+            diff_params.claims.remove = EntityDiffParamState::Some(claims_remove);
 
             let diff = EntityDiff::new(&original_item, &item, &diff_params);
             if diff.is_empty() {
@@ -505,7 +537,7 @@ impl WikidataPapers {
             }
             //println!("{}", diff.to_string_pretty().unwrap());
             if true {
-                let new_json = EntityDiff::apply_diff(mw_api, &diff, target).unwrap();
+                let new_json = diff.apply_diff(mw_api, &diff).unwrap();
                 //println!("{}", ::serde_json::to_string_pretty(&new_json).unwrap());
                 let entity_id = EntityDiff::get_entity_id(&new_json).unwrap();
                 println!("https://www.wikidata.org/wiki/{}", &entity_id);
