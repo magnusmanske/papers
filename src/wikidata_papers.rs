@@ -150,11 +150,11 @@ impl WikidataPapers {
         self.adapters.push(adapter_box);
     }
 
-    pub fn get_wikidata_item_for_doi(
+    pub fn get_wikidata_items_for_doi(
         &self,
         mw_api: &mediawiki::api::Api,
         doi: &String,
-    ) -> Option<String> {
+    ) -> Vec<String> {
         let sparql = format!(
             "SELECT DISTINCT ?q {{ VALUES ?doi {{ '{}' '{}' '{}' }} . ?q wdt:P356 ?doi }}",
             doi,
@@ -163,22 +163,9 @@ impl WikidataPapers {
         ); // DOIs in Wikidata can be any upper/lowercase :-(
         let res = match mw_api.sparql_query(&sparql) {
             Ok(res) => res,
-            _ => return None,
+            _ => return vec![],
         };
-        let qs = mw_api.entities_from_sparql_result(&res, "q");
-
-        match qs.len() {
-            0 => None,
-            1 => Some(qs[0].clone()),
-            _ => {
-                println!(
-                    "Multiple Wikidata items for DOI '{}' : {}",
-                    &doi,
-                    qs.join(", ")
-                );
-                None
-            }
-        }
+        mw_api.entities_from_sparql_result(&res, "q")
     }
 
     /*
@@ -469,13 +456,12 @@ impl WikidataPapers {
         match ids.get_vec("DOI") {
             Some(v) => {
                 for doi in v {
-                    match self.get_wikidata_item_for_doi(&mw_api, &doi.to_string()) {
-                        Some(q) => {
+                    self.get_wikidata_items_for_doi(&mw_api, &doi.to_string())
+                        .iter()
+                        .for_each(|q| {
                             println!("DOI {} is {}", &doi, &q);
                             qs.insert(q.clone());
-                        }
-                        None => println!("DOI not found in WD: {}", &doi),
-                    }
+                        });
                 }
             }
             None => {}
@@ -491,8 +477,15 @@ impl WikidataPapers {
         for doi in dois {
             let mut item;
             let original_item;
-            match self.get_wikidata_item_for_doi(&mw_api, &doi.to_string()) {
-                Some(q) => {
+            let qs = self.get_wikidata_items_for_doi(&mw_api, &doi.to_string());
+
+            match qs.len() {
+                0 => {
+                    original_item = Entity::new_empty_item();
+                    item = self.create_blank_item_for_publication_from_doi(&doi.to_string());
+                }
+                1 => {
+                    let q = &qs[0];
                     if entities.load_entities(&mw_api, &vec![q.clone()]).is_err() {
                         continue;
                     }
@@ -503,9 +496,9 @@ impl WikidataPapers {
                     };
                     original_item = item.clone();
                 }
-                None => {
-                    original_item = Entity::new_empty_item();
-                    item = self.create_blank_item_for_publication_from_doi(&doi.to_string());
+                n => {
+                    println!("{} items for DOI {}", &n, &doi);
+                    continue;
                 }
             };
             let mut adapter2work_id = HashMap::new();
