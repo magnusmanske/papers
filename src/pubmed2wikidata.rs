@@ -47,6 +47,80 @@ impl Pubmed2Wikidata {
         }
         Some(ret)
     }
+
+    fn publication_id_from_pubmed(&mut self, publication_id: &String) -> Option<String> {
+        if !self.work_cache.contains_key(publication_id) {
+            let pub_id_u64 = publication_id.parse::<u64>().unwrap();
+            let work = self.client.article(pub_id_u64).unwrap();
+            self.work_cache.insert(publication_id.clone(), work);
+        }
+        return Some(publication_id.to_string());
+    }
+
+    fn publication_id_from_doi(&mut self, doi: &String) -> Option<String> {
+        let query = "".to_string() + &doi + "";
+        let work_ids = match self.client.article_ids_from_query(&query, 10) {
+            Ok(work_ids) => work_ids,
+            _ => return None, // No such work
+        };
+        if work_ids.len() != 1 {
+            return None;
+        }
+        let publication_id = work_ids[0];
+        if !self.work_cache.contains_key(&publication_id.to_string()) {
+            let work = self.client.article(publication_id).unwrap();
+            self.work_cache.insert(publication_id.to_string(), work);
+        }
+        Some(publication_id.to_string())
+    }
+
+    fn add_identifiers_from_cached_publication(
+        &mut self,
+        publication_id: &String,
+        ret: &mut Vec<GenericWorkIdentifier>,
+    ) {
+        let my_prop = GenericWorkType::Property(self.publication_property().unwrap());
+
+        let work = match self.get_cached_publication_from_id(&publication_id) {
+            Some(w) => w,
+            None => return,
+        };
+
+        ret.push(GenericWorkIdentifier {
+            work_type: my_prop.clone(),
+            id: publication_id.clone(),
+        });
+
+        let medline_citation = match &work.medline_citation {
+            Some(x) => x,
+            None => return,
+        };
+        let article = match &medline_citation.article {
+            Some(x) => x,
+            None => return,
+        };
+
+        for elid in &article.e_location_ids {
+            if !elid.valid {
+                continue;
+            }
+            match (&elid.e_id_type, &elid.id) {
+                (Some(id_type), Some(id)) => match id_type.as_str() {
+                    "doi" => ret.push(GenericWorkIdentifier {
+                        work_type: GenericWorkType::Property("P356".to_string()),
+                        id: id.clone(),
+                    }),
+                    other => {
+                        println!(
+                            "pubmed2wikidata::get_identifier_list unknown paper ID type '{}'",
+                            &other
+                        );
+                    }
+                },
+                _ => continue,
+            }
+        }
+    }
 }
 
 impl ScientificPublicationAdapter for Pubmed2Wikidata {
@@ -178,44 +252,31 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         ret
     }
 
-    fn get_identifier_list(&self, publication_id: &String) -> Vec<GenericWorkIdentifier> {
+    fn get_identifier_list(
+        &mut self,
+        ids: &Vec<GenericWorkIdentifier>,
+    ) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
-
-        let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w,
-            None => return ret,
-        };
-
-        ret.push(GenericWorkIdentifier {
-            catalog_type: GenericWorkType::Property(self.publication_property().unwrap()),
-            catalog_id: publication_id.clone(),
-        });
-
-        let medline_citation = match &work.medline_citation {
-            Some(x) => x,
-            None => return ret,
-        };
-        let article = match &medline_citation.article {
-            Some(x) => x,
-            None => return ret,
-        };
-
-        for elid in &article.e_location_ids {
-            if !elid.valid {
-                continue;
-            }
-            match (&elid.e_id_type, &elid.id) {
-                (Some(id_type), Some(id)) => match id_type.as_str() {
-                    "doi" => ret.push(GenericWorkIdentifier {
-                        catalog_type: GenericWorkType::Property("P356".to_string()),
-                        catalog_id: id.clone(),
-                    }),
+        for id in ids {
+            match &id.work_type {
+                GenericWorkType::Property(prop) => match prop.as_str() {
+                    PROP_PMID => match self.publication_id_from_pubmed(&id.id) {
+                        Some(publication_id) => {
+                            self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
+                        }
+                        None => {}
+                    },
+                    PROP_PMCID => match self.publication_id_from_doi(&id.id) {
+                        Some(publication_id) => {
+                            self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
+                        }
+                        None => {}
+                    },
                     _ => {}
                 },
-                _ => continue,
+                _ => {}
             }
         }
-
         ret
     }
 

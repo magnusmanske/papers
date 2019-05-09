@@ -8,7 +8,8 @@ extern crate regex;
 extern crate serde_json;
 
 use config::{Config, File};
-use multimap::MultiMap;
+use papers::*;
+//use multimap::MultiMap;
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::orcid2wikidata::Orcid2Wikidata;
 use papers::pubmed2wikidata::Pubmed2Wikidata;
@@ -31,9 +32,7 @@ fn main() {
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
     wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
 
-    let mut ids = MultiMap::new();
-    ids.insert("PMID", "30947298");
-
+    let ids = vec![GenericWorkIdentifier::new_prop(PROP_PMID, "30947298")];
     wdp.update_from_paper_ids(&mut mw_api, &ids);
     /*
         wdp.update_dois(

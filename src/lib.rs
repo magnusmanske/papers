@@ -10,7 +10,11 @@ use regex::Regex;
 use std::collections::HashMap;
 use wikibase::{Entity, LocaleString, Reference, Snak, SnakType, Statement, Value};
 
-#[derive(Debug, Clone)]
+pub const PROP_PMID: &str = "P698";
+pub const PROP_PMCID: &str = "P932";
+pub const PROP_DOI: &str = "P356";
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct GenericAuthorInfo {
     pub name: Option<String>,
     pub prop2id: HashMap<String, String>,
@@ -18,18 +22,28 @@ pub struct GenericAuthorInfo {
     pub list_number: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GenericWorkType {
     Property(String),
     Item,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GenericWorkIdentifier {
-    pub catalog_type: GenericWorkType,
-    pub catalog_id: String,
+    pub work_type: GenericWorkType,
+    pub id: String,
 }
 
+impl GenericWorkIdentifier {
+    pub fn new_prop(prop: &str, id: &str) -> Self {
+        return GenericWorkIdentifier {
+            work_type: GenericWorkType::Property(prop.to_string()),
+            id: id.to_string(),
+        };
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AuthorItemInfo {
     WikidataItem(String),
     CatalogId(String),
@@ -63,7 +77,10 @@ pub trait ScientificPublicationAdapter {
     }
 
     /// Returns a list of IDs for that paper (PMID, DOI etc.)
-    fn get_identifier_list(&self, _publication_id: &String) -> Vec<GenericWorkIdentifier> {
+    fn get_identifier_list(
+        &mut self,
+        _ids: &Vec<GenericWorkIdentifier>,
+    ) -> Vec<GenericWorkIdentifier> {
         vec![]
     }
 
