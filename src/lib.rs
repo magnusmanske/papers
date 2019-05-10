@@ -64,8 +64,14 @@ pub trait ScientificPublicationAdapter {
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String>;
 
     /// Tries to determine the publication ID of the resource, from a Wikidata item
-    fn publication_id_from_item(&mut self, _item: &Entity) -> Option<String> {
-        None
+    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+        match self.publication_property() {
+            Some(self_prop) => match self.get_external_identifier_from_item(item, &self_prop) {
+                Some(publication_id) => self.do_cache_work(&publication_id),
+                None => None,
+            },
+            None => None,
+        }
     }
 
     /// Adds/updates "special" statements of an item from the resource, given the publication ID.
@@ -125,6 +131,10 @@ pub trait ScientificPublicationAdapter {
             EntityDiff::get_entity_id(&new_json)
         }
     */
+
+    fn do_cache_work(&mut self, _publication_id: &String) -> Option<String> {
+        None
+    }
 
     fn reference(&self) -> Vec<Reference> {
         // TODO

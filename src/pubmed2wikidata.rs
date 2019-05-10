@@ -211,38 +211,20 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         };
     }
 
-    /*
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        // Check PubMed ID
-        match self.get_external_identifier_from_item(item, &self.publication_property().unwrap()) {
-            Some(publication_id) => {
-                let pub_id_u64 = publication_id.parse::<u64>().unwrap();
-                let work = self.client.article(pub_id_u64).unwrap();
-                self.work_cache.insert(publication_id.clone(), work);
-                return Some(publication_id);
-            }
-            None => {}
+    fn do_cache_work(&mut self, publication_id: &String) -> Option<String> {
+        let pub_id_u64 = match publication_id.parse::<u64>() {
+            Ok(x) => x,
+            _ => return None,
         };
-        // TODO other ID types than DOI?
-        let doi = match self.get_external_identifier_from_item(item, "P356") {
-            Some(s) => s,
-            None => return None,
+        let work = match self.client.article(pub_id_u64) {
+            Ok(x) => x,
+            _ => return None,
         };
-        let query = "".to_string() + &doi + "";
-        let work_ids = match self.client.article_ids_from_query(&query, 10) {
-            Ok(work_ids) => work_ids,
-            _ => return None, // No such work
-        };
-        if work_ids.len() != 1 {
-            return None;
-        }
-        let publication_id = work_ids[0];
-        let work = self.client.article(publication_id).unwrap();
-
-        self.work_cache.insert(publication_id.to_string(), work);
+        self.work_cache.insert(publication_id.clone(), work);
         Some(publication_id.to_string())
     }
 
+    /*
     fn get_author_list(&self, publication_id: &String) -> Vec<GenericAuthorInfo> {
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,

@@ -109,9 +109,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         ret
     }
 
-    /*
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        // TODO other ID types than DOI?
         let doi = match self.get_external_identifier_from_item(item, "P356") {
             Some(s) => s,
             None => return None,
@@ -125,7 +123,6 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         self.work_cache.insert(publication_id.clone(), work);
         Some(publication_id)
     }
-    */
 
     fn reference(&self) -> Vec<Reference> {
         let now = Utc::now().format("+%Y-%m-%dT%H:%M:%SZ").to_string();

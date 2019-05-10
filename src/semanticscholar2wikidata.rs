@@ -134,14 +134,8 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         ret
     }
 
-    /*
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        // TODO other ID types than DOI?
-        let doi = match self.get_external_identifier_from_item(item, "P356") {
-            Some(s) => s,
-            None => return None,
-        };
-        let work = match self.client.work(&doi) {
+    fn do_cache_work(&mut self, publication_id: &String) -> Option<String> {
+        let work = match self.client.work(&publication_id) {
             Ok(w) => w,
             _ => return None, // No such work
         };
@@ -154,12 +148,11 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         self.work_cache.insert(publication_id.clone(), work);
         Some(publication_id)
     }
-    */
 
     fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(work) => match &work.title {
-                Some(title) => dbg!(vec![LocaleString::new("en", &title)]),
+                Some(title) => vec![LocaleString::new("en", &title)],
                 None => vec![],
             },
             None => vec![],

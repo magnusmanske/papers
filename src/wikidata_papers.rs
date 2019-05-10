@@ -7,11 +7,11 @@ extern crate wikibase;
 use crate::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use wikibase::*;
 //use crate::AuthorItemInfo;
 //use multimap::MultiMap;
 //use regex::Regex;
 //use wikibase::entity_diff::*;
-//use wikibase::*;
 
 pub struct WikidataPapersCache {
     issn2q: HashMap<String, String>,
@@ -129,7 +129,7 @@ impl WikidataPapersCache {
 
 pub struct WikidataPapers {
     adapters: Vec<Box<ScientificPublicationAdapter>>,
-    //caches: WikidataPapersCache,
+    caches: WikidataPapersCache,
     //id_cache: HashMap<String, String>,
 }
 
@@ -137,7 +137,7 @@ impl WikidataPapers {
     pub fn new() -> WikidataPapers {
         WikidataPapers {
             adapters: vec![],
-            //caches: WikidataPapersCache::new(),
+            caches: WikidataPapersCache::new(),
             //id_cache: HashMap::new(),
         }
     }
@@ -255,43 +255,6 @@ impl WikidataPapers {
                 }
             }
         */
-        pub fn update_item_from_adapters(
-            &mut self,
-            mut item: &mut Entity,
-            adapter2work_id: &mut HashMap<usize, String>,
-        ) {
-            for adapter_id in 0..self.adapters.len() {
-                let publication_id = match self.adapters[adapter_id].publication_id_from_item(item) {
-                    Some(id) => id,
-                    _ => continue,
-                };
-
-                let adapter = &self.adapters[adapter_id];
-                adapter2work_id.insert(adapter_id, publication_id.clone());
-                println!("Applying adapter {}", adapter.name());
-
-                adapter.update_statements_for_publication_id_default(
-                    &publication_id,
-                    &mut item,
-                    &mut self.caches,
-                );
-                adapter.update_statements_for_publication_id(&publication_id, &mut item);
-
-                let authors = adapter.get_author_list(&publication_id);
-                if !authors.is_empty() {
-                    println!("!!Authors: {:?}", &authors);
-                }
-                // TODO use authors
-
-                let publication_ids = adapter.get_identifier_list(&publication_id);
-                if !publication_ids.is_empty() {
-                    println!("!!PubIDs: {:?}", &publication_ids);
-                }
-                // TODO add to item, re-run all adapters
-
-                //println!("{}", serde_json::to_string_pretty(&new_item).unwrap());
-            }
-        }
 
         pub fn update_authors_from_adapters(
             &mut self,
@@ -693,6 +656,87 @@ impl WikidataPapers {
         }
     */
 
+    pub fn update_item_from_adapters(
+        &mut self,
+        mut item: &mut Entity,
+        adapter2work_id: &mut HashMap<usize, String>,
+    ) {
+        for adapter_id in 0..self.adapters.len() {
+            let publication_id = match self.adapters[adapter_id].publication_id_from_item(item) {
+                Some(id) => id,
+                _ => continue,
+            };
+
+            let adapter = &self.adapters[adapter_id];
+            adapter2work_id.insert(adapter_id, publication_id.clone());
+            println!("Applying adapter {}", adapter.name());
+
+            adapter.update_statements_for_publication_id_default(
+                &publication_id,
+                &mut item,
+                &mut self.caches,
+            );
+            adapter.update_statements_for_publication_id(&publication_id, &mut item);
+            /*
+            let authors = adapter.get_author_list(&publication_id);
+            if !authors.is_empty() {
+                println!("!!Authors: {:?}", &authors);
+            }
+            // TODO use authors
+            */
+        }
+    }
+
+    fn update_item_with_ids(&self, item: &mut wikibase::Entity, ids: &Vec<GenericWorkIdentifier>) {
+        for id in ids {
+            let prop = match &id.work_type {
+                GenericWorkType::Property(prop) => prop.to_owned(),
+                _ => continue,
+            };
+            if item.has_claims_with_property(prop.clone()) {
+                // TODO use claims_with_property to check the values
+                continue;
+            }
+            item.add_claim(Statement::new_normal(
+                Snak::new_external_id(prop.clone(), id.id.clone()),
+                vec![],
+                vec![],
+            ));
+        }
+    }
+
+    pub fn create_or_update_item_from_ids(
+        &mut self,
+        mw_api: &mediawiki::api::Api,
+        ids: &Vec<GenericWorkIdentifier>,
+    ) {
+        self.caches.init(&mw_api);
+        let items = self.get_items_for_ids(&mw_api, &ids);
+        let mut entities = entity_container::EntityContainer::new();
+        let mut item: wikibase::Entity;
+        let original_item: wikibase::Entity;
+        match items.get(0) {
+            Some(q) => {
+                item = entities.load_entity(&mw_api, q.clone()).unwrap().to_owned();
+                original_item = item.clone();
+            }
+            None => {
+                original_item = Entity::new_empty_item();
+                item = Entity::new_empty_item();
+            }
+        }
+
+        self.update_item_with_ids(&mut item, &ids);
+
+        let mut adapter2work_id = HashMap::new();
+        self.update_item_from_adapters(&mut item, &mut adapter2work_id);
+
+        if false {
+            dbg!(&original_item);
+        }
+        println!("{:?}", item);
+    }
+
     // ID keys need to be uppercase (e.g. "PMID","DOI")
     pub fn update_from_paper_ids(
         &mut self,
@@ -734,7 +778,9 @@ impl WikidataPapers {
                         parts.push(format!("?q wdt:{} '{}'", &prop, &id.id.to_uppercase()));
                     }
                 }
-                GenericWorkType::Item => {}
+                GenericWorkType::Item => {
+                    parts.push(format!("VALUES ?q {{ wd:{} }}", &id.id));
+                }
             }
         }
         if parts.is_empty() {
@@ -743,7 +789,6 @@ impl WikidataPapers {
         parts.sort();
         parts.dedup();
         let sparql = format!("SELECT DISTINCT ?q {{ {{ {} }} }}", parts.join("} UNION {"));
-        println!("SPARQL: {}", &sparql);
         match mw_api.sparql_query(&sparql) {
             Ok(result) => mw_api.entities_from_sparql_result(&result, "q"),
             _ => vec![],
