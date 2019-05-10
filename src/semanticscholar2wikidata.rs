@@ -2,11 +2,11 @@ extern crate config;
 extern crate mediawiki;
 extern crate serde_json;
 
-use crate::AuthorItemInfo;
 use crate::ScientificPublicationAdapter;
+use crate::*;
 use semanticscholar::*;
 use std::collections::HashMap;
-use wikibase::*;
+//use wikibase::*;
 
 pub struct Semanticscholar2Wikidata {
     author_cache: HashMap<String, String>,
@@ -26,6 +26,60 @@ impl Semanticscholar2Wikidata {
     pub fn get_cached_publication_from_id(&self, publication_id: &String) -> Option<&Work> {
         self.work_cache.get(publication_id)
     }
+
+    fn publication_ids_from_doi(&mut self, doi: &String) -> Vec<String> {
+        let work = match self.client.work(&doi) {
+            Ok(w) => w,
+            _ => return vec![], // No such work
+        };
+
+        let publication_id = match &work.paper_id {
+            Some(paper_id) => paper_id.to_string(),
+            None => return vec![], // No ID
+        };
+
+        self.work_cache.insert(publication_id.clone(), work);
+        vec![publication_id]
+    }
+
+    fn add_identifiers_from_cached_publication(
+        &mut self,
+        publication_id: &String,
+        ret: &mut Vec<GenericWorkIdentifier>,
+    ) {
+        let my_prop = GenericWorkType::Property(self.publication_property().unwrap());
+
+        let work = match self.get_cached_publication_from_id(&publication_id) {
+            Some(w) => w,
+            None => return,
+        };
+
+        ret.push(GenericWorkIdentifier {
+            work_type: my_prop.clone(),
+            id: publication_id.clone(),
+        });
+
+        match &work.doi {
+            Some(id) => {
+                ret.push(GenericWorkIdentifier {
+                    work_type: GenericWorkType::Property(PROP_DOI.to_string()),
+                    id: id.clone(),
+                });
+            }
+            None => {}
+        }
+
+        match &work.arxiv_id {
+            Some(id) => {
+                ret.push(GenericWorkIdentifier {
+                    work_type: GenericWorkType::Property(PROP_ARXIV.to_string()),
+                    id: id.clone(),
+                });
+            }
+            None => {}
+        }
+    }
+
     /*
         fn update_author_item(&mut self, author: &Author, author_name: &String, item: &mut Entity) {
             let semanticscholar_author_name: String = author.name.clone().unwrap();
@@ -59,6 +113,28 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         &mut self.author_cache
     }
 
+    fn get_identifier_list(
+        &mut self,
+        ids: &Vec<GenericWorkIdentifier>,
+    ) -> Vec<GenericWorkIdentifier> {
+        let mut ret: Vec<GenericWorkIdentifier> = vec![];
+        for id in ids {
+            match &id.work_type {
+                GenericWorkType::Property(prop) => match prop.as_str() {
+                    PROP_DOI => {
+                        for publication_id in self.publication_ids_from_doi(&id.id) {
+                            self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+        ret
+    }
+
+    /*
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         // TODO other ID types than DOI?
         let doi = match self.get_external_identifier_from_item(item, "P356") {
@@ -78,6 +154,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         self.work_cache.insert(publication_id.clone(), work);
         Some(publication_id)
     }
+    */
 
     fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
         match self.get_cached_publication_from_id(publication_id) {
@@ -96,6 +173,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         };
     }
 
+    /*
     fn author2item(
         &mut self,
         author_name: &String,
@@ -157,4 +235,5 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
             }
         }
     }
+    */
 }

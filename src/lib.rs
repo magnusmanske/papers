@@ -13,6 +13,7 @@ use wikibase::{Entity, LocaleString, Reference, Snak, SnakType, Statement, Value
 pub const PROP_PMID: &str = "P698";
 pub const PROP_PMCID: &str = "P932";
 pub const PROP_DOI: &str = "P356";
+pub const PROP_ARXIV: &str = "P818";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GenericAuthorInfo {
@@ -63,7 +64,9 @@ pub trait ScientificPublicationAdapter {
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String>;
 
     /// Tries to determine the publication ID of the resource, from a Wikidata item
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String>;
+    fn publication_id_from_item(&mut self, _item: &Entity) -> Option<String> {
+        None
+    }
 
     /// Adds/updates "special" statements of an item from the resource, given the publication ID.
     /// Many common statements, title, aliases etc are automatically handeled via `update_statements_for_publication_id_default`

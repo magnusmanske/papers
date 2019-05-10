@@ -4,11 +4,11 @@ extern crate mediawiki;
 extern crate serde_json;
 
 //use crate::AuthorItemInfo;
-use crate::ScientificPublicationAdapter;
+use crate::*;
 use chrono::prelude::*;
 use crossref::Crossref;
 use std::collections::HashMap;
-use wikibase::*;
+//use wikibase::*;
 
 pub struct Crossref2Wikidata {
     author_cache: HashMap<String, String>,
@@ -30,6 +30,27 @@ impl Crossref2Wikidata {
         publication_id: &String,
     ) -> Option<&crossref::Work> {
         self.work_cache.get(publication_id)
+    }
+
+    fn add_identifiers_from_cached_publication(
+        &mut self,
+        publication_id: &String,
+        ret: &mut Vec<GenericWorkIdentifier>,
+    ) {
+        //let my_prop = GenericWorkType::Property(self.publication_property().unwrap());
+
+        let work = match self.get_cached_publication_from_id(&publication_id) {
+            Some(w) => w,
+            None => return,
+        };
+
+        if !work.doi.is_empty() {
+            println!("Added DOI {} from CrossRef", &work.doi);
+            ret.push(GenericWorkIdentifier {
+                work_type: GenericWorkType::Property(PROP_DOI.to_string()),
+                id: work.doi.clone(),
+            });
+        }
     }
 }
 
@@ -59,6 +80,36 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         &mut self.author_cache
     }
 
+    fn get_identifier_list(
+        &mut self,
+        ids: &Vec<GenericWorkIdentifier>,
+    ) -> Vec<GenericWorkIdentifier> {
+        let mut ret: Vec<GenericWorkIdentifier> = vec![];
+        for id in ids {
+            match &id.work_type {
+                GenericWorkType::Property(prop) => match prop.as_str() {
+                    PROP_DOI => {
+                        println!("?? {}", &id.id);
+                        let x = self.client.work(&id.id);
+                        //println!("{:?}", x);
+                        match x {
+                            Ok(work) => {
+                                println!("!! {:?}", &work);
+                                self.work_cache.insert(work.doi.clone(), work.clone());
+                                self.add_identifiers_from_cached_publication(&work.doi, &mut ret);
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+        ret
+    }
+
+    /*
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         // TODO other ID types than DOI?
         let doi = match self.get_external_identifier_from_item(item, "P356") {
@@ -74,6 +125,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         self.work_cache.insert(publication_id.clone(), work);
         Some(publication_id)
     }
+    */
 
     fn reference(&self) -> Vec<Reference> {
         let now = Utc::now().format("+%Y-%m-%dT%H:%M:%SZ").to_string();
