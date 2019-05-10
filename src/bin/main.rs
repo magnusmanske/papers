@@ -32,8 +32,12 @@ fn main() {
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
     wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
 
-    let ids = vec![GenericWorkIdentifier::new_prop(PROP_PMID, "30947298")];
-    wdp.update_from_paper_ids(&mut mw_api, &ids);
+    let mut ids = vec![GenericWorkIdentifier::new_prop(PROP_PMID, "30947298")];
+    ids = wdp.update_from_paper_ids(&ids);
+
+    let items = wdp.get_items_for_ids(&mw_api, &ids);
+    println!("{:?}", &items);
+
     /*
         wdp.update_dois(
             &mut mw_api,

@@ -4,7 +4,7 @@ extern crate regex;
 extern crate serde_json;
 extern crate wikibase;
 
-use crate::{GenericWorkIdentifier, ScientificPublicationAdapter};
+use crate::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 //use crate::AuthorItemInfo;
@@ -696,22 +696,18 @@ impl WikidataPapers {
     // ID keys need to be uppercase (e.g. "PMID","DOI")
     pub fn update_from_paper_ids(
         &mut self,
-        _mw_api: &mut mediawiki::api::Api,
         original_ids: &Vec<GenericWorkIdentifier>,
-    ) {
+    ) -> Vec<GenericWorkIdentifier> {
         let mut ids: HashSet<GenericWorkIdentifier> = HashSet::new();
         for id in original_ids {
             ids.insert(id.to_owned());
         }
-
         loop {
-            println!("ITERATE");
-            dbg!(&ids);
             let last_id_size = ids.len();
             for adapter_id in 0..self.adapters.len() {
                 let adapter = &mut self.adapters[adapter_id];
                 let vids: Vec<GenericWorkIdentifier> = ids.iter().map(|x| x.to_owned()).collect();
-                println!("Adapter {}", adapter.name());
+                //println!("Adapter {}", adapter.name());
                 adapter.get_identifier_list(&vids).iter().for_each(|id| {
                     ids.insert(id.clone());
                 });
@@ -719,6 +715,38 @@ impl WikidataPapers {
             if last_id_size == ids.len() {
                 break;
             }
+        }
+        ids.iter().map(|x| x.to_owned()).collect()
+    }
+
+    pub fn get_items_for_ids(
+        &self,
+        mw_api: &mediawiki::api::Api,
+        ids: &Vec<GenericWorkIdentifier>,
+    ) -> Vec<String> {
+        let mut parts: Vec<String> = vec![];
+        for id in ids {
+            match &id.work_type {
+                GenericWorkType::Property(prop) => {
+                    parts.push(format!("?q wdt:{} '{}'", &prop, &id.id));
+                    if prop == PROP_DOI {
+                        parts.push(format!("?q wdt:{} '{}'", &prop, &id.id.to_lowercase()));
+                        parts.push(format!("?q wdt:{} '{}'", &prop, &id.id.to_uppercase()));
+                    }
+                }
+                GenericWorkType::Item => {}
+            }
+        }
+        if parts.is_empty() {
+            return vec![];
+        }
+        parts.sort();
+        parts.dedup();
+        let sparql = format!("SELECT DISTINCT ?q {{ {{ {} }} }}", parts.join("} UNION {"));
+        println!("SPARQL: {}", &sparql);
+        match mw_api.sparql_query(&sparql) {
+            Ok(result) => mw_api.entities_from_sparql_result(&result, "q"),
+            _ => vec![],
         }
     }
 }
