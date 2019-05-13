@@ -222,7 +222,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         Some(publication_id.to_string())
     }
 
-    fn get_author_list(&self, publication_id: &String) -> Vec<GenericAuthorInfo> {
+    fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return vec![],

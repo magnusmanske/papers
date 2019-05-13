@@ -6,7 +6,6 @@ use crate::ScientificPublicationAdapter;
 use crate::*;
 use semanticscholar::*;
 use std::collections::HashMap;
-//use wikibase::*;
 
 pub struct Semanticscholar2Wikidata {
     author_cache: HashMap<String, String>,
@@ -79,13 +78,6 @@ impl Semanticscholar2Wikidata {
             None => {}
         }
     }
-
-    /*
-        fn update_author_item(&mut self, author: &Author, author_name: &String, item: &mut Entity) {
-            let semanticscholar_author_name: String = author.name.clone().unwrap();
-            let author_id = author.author_id.clone().unwrap();
-        }
-    */
 }
 
 impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
@@ -166,67 +158,33 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         };
     }
 
-    /*
-    fn author2item(
-        &mut self,
-        author_name: &String,
-        mw_api: &mut mediawiki::api::Api,
-        publication_id: Option<&String>,
-        item: Option<&mut Entity>,
-    ) -> AuthorItemInfo {
-        // RETURNS WIKIDATA ITEM ID, CATALOG AUHTOR ID, OR None, DEPENDING ON CONTEXT
-        let work: Work;
-        match publication_id {
-            Some(id) => {
-                let publication_id_option = self.get_cached_publication_from_id(id).to_owned();
-                work = match publication_id_option {
-                    Some(w) => w.clone(),
-                    None => return AuthorItemInfo::None,
-                };
-            }
-            None => return AuthorItemInfo::None,
-        }
+    fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {
+        let mut ret: Vec<GenericAuthorInfo> = vec![];
+        let work = match self.get_cached_publication_from_id(publication_id) {
+            Some(w) => w.clone(),
+            None => return ret,
+        };
 
-        let author_name = self.sanitize_author_name(author_name);
-
-        let mut candidates: Vec<usize> = vec![];
         for num in 0..work.authors.len() {
             let author = &work.authors[num];
-            if None == author.author_id {
-                continue;
-            }
-            let current_author_name = match &author.name {
-                Some(s) => s,
-                _ => continue,
+            let mut entry = GenericAuthorInfo {
+                name: author.name.clone(),
+                prop2id: HashMap::new(),
+                wikidata_item: None,
+                list_number: Some((num + 1).to_string()),
+                alternative_names: vec![],
             };
-            if self.author_names_match(&author_name, &current_author_name) {
-                candidates.push(num);
-            }
-        }
-        if candidates.len() != 1 {
-            return AuthorItemInfo::None;
-        }
-        let author = &work.authors[candidates[0]];
-        let author_id = author.author_id.clone().unwrap();
-        match item {
-            None => {
-                match self.get_author_item_id(&author_id, mw_api) {
-                    Some(x) => return AuthorItemInfo::WikidataItem(x), // RETURNS ITEM ID
-                    None => return AuthorItemInfo::None,
+            match &author.author_id {
+                Some(id) => {
+                    entry
+                        .prop2id
+                        .insert(self.author_property().unwrap(), id.to_string());
                 }
+                None => {}
             }
-
-            Some(item) => {
-                let semanticscholar_author_name: String = author.name.clone().unwrap();
-                self.update_author_item(
-                    &semanticscholar_author_name,
-                    &author_id,
-                    &author_name,
-                    item,
-                );
-                AuthorItemInfo::CatalogId(author_id) // RETURNS AUTHOR ID
-            }
+            ret.push(entry);
         }
+
+        ret
     }
-    */
 }

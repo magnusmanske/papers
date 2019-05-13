@@ -668,7 +668,7 @@ impl WikidataPapers {
                 _ => continue,
             };
 
-            let adapter = &self.adapters[adapter_id];
+            let adapter = &mut self.adapters[adapter_id];
             adapter2work_id.insert(adapter_id, publication_id.clone());
             println!("Applying adapter {}", adapter.name());
 
@@ -679,8 +679,8 @@ impl WikidataPapers {
             );
             adapter.update_statements_for_publication_id(&publication_id, &mut item);
             adapter.create_or_update_author_statements(&publication_id, &mut item, mw_api);
-            dbg!(&item);
         }
+        dbg!(&item);
     }
 
     fn update_item_with_ids(&self, item: &mut wikibase::Entity, ids: &Vec<GenericWorkIdentifier>) {
@@ -730,7 +730,7 @@ impl WikidataPapers {
         if false {
             dbg!(&original_item);
         }
-        println!("{:?}", item);
+        //println!("{:?}", item);
     }
 
     // ID keys need to be uppercase (e.g. "PMID","DOI")

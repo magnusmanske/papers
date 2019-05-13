@@ -83,7 +83,7 @@ pub trait ScientificPublicationAdapter {
     // You should implement these yourself, where applicable
 
     /// Returns a list of the authors, if available, with list number, name, catalog-specific author ID, and WIkidata ID, as available
-    fn get_author_list(&self, _publication_id: &String) -> Vec<GenericAuthorInfo> {
+    fn get_author_list(&mut self, _publication_id: &String) -> Vec<GenericAuthorInfo> {
         vec![]
     }
 
@@ -133,7 +133,7 @@ pub trait ScientificPublicationAdapter {
     }
 
     fn create_or_update_author_statements(
-        &self,
+        &mut self,
         publication_id: &String,
         item: &mut Entity,
         mw_api: &mut mediawiki::api::Api,
@@ -190,29 +190,6 @@ pub trait ScientificPublicationAdapter {
             return ret;
         }
 
-        /*
-        // Use SPARQL
-        let mut parts: Vec<String> = vec![];
-        for (prop, id) in &ret.prop2id {
-            parts.push(format!(" ?q wdt:{} '{}'", &prop, &id));
-        }
-        let sparql = format!(
-            "SELECT DISTINCT ?q {{ {{ {} }} }}",
-            parts.join(" } UNION {")
-        );
-        let res = mw_api.sparql_query(&sparql).unwrap();
-        for b in res["results"]["bindings"].as_array().unwrap() {
-            match b["q"]["value"].as_str() {
-                Some(entity_url) => {
-                    let q = mw_api.extract_entity_from_uri(entity_url).unwrap();
-                    ret.wikidata_item = Some(q);
-                    return ret;
-                }
-                _ => {}
-            }
-        }
-        */
-
         // Use search
         for (prop, id) in &ret.prop2id {
             let items = self.search_external_id(prop, id, mw_api);
@@ -262,7 +239,7 @@ pub trait ScientificPublicationAdapter {
     }
 
     fn create_author_statements(
-        &self,
+        &mut self,
         publication_id: &String,
         item: &mut Entity,
         mw_api: &mut mediawiki::api::Api,

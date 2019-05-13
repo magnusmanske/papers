@@ -5,10 +5,11 @@ extern crate serde_json;
 
 //use crate::AuthorItemInfo;
 //use chrono::prelude::*;
+//use wikibase::*;
 use crate::ScientificPublicationAdapter;
+use crate::*;
 use orcid::*;
 use std::collections::HashMap;
-use wikibase::*;
 
 #[derive(Debug, Clone)]
 pub struct PseudoWork {
@@ -135,6 +136,22 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
             Some(w) => w,
             None => return,
         };
+    }
+
+    fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {
+        let ret: Vec<GenericAuthorInfo> = vec![];
+        let work = match self.get_cached_publication_from_id(publication_id) {
+            Some(w) => w.clone(),
+            None => return ret,
+        };
+
+        for num in 0..work.author_ids.len() {
+            let orcid_author_id = &work.author_ids[num];
+            let author = self.get_or_load_author_data(orcid_author_id).to_owned();
+            println!("ORCID: {:?}", &author);
+        }
+
+        ret
     }
 
     /*
