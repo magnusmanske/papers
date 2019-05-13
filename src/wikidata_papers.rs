@@ -7,7 +7,7 @@ extern crate wikibase;
 use crate::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use wikibase::*;
+//use wikibase::*;
 //use crate::AuthorItemInfo;
 //use multimap::MultiMap;
 //use regex::Regex;
@@ -660,6 +660,7 @@ impl WikidataPapers {
         &mut self,
         mut item: &mut Entity,
         adapter2work_id: &mut HashMap<usize, String>,
+        mw_api: &mut mediawiki::api::Api,
     ) {
         for adapter_id in 0..self.adapters.len() {
             let publication_id = match self.adapters[adapter_id].publication_id_from_item(item) {
@@ -677,13 +678,8 @@ impl WikidataPapers {
                 &mut self.caches,
             );
             adapter.update_statements_for_publication_id(&publication_id, &mut item);
-            /*
-            let authors = adapter.get_author_list(&publication_id);
-            if !authors.is_empty() {
-                println!("!!Authors: {:?}", &authors);
-            }
-            // TODO use authors
-            */
+            adapter.create_or_update_author_statements(&publication_id, &mut item, mw_api);
+            dbg!(&item);
         }
     }
 
@@ -707,7 +703,7 @@ impl WikidataPapers {
 
     pub fn create_or_update_item_from_ids(
         &mut self,
-        mw_api: &mediawiki::api::Api,
+        mw_api: &mut mediawiki::api::Api,
         ids: &Vec<GenericWorkIdentifier>,
     ) {
         self.caches.init(&mw_api);
@@ -729,7 +725,7 @@ impl WikidataPapers {
         self.update_item_with_ids(&mut item, &ids);
 
         let mut adapter2work_id = HashMap::new();
-        self.update_item_from_adapters(&mut item, &mut adapter2work_id);
+        self.update_item_from_adapters(&mut item, &mut adapter2work_id, mw_api);
 
         if false {
             dbg!(&original_item);

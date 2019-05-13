@@ -3,9 +3,9 @@ extern crate config;
 extern crate mediawiki;
 extern crate serde_json;
 
-use crate::AuthorItemInfo;
-use crate::ScientificPublicationAdapter;
+//use crate::AuthorItemInfo;
 //use chrono::prelude::*;
+use crate::ScientificPublicationAdapter;
 use orcid::*;
 use std::collections::HashMap;
 use wikibase::*;
@@ -55,6 +55,7 @@ impl Orcid2Wikidata {
         self.author_data.get(orcid_author_id).unwrap()
     }
 
+    /*
     fn get_author_name_variations(&self, author: &Author) -> Vec<String> {
         let mut ret: Vec<String> = vec![];
 
@@ -89,6 +90,7 @@ impl Orcid2Wikidata {
 
         ret
     }
+    */
 }
 
 impl ScientificPublicationAdapter for Orcid2Wikidata {
@@ -135,6 +137,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
         };
     }
 
+    /*
     fn author2item(
         &mut self,
         author_name: &String,
@@ -198,4 +201,5 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
             }
         }
     }
+    */
 }

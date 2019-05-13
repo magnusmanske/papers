@@ -35,7 +35,6 @@ impl Pubmed2Wikidata {
         self.work_cache.get(publication_id)
     }
 
-    /*
     fn get_author_name_string(&self, author: &Author) -> Option<String> {
         let mut ret: String = match &author.last_name {
             Some(s) => s.to_string(),
@@ -48,9 +47,8 @@ impl Pubmed2Wikidata {
                 None => {}
             },
         }
-        Some(ret)
+        Some(self.sanitize_author_name(&ret))
     }
-    */
 
     fn publication_id_from_pubmed(&mut self, publication_id: &String) -> Option<String> {
         if !self.work_cache.contains_key(publication_id) {
@@ -224,7 +222,6 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         Some(publication_id.to_string())
     }
 
-    /*
     fn get_author_list(&self, publication_id: &String) -> Vec<GenericAuthorInfo> {
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
@@ -268,19 +265,11 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                 prop2id: prop2id,
                 wikidata_item: None,
                 list_number: Some(list_num.to_string()),
+                alternative_names: vec![],
             });
             list_num = list_num + 1;
         }
 
         ret
     }
-
-    fn author2item(
-        &mut self,
-        author_name: &String,
-        mw_api: &mut mediawiki::api::Api,
-        publication_id: Option<&String>,
-        item: Option<&mut Entity>,
-    ) -> AuthorItemInfo {
-    */
 }

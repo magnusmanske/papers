@@ -34,7 +34,7 @@ fn main() {
 
     let mut ids = vec![GenericWorkIdentifier::new_prop(PROP_PMID, "30947298")];
     ids = wdp.update_from_paper_ids(&ids);
-    wdp.create_or_update_item_from_ids(&mw_api, &ids);
+    wdp.create_or_update_item_from_ids(&mut mw_api, &ids);
 
     /*
         wdp.update_dois(
