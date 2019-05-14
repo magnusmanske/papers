@@ -184,7 +184,6 @@ pub trait ScientificPublicationAdapter {
             let lv = by_lang.entry(t.language().to_string()).or_insert(vec![]);
             lv.push(t.value().to_string())
         });
-
         for (language, titles) in by_lang.iter() {
             let mut titles = titles.clone();
             // Add title
@@ -208,7 +207,7 @@ pub trait ScientificPublicationAdapter {
             if !item.has_claims_with_property("P1476") {
                 match item.label_in_locale(&language) {
                     Some(title) => item.add_claim(Statement::new_normal(
-                        Snak::new_monolingual_text("P1476", &language, title),
+                        Snak::new_monolingual_text("P1476", title, &language),
                         vec![],
                         self.reference(),
                     )),
