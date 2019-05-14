@@ -229,7 +229,7 @@ pub trait ScientificPublicationAdapter {
         match self.get_work_issn(publication_id) {
             Some(issn) => match caches.issn2q(&issn) {
                 Some(q) => item.add_claim(Statement::new_normal(
-                    Snak::new_string("P1433", &q),
+                    Snak::new_item("P1433", &q),
                     vec![],
                     self.reference(),
                 )),

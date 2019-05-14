@@ -630,7 +630,6 @@ impl WikidataPapers {
                 id => return Some(id.to_string()),
             }
         }
-        println!("{}", diff.actions());
         let new_json = diff.apply_diff(mw_api, &diff).unwrap();
         EntityDiff::get_entity_id(&new_json)
     }
