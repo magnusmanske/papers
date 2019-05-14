@@ -1,11 +1,7 @@
-//extern crate chrono;
 extern crate config;
 extern crate mediawiki;
 extern crate serde_json;
 
-//use crate::AuthorItemInfo;
-//use chrono::prelude::*;
-//use wikibase::*;
 use crate::ScientificPublicationAdapter;
 use crate::*;
 use orcid::*;
@@ -125,7 +121,6 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
         let work = PseudoWork {
             author_ids: author_ids,
         };
-        //dbg!(&work);
         let publication_id = doi;
         self.work_cache.insert(publication_id.clone(), work);
         Some(publication_id)
@@ -139,84 +134,65 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
     }
 
     fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {
-        let ret: Vec<GenericAuthorInfo> = vec![];
+        let mut ret: Vec<GenericAuthorInfo> = vec![];
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w.clone(),
             None => return ret,
         };
+        let author_property = self.author_property().unwrap();
 
         for num in 0..work.author_ids.len() {
             let orcid_author_id = &work.author_ids[num];
-            let author = self.get_or_load_author_data(orcid_author_id).to_owned();
-            println!("ORCID: {:?}", &author);
+            match self.get_or_load_author_data(orcid_author_id) {
+                Some(author) => {
+                    //println!("\n{}\n\n", author.json());
+                    let mut gai = GenericAuthorInfo {
+                        name: None,
+                        prop2id: HashMap::new(),
+                        wikidata_item: None,
+                        list_number: None,
+                        alternative_names: vec![],
+                    };
+                    match author.credit_name() {
+                        Some(name) => gai.name = Some(name.to_string()),
+                        None => {
+                            let j = author.json();
+                            let last_name = j["person"]["name"]["family-name"]["value"].as_str();
+                            let given_names = j["person"]["name"]["given-names"]["value"].as_str();
+                            match (given_names, last_name) {
+                                (Some(f), Some(l)) => gai.name = Some(format!("{} {}", &f, &l)),
+                                (None, Some(l)) => gai.name = Some(format!("{}", &l)),
+                                _ => {}
+                            }
+                        }
+                    }
+                    match author.orcid_id() {
+                        Some(id) => {
+                            gai.prop2id
+                                .insert(author_property.to_string(), id.to_string());
+                        }
+                        None => {}
+                    }
+                    let ext_ids = author.external_ids();
+                    for id in ext_ids {
+                        match id.0.as_str() {
+                            "ResearcherID" => {
+                                gai.prop2id.insert("P1053".to_string(), id.1);
+                            }
+                            "Scopus Author ID" => {
+                                gai.prop2id.insert("P1153".to_string(), id.1);
+                            }
+                            other => {
+                                println!("orcid2wikidata: Unknown ID '{}':'{}'", &other, &id.1);
+                            }
+                        }
+                    }
+                    ret.push(gai);
+                }
+                None => {}
+            }
         }
 
         ret
     }
-
-    /*
-    fn author2item(
-        &mut self,
-        author_name: &String,
-        mw_api: &mut mediawiki::api::Api,
-        publication_id: Option<&String>,
-        item: Option<&mut Entity>,
-    ) -> AuthorItemInfo {
-        // RETURNS WIKIDATA ITEM ID, CATALOG AUHTOR ID, OR None, DEPENDING ON CONTEXT
-        let work: PseudoWork;
-        match publication_id {
-            Some(id) => {
-                let publication_id_option = self.get_cached_publication_from_id(id).to_owned();
-                work = match publication_id_option {
-                    Some(w) => w.clone(),
-                    None => return AuthorItemInfo::None,
-                };
-            }
-            None => return AuthorItemInfo::None,
-        }
-
-        let author_name = self.sanitize_author_name(author_name);
-
-        let mut candidates: Vec<usize> = vec![];
-        for num in 0..work.author_ids.len() {
-            let orcid_author_id = &work.author_ids[num];
-            let author = self.get_or_load_author_data(orcid_author_id).to_owned();
-            let author = match author {
-                Some(author) => author,
-                None => continue,
-            };
-            if self
-                .get_author_name_variations(&author)
-                .iter()
-                .filter(|a| self.author_names_match(&author_name, &a))
-                .count()
-                > 0
-            {
-                candidates.push(num);
-            }
-        }
-        if candidates.len() != 1 {
-            return AuthorItemInfo::None;
-        }
-
-        let author_id = &work.author_ids[candidates[0]];
-        let author = self.get_or_load_author_data(&author_id).clone().unwrap();
-        let author = self.get_author_name_variations(&author).clone();
-        let author = author.first().unwrap();
-
-        match item {
-            None => {
-                match self.get_author_item_id(&author_id, mw_api) {
-                    Some(x) => return AuthorItemInfo::WikidataItem(x), // RETURNS ITEM ID
-                    None => return AuthorItemInfo::None,
-                }
-            }
-
-            Some(item) => {
-                self.update_author_item(&author, &author_id, &author_name, item);
-                AuthorItemInfo::CatalogId(author_id.to_string()) // RETURNS AUTHOR ID
-            }
-        }
-    }
-    */
 }

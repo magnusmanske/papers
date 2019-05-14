@@ -68,6 +68,8 @@ impl Semanticscholar2Wikidata {
             None => {}
         }
 
+        /*
+        This works, but might somehow merge separate items for "reviewed publication" and arxiv version
         match &work.arxiv_id {
             Some(id) => {
                 ret.push(GenericWorkIdentifier {
@@ -77,6 +79,7 @@ impl Semanticscholar2Wikidata {
             }
             None => {}
         }
+        */
     }
 }
 

@@ -1,12 +1,11 @@
 extern crate crossref;
 extern crate reqwest;
 #[macro_use]
-extern crate lazy_static;
-#[macro_use]
 extern crate serde_json;
+#[macro_use]
+extern crate lazy_static;
 
 use crate::wikidata_papers::WikidataPapersCache;
-use regex::Regex;
 use std::collections::HashMap;
 use wikibase::entity_diff::*;
 use wikibase::*;
@@ -121,164 +120,6 @@ pub trait ScientificPublicationAdapter {
     }
 
     // Pre-filled methods; no need to implement them unless there is a need
-
-    fn create_item(&self, item: &Entity, mw_api: &mut mediawiki::api::Api) -> Option<String> {
-        let params = EntityDiffParams::all();
-        let diff = EntityDiff::new(&Entity::new_empty_item(), item, &params);
-        if diff.is_empty() {
-            return None;
-        }
-        let new_json = diff.apply_diff(mw_api, &diff).unwrap();
-        EntityDiff::get_entity_id(&new_json)
-    }
-
-    fn create_or_update_author_statements(
-        &mut self,
-        publication_id: &String,
-        item: &mut Entity,
-        mw_api: &mut mediawiki::api::Api,
-    ) {
-        if !item.has_claims_with_property("P50") && !item.has_claims_with_property("P2093") {
-            self.create_author_statements(publication_id, item, mw_api);
-        } else {
-            self.update_author_statements(publication_id, item);
-        }
-    }
-
-    fn search_external_id(
-        &self,
-        property: &str,
-        id: &str,
-        mw_api: &mediawiki::api::Api,
-    ) -> Vec<String> {
-        let query: String = "haswbstatement:".to_owned() + &property + &"=".to_owned() + &id;
-        let params: HashMap<_, _> = vec![
-            ("action", "query"),
-            ("list", "search"),
-            ("srnamespace", "0"),
-            ("srsearch", &query.as_str()),
-        ]
-        .into_iter()
-        .map(|(x, y)| (x.to_string(), y.to_string()))
-        .collect();
-        let res = mw_api.get_query_api_json(&params).unwrap();
-        let mut ret: Vec<String> = vec![];
-        match res["query"]["search"].as_array() {
-            Some(items) => {
-                for item in items {
-                    let q = item["title"].as_str().unwrap();
-                    ret.push(q.to_string());
-                }
-            }
-            None => {}
-        }
-        ret
-    }
-
-    fn get_or_create_author_item(
-        &self,
-        author: &GenericAuthorInfo,
-        mw_api: &mut mediawiki::api::Api,
-    ) -> GenericAuthorInfo {
-        let mut ret = author.clone();
-        // Already has item?
-        if ret.wikidata_item.is_some() {
-            return ret;
-        }
-        // No external IDs
-        if ret.prop2id.is_empty() {
-            return ret;
-        }
-
-        // Use search
-        for (prop, id) in &ret.prop2id {
-            let items = self.search_external_id(prop, id, mw_api);
-            if !items.is_empty() {
-                ret.wikidata_item = Some(items[0].clone());
-                return ret;
-            }
-        }
-
-        // Labels/aliases
-        let mut item = Entity::new_empty_item();
-        match &author.name {
-            Some(name) => item.set_label(LocaleString::new("en", name)),
-            None => {}
-        }
-        for n in &author.alternative_names {
-            item.add_alias(LocaleString::new("en", n));
-        }
-
-        // Human
-        item.add_claim(Statement::new_normal(
-            Snak::new_item("P31", "Q5"),
-            vec![],
-            self.reference(),
-        ));
-
-        // Researcher
-        item.add_claim(Statement::new_normal(
-            Snak::new_item("P106", "Q1650915"),
-            vec![],
-            self.reference(),
-        ));
-
-        // External IDs
-        for (prop, id) in &ret.prop2id {
-            let statement = Statement::new_normal(
-                Snak::new_external_id(prop.to_string(), id.to_string()),
-                vec![],
-                self.reference(),
-            );
-            item.add_claim(statement);
-        }
-
-        // Create new item and use its ID
-        ret.wikidata_item = self.create_item(&item, mw_api);
-        ret
-    }
-
-    fn create_author_statements(
-        &mut self,
-        publication_id: &String,
-        item: &mut Entity,
-        mw_api: &mut mediawiki::api::Api,
-    ) {
-        let authors = self.get_author_list(publication_id);
-        let authors: Vec<GenericAuthorInfo> = authors
-            .iter()
-            .map(|author| self.get_or_create_author_item(author, mw_api))
-            .collect();
-        for author in &authors {
-            let name = match &author.name {
-                Some(s) => s.to_string(),
-                None => "".to_string(),
-            };
-            let mut qualifiers: Vec<Snak> = vec![];
-            match &author.list_number {
-                Some(num) => {
-                    qualifiers.push(Snak::new_string("P1545", &num));
-                }
-                None => {}
-            }
-            let statement = match &author.wikidata_item {
-                Some(q) => {
-                    if !name.is_empty() {
-                        qualifiers.push(Snak::new_string("P1932", &name));
-                    }
-                    Statement::new_normal(Snak::new_item("P50", &q), qualifiers, self.reference())
-                }
-                None => Statement::new_normal(
-                    Snak::new_string("P2093", &name),
-                    qualifiers,
-                    self.reference(),
-                ),
-            };
-            item.add_claim(statement);
-        }
-    }
-
-    fn update_author_statements(&self, _publication_id: &String, _item: &mut Entity) {}
 
     fn do_cache_work(&mut self, _publication_id: &String) -> Option<String> {
         None
@@ -469,46 +310,6 @@ pub trait ScientificPublicationAdapter {
         None
     }
 
-    fn asciify_string(&self, s: &str) -> String {
-        // As long as some sources insist on using ASCII only for names :-(
-        s.to_lowercase()
-            .replace('ä', "a")
-            .replace('ö', "o")
-            .replace('ü', "u")
-            .replace('á', "a")
-            .replace('à', "a")
-            .replace('â', "a")
-            .replace('é', "e")
-            .replace('è', "e")
-            .replace('ñ', "n")
-            .replace('ï', "i")
-            .replace('ç', "c")
-            .replace('ß', "ss")
-    }
-
-    /// Compares long (3+ characters) name parts and returns true if identical
-    fn author_names_match(&self, name1: &str, name2: &str) -> bool {
-        lazy_static! {
-            static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b").unwrap();
-        }
-        let name1_mod = self.asciify_string(name1);
-        let name2_mod = self.asciify_string(name2);
-        if RE1.is_match(&name1_mod) && RE1.is_match(&name2_mod) {
-            let mut parts1: Vec<String> = vec![];
-            for cap in RE1.captures_iter(&name1_mod) {
-                parts1.push(cap[1].to_string());
-            }
-            parts1.sort();
-            let mut parts2: Vec<String> = vec![];
-            for cap in RE1.captures_iter(&name2_mod) {
-                parts2.push(cap[1].to_string());
-            }
-            parts2.sort();
-            return !parts1.is_empty() && parts1 == parts2;
-        }
-        false
-    }
-
     fn set_author_cache_entry(&mut self, catalog_author_id: &String, q: &String) {
         self.author_cache_mut()
             .insert(catalog_author_id.to_string(), q.to_string());
@@ -520,16 +321,6 @@ pub trait ScientificPublicationAdapter {
 
     fn author_cache_is_empty(&self) -> bool {
         self.author_cache().is_empty()
-    }
-
-    fn author2item(
-        &mut self,
-        _author_name: &String,
-        _mw_api: &mut mediawiki::api::Api,
-        _publication_id: Option<&String>,
-        _item: Option<&mut Entity>,
-    ) -> AuthorItemInfo {
-        AuthorItemInfo::None
     }
 
     fn update_author_item(
@@ -564,67 +355,6 @@ pub trait ScientificPublicationAdapter {
             None => {}
         }
     }
-
-    /*
-    fn get_author_item_id(
-        &mut self,
-        catalog_author_id: &String,
-        mw_api: &mediawiki::api::Api,
-    ) -> Option<String> {
-        let author_property = match self.author_property() {
-            Some(p) => p,
-            None => return None,
-        };
-        // Load all authors from Wikidata, if not done so already
-        if self.author_cache_is_empty() {
-            let res = mw_api
-                .sparql_query(&("SELECT ?q ?id { ?q wdt:".to_owned() + &author_property + " ?id }"))
-                .unwrap();
-
-            for b in res["results"]["bindings"].as_array().unwrap() {
-                match (b["q"]["value"].as_str(), b["id"]["value"].as_str()) {
-                    (Some(entity_url), Some(id)) => {
-                        let q = mw_api.extract_entity_from_uri(entity_url).unwrap();
-                        self.set_author_cache_entry(&id.to_string(), &q);
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        // Now check cache
-        match self.get_author_item_from_cache(catalog_author_id) {
-            Some(q) => return Some(q.to_string()),
-            _ => {}
-        }
-
-        // Paranoia check via Wikidata search
-        let query: String =
-            "haswbstatement:".to_owned() + &author_property + &"=".to_owned() + &catalog_author_id;
-        let params: HashMap<_, _> = vec![
-            ("action", "query"),
-            ("list", "search"),
-            ("srnamespace", "0"),
-            ("srsearch", &query.as_str()),
-        ]
-        .into_iter()
-        .map(|(x, y)| (x.to_string(), y.to_string()))
-        .collect();
-        let res = mw_api.get_query_api_json(&params).unwrap();
-        match res["query"]["search"].as_array() {
-            Some(items) => {
-                if items.len() > 0 {
-                    let author_q = items[0]["title"].as_str()?;
-                    self.set_author_cache_entry(&query, &author_q.to_string());
-                    return Some(author_q.to_string());
-                }
-            }
-            None => {}
-        }
-
-        None
-    }
-    */
 }
 
 pub mod crossref2wikidata;
