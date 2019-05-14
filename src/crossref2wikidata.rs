@@ -89,12 +89,12 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
             match &id.work_type {
                 GenericWorkType::Property(prop) => match prop.as_str() {
                     PROP_DOI => {
-                        println!("?? {}", &id.id);
+                        //println!("?? {}", &id.id);
                         let x = self.client.work(&id.id);
                         //println!("{:?}", x);
                         match x {
                             Ok(work) => {
-                                println!("!! {:?}", &work);
+                                //println!("!! {:?}", &work);
                                 self.work_cache.insert(work.doi.clone(), work.clone());
                                 self.add_identifiers_from_cached_publication(&work.doi, &mut ret);
                             }

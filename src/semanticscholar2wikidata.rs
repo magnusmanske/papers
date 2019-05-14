@@ -154,11 +154,22 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         }
     }
 
-    fn update_statements_for_publication_id(&self, publication_id: &String, _item: &mut Entity) {
-        let _work = match self.get_cached_publication_from_id(publication_id) {
+    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
+        let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
         };
+
+        if !item.has_claims_with_property("P577") {
+            match work.year {
+                Some(year) => {
+                    let statement =
+                        self.get_wb_time_from_partial("P577".to_string(), year as u32, None, None);
+                    item.add_claim(statement);
+                }
+                None => {}
+            }
+        }
     }
 
     fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {

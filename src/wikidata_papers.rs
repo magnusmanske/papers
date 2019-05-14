@@ -233,6 +233,80 @@ impl WikidataPapers {
         ret
     }
 
+    pub fn amend_author_item(&self, item: &mut Entity, author: &GenericAuthorInfo) {
+        // Set label, unless already set (then try alias)
+        match &author.name {
+            Some(name) => {
+                if !name.is_empty() {
+                    match item.label_in_locale("en") {
+                        Some(s) => {
+                            if s != name {
+                                item.add_alias(LocaleString::new("en", name));
+                            }
+                        }
+                        None => item.set_label(LocaleString::new("en", name)),
+                    }
+                }
+            }
+            None => {}
+        }
+
+        // Alternative names
+        for n in &author.alternative_names {
+            if !n.is_empty() {
+                match item.label_in_locale("en") {
+                    Some(s) => {
+                        if s != n {
+                            item.add_alias(LocaleString::new("en", n));
+                        }
+                    }
+                    None => {
+                        item.add_alias(LocaleString::new("en", n));
+                    }
+                }
+            }
+        }
+
+        // Human
+        if !item.has_target_entity("P31", "Q5") {
+            item.add_claim(Statement::new_normal(
+                Snak::new_item("P31", "Q5"),
+                vec![],
+                vec![],
+            ));
+        }
+
+        // Researcher
+        if !item.has_claims_with_property("P106") {
+            item.add_claim(Statement::new_normal(
+                Snak::new_item("P106", "Q1650915"),
+                vec![],
+                vec![],
+            ));
+        }
+
+        // External IDs
+        for (prop, id) in &author.prop2id {
+            let existing = item.values_for_property(prop.to_string());
+            let to_check = Value::StringValue(id.to_string());
+            if existing.contains(&to_check) {
+                continue;
+            }
+            println!(
+                "Adding author statement {}:'{}' to {}",
+                &prop,
+                &id,
+                item.id()
+            );
+            let statement = Statement::new_normal(
+                Snak::new_external_id(prop.to_string(), id.to_string()),
+                vec![],
+                vec![],
+            );
+            item.add_claim(statement);
+        }
+    }
+
     fn get_or_create_author_item(
         &self,
         author: &GenericAuthorInfo,
@@ -259,37 +333,7 @@ impl WikidataPapers {
 
         // Labels/aliases
         let mut item = Entity::new_empty_item();
-        match &author.name {
-            Some(name) => item.set_label(LocaleString::new("en", name)),
-            None => {}
-        }
-        for n in &author.alternative_names {
-            item.add_alias(LocaleString::new("en", n));
-        }
-
-        // Human
-        item.add_claim(Statement::new_normal(
-            Snak::new_item("P31", "Q5"),
-            vec![],
-            vec![],
-        ));
-
-        // Researcher
-        item.add_claim(Statement::new_normal(
-            Snak::new_item("P106", "Q1650915"),
-            vec![],
-            vec![],
-        ));
-
-        // External IDs
-        for (prop, id) in &ret.prop2id {
-            let statement = Statement::new_normal(
-                Snak::new_external_id(prop.to_string(), id.to_string()),
-                vec![],
-                vec![],
-            );
-            item.add_claim(statement);
-        }
+        self.amend_author_item(&mut item, &ret);
 
         // Create new item and use its ID
         ret.wikidata_item = self.create_item(&item, mw_api);
@@ -452,7 +496,7 @@ impl WikidataPapers {
 
             let adapter = &mut self.adapters[adapter_id];
             adapter2work_id.insert(adapter_id, publication_id.clone());
-            println!("Applying adapter {}", adapter.name());
+            //println!("Applying adapter {}", adapter.name());
 
             adapter.update_statements_for_publication_id_default(
                 &publication_id,
@@ -471,10 +515,59 @@ impl WikidataPapers {
             .map(|author| self.get_or_create_author_item(author, mw_api))
             .collect();
 
-        // TODO Update author items with all external IDs
+        self.update_author_items(&authors, mw_api);
 
         self.create_or_update_author_statements(&mut item, &authors);
         //dbg!(&item);
+    }
+
+    fn update_author_items(
+        &self,
+        authors: &Vec<GenericAuthorInfo>,
+        mw_api: &mut mediawiki::api::Api,
+    ) {
+        let mut qs: Vec<String> = vec![];
+        for author in authors {
+            let q = match &author.wikidata_item {
+                Some(q) => q,
+                None => continue,
+            };
+            qs.push(q.to_string());
+        }
+        if qs.is_empty() {
+            return;
+        }
+
+        let mut entities = entity_container::EntityContainer::new();
+        match entities.load_entities(mw_api, &qs) {
+            Ok(_) => {}
+            _ => return,
+        }
+
+        for author in authors {
+            let q = match &author.wikidata_item {
+                Some(q) => q.to_string(),
+                None => continue,
+            };
+            let original_item = match entities.get_entity(q) {
+                Some(i) => i.clone(),
+                None => continue,
+            };
+            let mut item = original_item.clone();
+            self.amend_author_item(&mut item, author);
+
+            let mut params = EntityDiffParams::none();
+            params.labels.add = EntityDiffParamState::All;
+            params.aliases.add = EntityDiffParamState::All;
+            params.claims.add = EntityDiffParamState::All;
+            let diff = EntityDiff::new(&original_item, &item, &params);
+            if diff.is_empty() {
+                continue;
+            }
+            //println!("{}", diff.actions());
+            let _new_json = diff.apply_diff(mw_api, &diff).unwrap();
+            //EntityDiff::get_entity_id(&new_json);
+        }
     }
 
     fn update_item_with_ids(&self, item: &mut wikibase::Entity, ids: &Vec<GenericWorkIdentifier>) {
@@ -499,7 +592,7 @@ impl WikidataPapers {
         &mut self,
         mw_api: &mut mediawiki::api::Api,
         ids: &Vec<GenericWorkIdentifier>,
-    ) {
+    ) -> Option<String> {
         self.caches.init(&mw_api);
         let items = self.get_items_for_ids(&mw_api, &ids);
         let mut entities = entity_container::EntityContainer::new();
@@ -513,6 +606,11 @@ impl WikidataPapers {
             None => {
                 original_item = Entity::new_empty_item();
                 item = Entity::new_empty_item();
+                item.add_claim(Statement::new_normal(
+                    Snak::new_item("P31", "Q591041"),
+                    vec![],
+                    vec![],
+                ));
             }
         }
 
@@ -521,10 +619,20 @@ impl WikidataPapers {
         let mut adapter2work_id = HashMap::new();
         self.update_item_from_adapters(&mut item, &mut adapter2work_id, mw_api);
 
-        if false {
-            dbg!(&original_item);
+        let mut params = EntityDiffParams::none();
+        params.labels.add = EntityDiffParamState::All;
+        params.aliases.add = EntityDiffParamState::All;
+        params.claims.add = EntityDiffParamState::All;
+        let diff = EntityDiff::new(&original_item, &item, &params);
+        if diff.is_empty() {
+            match original_item.id() {
+                "" => return None,
+                id => return Some(id.to_string()),
+            }
         }
-        //println!("{:?}", item);
+        println!("{}", diff.actions());
+        let new_json = diff.apply_diff(mw_api, &diff).unwrap();
+        EntityDiff::get_entity_id(&new_json)
     }
 
     // ID keys need to be uppercase (e.g. "PMID","DOI")

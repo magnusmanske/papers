@@ -27,14 +27,17 @@ fn main() {
     mw_api.login(lgname, lgpass).unwrap();
 
     let mut wdp = WikidataPapers::new();
-    wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
-    wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
     wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
+    wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
+    wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
 
     let mut ids = vec![GenericWorkIdentifier::new_prop(PROP_PMID, "30947298")];
     ids = wdp.update_from_paper_ids(&ids);
-    wdp.create_or_update_item_from_ids(&mut mw_api, &ids);
+    match wdp.create_or_update_item_from_ids(&mut mw_api, &ids) {
+        Some(q) => println!("Created or updated https://www.wikidata.org/wiki/{}", &q),
+        None => println!("No item ID!"),
+    }
 
     /*
         wdp.update_dois(

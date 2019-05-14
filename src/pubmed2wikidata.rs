@@ -202,11 +202,46 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         ret
     }
 
-    fn update_statements_for_publication_id(&self, publication_id: &String, _item: &mut Entity) {
-        let _work = match self.get_cached_publication_from_id(publication_id) {
+    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
+        let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
         };
+
+        if !item.has_claims_with_property("P577") {
+            match &work.medline_citation {
+                Some(medline_citation) => match &medline_citation.article {
+                    Some(article) => match &article.journal {
+                        Some(journal) => match &journal.journal_issue {
+                            Some(journal_issue) => match &journal_issue.pub_date {
+                                Some(pub_date) => {
+                                    let month = match pub_date.month {
+                                        0 => None,
+                                        x => Some(x),
+                                    };
+                                    let day = match pub_date.day {
+                                        0 => None,
+                                        x => Some(x),
+                                    };
+                                    let statement = self.get_wb_time_from_partial(
+                                        "P577".to_string(),
+                                        pub_date.year as u32,
+                                        month,
+                                        day,
+                                    );
+                                    item.add_claim(statement);
+                                }
+                                None => {}
+                            },
+                            None => {}
+                        },
+                        None => {}
+                    },
+                    None => {}
+                },
+                None => {}
+            };
+        }
     }
 
     fn do_cache_work(&mut self, publication_id: &String) -> Option<String> {
