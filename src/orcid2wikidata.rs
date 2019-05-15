@@ -168,6 +168,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
                     }
                     match author.orcid_id() {
                         Some(id) => {
+                            let id = id.split('/').last().unwrap();
                             gai.prop2id
                                 .insert(author_property.to_string(), id.to_string());
                         }
