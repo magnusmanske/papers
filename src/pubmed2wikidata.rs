@@ -132,10 +132,6 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         "Pubmed2Wikidata"
     }
 
-    fn author_property(&self) -> Option<String> {
-        return Some("P496".to_string());
-    }
-
     fn author_cache(&self) -> &HashMap<String, String> {
         &self.author_cache
     }
@@ -288,6 +284,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                 match (&aid.source, &aid.id) {
                     (Some(source), Some(id)) => match source.as_str() {
                         "ORCID" => {
+                            let id = id.split('/').last().unwrap(); // URL => ID
                             prop2id.insert("P496".to_string(), id.to_string());
                         }
                         other => println!("Unknown author source: {}:{}", &other, &id),

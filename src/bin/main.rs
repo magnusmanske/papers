@@ -32,7 +32,7 @@ fn main() {
     wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
 
-    let mut ids = vec![GenericWorkIdentifier::new_prop(PROP_PMID, "30947298")];
+    let mut ids = vec![GenericWorkIdentifier::new_prop(PROP_PMID, "30976034")];
     ids = wdp.update_from_paper_ids(&ids);
     match wdp.create_or_update_item_from_ids(&mut mw_api, &ids) {
         Some(q) => println!("Created or updated https://www.wikidata.org/wiki/{}", &q),
