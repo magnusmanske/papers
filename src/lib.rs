@@ -84,13 +84,6 @@ impl GenericWorkIdentifier {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum AuthorItemInfo {
-    WikidataItem(String),
-    CatalogId(String),
-    None,
-}
-
 pub mod crossref2wikidata;
 pub mod generic_author_info;
 pub mod orcid2wikidata;
