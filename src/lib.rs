@@ -15,13 +15,11 @@ pub const PROP_DOI: &str = "P356";
 pub const PROP_ARXIV: &str = "P818";
 
 pub trait WikidataInteraction {
-    fn search_external_id(
+    fn search_wikibase(
         &self,
-        property: &str,
-        id: &str,
+        query: &String,
         mw_api: &mediawiki::api::Api,
-    ) -> Vec<String> {
-        let query: String = "haswbstatement:".to_owned() + &property + &"=".to_owned() + &id;
+    ) -> Result<Vec<String>, String> {
         let params: HashMap<_, _> = vec![
             ("action", "query"),
             ("list", "search"),
@@ -32,17 +30,26 @@ pub trait WikidataInteraction {
         .map(|(x, y)| (x.to_string(), y.to_string()))
         .collect();
         let res = mw_api.get_query_api_json(&params).unwrap();
-        let mut ret: Vec<String> = vec![];
         match res["query"]["search"].as_array() {
-            Some(items) => {
-                for item in items {
-                    let q = item["title"].as_str().unwrap();
-                    ret.push(q.to_string());
-                }
-            }
-            None => {}
+            Some(items) => Ok(items
+                .iter()
+                .map(|item| item["title"].as_str().unwrap().to_string())
+                .collect()),
+            None => Ok(vec![]),
         }
-        ret
+    }
+
+    fn search_external_id(
+        &self,
+        property: &str,
+        id: &str,
+        mw_api: &mediawiki::api::Api,
+    ) -> Vec<String> {
+        let query: String = "haswbstatement:".to_owned() + &property + &"=".to_owned() + &id;
+        match self.search_wikibase(&query, mw_api) {
+            Ok(v) => v,
+            _ => vec![],
+        }
     }
 
     fn create_item(&self, item: &Entity, mw_api: &mut mediawiki::api::Api) -> Option<String> {

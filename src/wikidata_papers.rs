@@ -17,6 +17,8 @@ pub struct WikidataPapersCache {
     mw_api: Option<mediawiki::api::Api>,
 }
 
+impl WikidataInteraction for WikidataPapersCache {}
+
 impl WikidataPapersCache {
     pub fn new() -> Self {
         Self {
@@ -45,7 +47,11 @@ impl WikidataPapersCache {
     }
 
     fn search_issn2q(&mut self, issn: &String) -> Option<String> {
-        match self.search_wikibase(&("haswbstatement:P236=".to_string() + issn)) {
+        let mw_api = match &self.mw_api {
+            Some(x) => x,
+            None => panic!("no mw_api set in WikidataPapersCache".to_string()),
+        };
+        match self.search_wikibase(&("haswbstatement:P236=".to_string() + issn), mw_api) {
             Ok(items) => match items.len() {
                 1 => Some(items[0].to_string()),
                 _ => None,
@@ -54,30 +60,6 @@ impl WikidataPapersCache {
                 println!("ERROR:{}", e);
                 None
             }
-        }
-    }
-
-    pub fn search_wikibase(&self, query: &String) -> Result<Vec<String>, String> {
-        let mw_api = match &self.mw_api {
-            Some(x) => x,
-            None => return Err("no mw_api set in WikidataPapersCache".to_string()),
-        };
-        let params: HashMap<_, _> = vec![
-            ("action", "query"),
-            ("list", "search"),
-            ("srnamespace", "0"),
-            ("srsearch", &query.as_str()),
-        ]
-        .into_iter()
-        .map(|(x, y)| (x.to_string(), y.to_string()))
-        .collect();
-        let res = mw_api.get_query_api_json(&params).unwrap();
-        match res["query"]["search"].as_array() {
-            Some(items) => Ok(items
-                .iter()
-                .map(|item| item["title"].as_str().unwrap().to_string())
-                .collect()),
-            None => Ok(vec![]),
         }
     }
 
