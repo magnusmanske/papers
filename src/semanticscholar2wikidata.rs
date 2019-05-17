@@ -2,7 +2,8 @@ extern crate config;
 extern crate mediawiki;
 extern crate serde_json;
 
-use crate::ScientificPublicationAdapter;
+use crate::generic_author_info::GenericAuthorInfo;
+use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
 use semanticscholar::*;
 use std::collections::HashMap;

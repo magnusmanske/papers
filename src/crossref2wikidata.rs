@@ -3,12 +3,11 @@ extern crate config;
 extern crate mediawiki;
 extern crate serde_json;
 
-//use crate::AuthorItemInfo;
+use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
 use chrono::prelude::*;
 use crossref::Crossref;
 use std::collections::HashMap;
-//use wikibase::*;
 
 pub struct Crossref2Wikidata {
     author_cache: HashMap<String, String>,
