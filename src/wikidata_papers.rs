@@ -171,7 +171,7 @@ impl WikidataPapers {
                 .for_each(|author| authors.push(author.clone()));
             return;
         }
-        println!("MERGING AUTHOR: {:?} AND {:?}", &authors, &authors2);
+        //println!("MERGING AUTHOR: {:?} AND {:?}", &authors, &authors2);
         for author in authors2.iter() {
             let mut best_candidate: usize = 0;
             let mut best_points: u16 = 0;

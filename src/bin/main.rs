@@ -30,7 +30,7 @@ fn command_papers(mw_api: &mut mediawiki::api::Api) {
         if line.is_empty() {
             continue;
         }
-        println!("Processing {}", &line);
+        //println!("Processing {}", &line);
         paper_from_id(&line, mw_api);
     }
 }
@@ -109,7 +109,7 @@ fn paper_from_id(id: &String, mut mw_api: &mut mediawiki::api::Api) {
                 )
             }
         }
-        None => println!("No item ID!"),
+        None => println!("No item ID for '{}'!", &id),
     }
 }
 

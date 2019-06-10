@@ -152,6 +152,9 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
                             "Scopus Author ID" => {
                                 gai.prop2id.insert("P1153".to_string(), id.1);
                             }
+                            "Loop profile" => {
+                                gai.prop2id.insert("P2798".to_string(), id.1);
+                            }
                             other => {
                                 println!("orcid2wikidata: Unknown ID '{}':'{}'", &other, &id.1);
                             }

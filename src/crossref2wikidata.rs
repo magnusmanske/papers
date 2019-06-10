@@ -44,7 +44,7 @@ impl Crossref2Wikidata {
         };
 
         if !work.doi.is_empty() {
-            println!("Added DOI {} from CrossRef", &work.doi);
+            //println!("Added DOI {} from CrossRef", &work.doi);
             ret.push(GenericWorkIdentifier {
                 work_type: GenericWorkType::Property(PROP_DOI.to_string()),
                 id: work.doi.clone(),
@@ -95,12 +95,9 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
             match &id.work_type {
                 GenericWorkType::Property(prop) => match prop.as_str() {
                     PROP_DOI => {
-                        //println!("?? {}", &id.id);
                         let x = self.client.work(&id.id);
-                        //println!("{:?}", x);
                         match x {
                             Ok(work) => {
-                                //println!("!! {:?}", &work);
                                 self.work_cache.insert(work.doi.clone(), work.clone());
                                 self.add_identifiers_from_cached_publication(&work.doi, &mut ret);
                             }
@@ -210,13 +207,13 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         match &work.subject {
             Some(subjects) => {
                 for subject in subjects {
-                    println!("Subject:{}", &subject);
+                    //println!("Subject:{}", &subject);
+                    // TODO
                 }
             }
             None => {}
         }
 
-        // TODO subject
         // TODO journal (already done via ISSN?)
         // TODO ISBN
         // TODO authors
