@@ -8,18 +8,20 @@ extern crate regex;
 extern crate serde_json;
 
 use config::{Config, File};
-use papers::*;
-use regex::Regex;
-use std::env;
-use std::io;
-use std::io::prelude::*;
-//use multimap::MultiMap;
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::orcid2wikidata::Orcid2Wikidata;
 use papers::pubmed2wikidata::Pubmed2Wikidata;
 use papers::semanticscholar2wikidata::Semanticscholar2Wikidata;
 use papers::sourcemd::SourceMD;
 use papers::wikidata_papers::WikidataPapers;
+use papers::*;
+use regex::Regex;
+use std::env;
+use std::io;
+use std::io::prelude::*;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 fn command_papers(mw_api: &mut mediawiki::api::Api) {
     let stdin = io::stdin();
@@ -115,8 +117,39 @@ fn usage(command_name: &String) {
     println!("USAGE: {} [papers]", command_name);
 }
 
+fn run_bot(config_arc: Arc<Mutex<SourceMD>>) {
+    //println!("BOT!");
+    let batch_id: i64;
+    {
+        let config = config_arc.lock().unwrap();
+        batch_id = match config.get_next_batch() {
+            Some(n) => n,
+            None => return, // Nothing to do
+        };
+    }
+    thread::spawn(move || {
+        println!("SPAWN: Starting batch {}", &batch_id);
+        /*
+        let mut bot = QuickStatementsBot::new(config_arc.clone(), batch_id, user_id);
+        match bot.start() {
+            Ok(_) => while bot.run().unwrap_or(false) {},
+            Err(error) => {
+                println!(
+                    "Error when starting bot for batch #{}: '{}'",
+                    &batch_id, &error
+                );
+                // TODO mark this as problematic so it doesn't get run again next time?
+            }
+        }
+        */
+    });
+}
 fn command_bot() {
-    let _smd = SourceMD::new();
+    let smd = Arc::new(Mutex::new(SourceMD::new()));
+    loop {
+        run_bot(smd.clone());
+        thread::sleep(Duration::from_millis(1000));
+    }
 }
 
 fn get_mw_api(ini_file: &str) -> mediawiki::api::Api {

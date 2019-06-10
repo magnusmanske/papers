@@ -8,6 +8,7 @@ extern crate serde_json;
 use config::{Config, File};
 use mysql as my;
 use serde_json::Value;
+use std::collections::HashSet;
 /*
 use crate::*;
 use regex::Regex;
@@ -24,6 +25,7 @@ use crate::wikidata_papers::WikidataPapers;
 #[derive(Debug, Clone)]
 pub struct SourceMD {
     params: Value,
+    running_batch_ids: HashSet<i64>,
     pool: Option<my::Pool>,
 }
 
@@ -31,10 +33,33 @@ impl SourceMD {
     pub fn new() -> Self {
         let mut ret = Self {
             params: json!({}),
+            running_batch_ids: HashSet::new(),
             pool: None,
         };
         ret.init();
         ret
+    }
+
+    pub fn get_next_batch(&self) -> Option<i64> {
+        let pool = match &self.pool {
+            Some(pool) => pool,
+            None => return None,
+        };
+
+        let sql: String =
+            "SELECT * FROM batch WHERE `status` ='TODO' ORDER BY `last_action`".into();
+        for row in pool.prep_exec(sql, ()).ok()? {
+            let row = row.ok()?;
+            let id = match &row["id"] {
+                my::Value::Int(x) => *x as i64,
+                _ => continue,
+            };
+            if self.running_batch_ids.contains(&id) {
+                continue;
+            }
+            return Some(id);
+        }
+        None
     }
 
     fn init(&mut self) {
