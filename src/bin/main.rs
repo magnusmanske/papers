@@ -18,6 +18,7 @@ use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::orcid2wikidata::Orcid2Wikidata;
 use papers::pubmed2wikidata::Pubmed2Wikidata;
 use papers::semanticscholar2wikidata::Semanticscholar2Wikidata;
+use papers::sourcemd::SourceMD;
 use papers::wikidata_papers::WikidataPapers;
 
 fn command_papers(mw_api: &mut mediawiki::api::Api) {
@@ -114,15 +115,26 @@ fn usage(command_name: &String) {
     println!("USAGE: {} [papers]", command_name);
 }
 
-fn main() {
+fn command_bot() {
+    let _smd = SourceMD::new();
+}
+
+fn get_mw_api(ini_file: &str) -> mediawiki::api::Api {
     let mut mw_api = mediawiki::api::Api::new("https://www.wikidata.org/w/api.php").unwrap();
 
     let mut settings = Config::default();
     // File::with_name(..) is shorthand for File::from(Path::new(..))
-    settings.merge(File::with_name("test.ini")).unwrap();
-    let lgname = settings.get_str("user.user").unwrap();
-    let lgpass = settings.get_str("user.pass").unwrap();
+    settings
+        .merge(File::with_name(ini_file))
+        .expect(format!("Config file '{}' can't be opened", ini_file).as_str());
+    let lgname = settings.get_str("user.user").expect("No user.name");
+    let lgpass = settings.get_str("user.pass").expect("No user.pass");
     mw_api.login(lgname, lgpass).unwrap();
+    mw_api
+}
+
+fn main() {
+    let mut mw_api = get_mw_api("bot.ini");
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -131,6 +143,7 @@ fn main() {
     }
     match args[1].as_str() {
         "papers" => command_papers(&mut mw_api),
+        "bot" => command_bot(),
         _ => usage(&args[0]),
     }
 }
