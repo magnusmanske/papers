@@ -57,10 +57,7 @@ fn paper_from_id(id: &String, mut mw_api: &mut mediawiki::api::Api) {
                     if er.edited {
                         println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
                     } else {
-                        println!(
-                            "Exists as https://www.wikidata.org/wiki/{}, no changes ",
-                            &er.q
-                        )
+                        println!("https://www.wikidata.org/wiki/{}, no changes ", &er.q)
                     }
                 }
                 None => println!("No item ID!"),

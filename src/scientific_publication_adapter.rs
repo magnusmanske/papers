@@ -154,7 +154,7 @@ pub trait ScientificPublicationAdapter {
             // Add other potential titles as aliases
             titles
                 .iter()
-                .filter(|t| !dbg!(self.titles_are_equal(t, &main_title)))
+                .filter(|t| !self.titles_are_equal(t, &main_title))
                 .for_each(|t| {
                     item.add_alias(LocaleString::new(language.to_string(), t.to_string()))
                 });
