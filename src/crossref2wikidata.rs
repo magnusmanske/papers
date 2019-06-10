@@ -206,7 +206,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 
         match &work.subject {
             Some(subjects) => {
-                for subject in subjects {
+                for _subject in subjects {
                     //println!("Subject:{}", &subject);
                     // TODO
                 }
