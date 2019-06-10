@@ -28,5 +28,6 @@ crossref = "0.1"
 #crossref = { git = "https://github.com/MattsSe/crossref-rs" }
 semanticscholar = "0.1"
 orcid="0.1"
-pubmed="0.1.2"
+pubmed="0.1"
 #pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
+#pubmed = { path='../pubmed' }

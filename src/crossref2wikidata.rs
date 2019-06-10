@@ -51,6 +51,13 @@ impl Crossref2Wikidata {
             });
         }
     }
+
+    fn should_add_string(&self, s: &String) -> bool {
+        if s == "n/a" || s == "n/a-n/a" {
+            return false;
+        }
+        true
+    }
 }
 
 impl ScientificPublicationAdapter for Crossref2Wikidata {
@@ -124,7 +131,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
     }
 
     fn reference(&self) -> Vec<Reference> {
-        let now = Utc::now().format("+%Y-%m-%dT%H:%M:%SZ").to_string();
+        let now = Utc::now().format("+%Y-%m-%dT00:00:00Z").to_string();
         vec![Reference::new(vec![Snak::new_time("P813", &now, 11)])]
     }
 
@@ -187,11 +194,13 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
             if !item.has_claims_with_property(option.0) {
                 match option.1 {
                     Some(v) => {
-                        item.add_claim(Statement::new_normal(
-                            Snak::new_string(option.0, v),
-                            vec![],
-                            self.reference(),
-                        ));
+                        if self.should_add_string(v) {
+                            item.add_claim(Statement::new_normal(
+                                Snak::new_string(option.0, v),
+                                vec![],
+                                self.reference(),
+                            ));
+                        }
                     }
                     None => {}
                 }

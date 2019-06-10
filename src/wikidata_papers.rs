@@ -11,6 +11,11 @@ use crate::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+pub struct EditResult {
+    pub q: String,
+    pub edited: bool,
+}
+
 pub struct WikidataPapersCache {
     issn2q: HashMap<String, String>,
     is_initialized: bool,
@@ -166,6 +171,7 @@ impl WikidataPapers {
                 .for_each(|author| authors.push(author.clone()));
             return;
         }
+        println!("MERGING AUTHOR: {:?} AND {:?}", &authors, &authors2);
         for author in authors2.iter() {
             let mut best_candidate: usize = 0;
             let mut best_points: u16 = 0;
@@ -200,7 +206,6 @@ impl WikidataPapers {
 
             let adapter = &mut self.adapters[adapter_id];
             adapter2work_id.insert(adapter_id, publication_id.clone());
-            //println!("Applying adapter {}", adapter.name());
 
             adapter.update_statements_for_publication_id_default(
                 &publication_id,
@@ -222,7 +227,6 @@ impl WikidataPapers {
         self.update_author_items(&authors, mw_api);
 
         self.create_or_update_author_statements(&mut item, &authors);
-        //dbg!(&item);
     }
 
     fn update_author_items(
@@ -275,9 +279,28 @@ impl WikidataPapers {
         &mut self,
         mw_api: &mut mediawiki::api::Api,
         ids: &Vec<GenericWorkIdentifier>,
-    ) -> Option<String> {
+    ) -> Option<EditResult> {
         self.caches.init(&mw_api);
         let items = self.get_items_for_ids(&mw_api, &ids);
+        self.create_or_update_item_from_items(mw_api, ids, &items)
+    }
+
+    pub fn create_or_update_item_from_q(
+        &mut self,
+        mw_api: &mut mediawiki::api::Api,
+        q: &String,
+    ) -> Option<EditResult> {
+        self.caches.init(&mw_api);
+        let items = vec![q.to_owned()];
+        self.create_or_update_item_from_items(mw_api, &vec![], &items)
+    }
+
+    fn create_or_update_item_from_items(
+        &mut self,
+        mw_api: &mut mediawiki::api::Api,
+        ids: &Vec<GenericWorkIdentifier>,
+        items: &Vec<String>,
+    ) -> Option<EditResult> {
         let mut entities = entity_container::EntityContainer::new();
         let mut item: wikibase::Entity;
         let original_item: wikibase::Entity;
@@ -310,11 +333,20 @@ impl WikidataPapers {
         if diff.is_empty() {
             match original_item.id() {
                 "" => return None,
-                id => return Some(id.to_string()),
+                id => {
+                    return Some(EditResult {
+                        q: id.to_string(),
+                        edited: false,
+                    })
+                }
             }
         }
         let new_json = diff.apply_diff(mw_api, &diff).unwrap();
-        EntityDiff::get_entity_id(&new_json)
+        let q = EntityDiff::get_entity_id(&new_json)?;
+        Some(EditResult {
+            q: q.to_string(),
+            edited: true,
+        })
     }
 
     // ID keys need to be uppercase (e.g. "PMID","DOI")

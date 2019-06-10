@@ -41,7 +41,7 @@ impl Orcid2Wikidata {
         self.work_cache.get(publication_id)
     }
 
-    pub fn get_or_load_author_data(&mut self, orcid_author_id: &String) -> &Option<Author> {
+    pub fn get_or_load_author_data(&mut self, orcid_author_id: &String) -> Option<Author> {
         if !self.author_data.contains_key(orcid_author_id) {
             match self.client.author(orcid_author_id) {
                 Ok(data) => self
@@ -50,45 +50,11 @@ impl Orcid2Wikidata {
                 Err(_) => self.author_data.insert(orcid_author_id.to_string(), None),
             };
         }
-        self.author_data.get(orcid_author_id).unwrap()
-    }
-
-    /*
-    fn get_author_name_variations(&self, author: &Author) -> Vec<String> {
-        let mut ret: Vec<String> = vec![];
-
-        match author.credit_name() {
-            Some(name) => ret.push(name.to_string()),
-            None => {}
+        match self.author_data.get(orcid_author_id) {
+            Some(ret) => ret.to_owned(),
+            None => None,
         }
-
-        match author.json()["person"]["name"].as_object() {
-            Some(n) => {
-                let family_name = n["family-name"]["value"]
-                    .as_str()
-                    .unwrap_or("")
-                    .trim()
-                    .to_string();
-                let given_names = n["given-names"]["value"]
-                    .as_str()
-                    .unwrap_or("")
-                    .trim()
-                    .to_string();
-                if !family_name.is_empty() {
-                    if given_names.is_empty() {
-                        ret.push(family_name);
-                    } else {
-                        ret.push(given_names + " " + &family_name);
-                        // TODO initials?
-                    }
-                }
-            }
-            None => {}
-        }
-
-        ret
     }
-    */
 }
 
 impl ScientificPublicationAdapter for Orcid2Wikidata {
@@ -140,7 +106,10 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
             Some(w) => w.clone(),
             None => return ret,
         };
-        let author_property = self.author_property().unwrap();
+        let author_property = match self.author_property() {
+            Some(p) => p,
+            None => return vec![],
+        };
 
         for num in 0..work.author_ids.len() {
             let orcid_author_id = &work.author_ids[num];

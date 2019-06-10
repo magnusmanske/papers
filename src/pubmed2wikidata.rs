@@ -50,8 +50,8 @@ impl Pubmed2Wikidata {
 
     fn publication_id_from_pubmed(&mut self, publication_id: &String) -> Option<String> {
         if !self.work_cache.contains_key(publication_id) {
-            let pub_id_u64 = publication_id.parse::<u64>().unwrap();
-            let work = self.client.article(pub_id_u64).unwrap();
+            let pub_id_u64 = publication_id.parse::<u64>().ok()?;
+            let work = self.client.article(pub_id_u64).ok()?;
             self.work_cache.insert(publication_id.clone(), work);
         }
         return Some(publication_id.to_string());
@@ -69,8 +69,12 @@ impl Pubmed2Wikidata {
         self.query_cache.insert(query, work_ids.clone());
         for publication_id in &work_ids {
             if !self.work_cache.contains_key(&publication_id.to_string()) {
-                let work = self.client.article(*publication_id).unwrap();
-                self.work_cache.insert(publication_id.to_string(), work);
+                match self.client.article(*publication_id) {
+                    Ok(work) => {
+                        self.work_cache.insert(publication_id.to_string(), work);
+                    }
+                    Err(e) => println!("pubmed::publication_ids_from_doi: {:?}", &e),
+                }
             }
         }
         work_ids.iter().map(|s| s.to_string()).collect()
@@ -81,7 +85,11 @@ impl Pubmed2Wikidata {
         publication_id: &String,
         ret: &mut Vec<GenericWorkIdentifier>,
     ) {
-        let my_prop = GenericWorkType::Property(self.publication_property().unwrap());
+        let my_prop = match self.publication_property() {
+            Some(p) => p,
+            None => return,
+        };
+        let my_prop = GenericWorkType::Property(my_prop);
 
         let work = match self.get_cached_publication_from_id(&publication_id) {
             Some(w) => w,

@@ -161,9 +161,10 @@ pub trait ScientificPublicationAdapter {
 
             // Add P1476 (title)
             if !item.has_claims_with_property("P1476") {
-                match item.label_in_locale(&language) {
+                let label = item.label_in_locale(&language).map(|s| s.to_owned());
+                match label {
                     Some(title) => item.add_claim(Statement::new_normal(
-                        Snak::new_monolingual_text("P1476", title, &language),
+                        Snak::new_monolingual_text("P1476", &title, &language),
                         vec![],
                         self.reference(),
                     )),
