@@ -149,6 +149,9 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
                             "ResearcherID" => {
                                 gai.prop2id.insert("P1053".to_string(), id.1);
                             }
+                            "Researcher ID" => {
+                                gai.prop2id.insert("P1053".to_string(), id.1);
+                            }
                             "Scopus Author ID" => {
                                 gai.prop2id.insert("P1153".to_string(), id.1);
                             }
