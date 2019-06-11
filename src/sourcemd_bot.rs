@@ -52,7 +52,13 @@ impl SourceMDbot {
         };
         let mut command = match command {
             Some(c) => c,
-            None => return Ok(false),
+            None => {
+                let mut config = self.config.lock().map_err(|e| format!("{:?}", e))?;
+                config
+                    .deactivate_batch_run(self.batch_id)
+                    .ok_or("Can't set batch as stopped".to_string())?;
+                return Ok(false);
+            }
         };
 
         self.set_command_status("RUNNING", None, &mut command)?;
@@ -162,7 +168,12 @@ impl SourceMDbot {
 
         ids = wdp.update_from_paper_ids(&ids);
         match wdp.create_or_update_item_from_ids(&mut self.mw_api, &ids) {
-            Some(_) => Ok(true),
+            Some(er) => {
+                if command.q == "" {
+                    command.q = er.q;
+                }
+                Ok(true)
+            }
             None => Ok(false),
         }
     }

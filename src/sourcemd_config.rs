@@ -63,7 +63,7 @@ impl SourceMD {
         };
 
         let sql: String = r#"SELECT * FROM batch WHERE `status` ='TODO' AND NOT EXISTS (SELECT * FROM command WHERE batch_id=batch.id AND `status` IN ("RUNNING","TODO") AND `mode` NOT IN ("CREATE_PAPER_BY_ID","ADD_AUTHOR_TO_PUBLICATION")) ORDER BY `last_action`"#.into();
-        //let sql: String = "SELECT * FROM batch WHERE id=551".into(); // TESTING
+        //let sql: String = "SELECT * FROM batch WHERE id=8117".into(); // TESTING (also 551)
         for row in pool.prep_exec(sql, ()).ok()? {
             let row = row.ok()?;
             let id = match &row["id"] {
@@ -80,6 +80,7 @@ impl SourceMD {
 
     pub fn deactivate_batch_run(self: &mut Self, batch_id: i64) -> Option<()> {
         println!("Deactivating batch #{}", batch_id);
+        self.set_batch_finished(batch_id)?;
         self.running_batch_ids.remove(&batch_id);
         println!("Currently {} bots running", self.number_of_bots_running());
         Some(())
@@ -173,7 +174,7 @@ impl SourceMD {
     }
 
     fn update_batch_stats(&self, batch_id: i64, pool: &my::Pool) -> Option<()> {
-        let mut j = json!({});
+        let mut j = json!({"TOTAL":0});
         let sql =
             r#"SELECT `status`,count(*) AS cnt FROM command WHERE batch_id=? GROUP BY `status`"#;
         for row in pool.prep_exec(sql, (my::Value::from(batch_id),)).ok()? {
@@ -187,6 +188,10 @@ impl SourceMD {
                 _ => continue,
             };
             j.as_object_mut()?.insert(status.to_string(), json!(cnt));
+            match j["TOTAL"].as_i64() {
+                Some(i) => j["TOTAL"] = json!(cnt + i),
+                None => j["TOTAL"] = json!(cnt),
+            }
         }
         pool.prep_exec(
             r#"UPDATE `batch` SET `overview`=? WHERE `id`=?"#,
