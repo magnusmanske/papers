@@ -99,8 +99,8 @@ impl SourceMDbot {
         lazy_static! {
             static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#).unwrap();
             static ref RE_DOI: Regex = Regex::new(r#"^(.+/.+)$"#).unwrap();
-            static ref RE_PMID: Regex = Regex::new(r#"(\d+)$"#).unwrap();
-            static ref RE_PMCID: Regex = Regex::new(r#"PMCID(\d+)$"#).unwrap();
+            static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#).unwrap();
+            static ref RE_PMCID: Regex = Regex::new(r#"^PMCID(\d+)$"#).unwrap();
         }
 
         //println!("Processing command {:?}", &command);

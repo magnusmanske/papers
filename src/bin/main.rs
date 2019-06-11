@@ -42,8 +42,8 @@ fn paper_from_id(id: &String, mut mw_api: &mut mediawiki::api::Api) {
     lazy_static! {
         static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#).unwrap();
         static ref RE_DOI: Regex = Regex::new(r#"^(.+/.+)$"#).unwrap();
-        static ref RE_PMID: Regex = Regex::new(r#"(\d+)$"#).unwrap();
-        static ref RE_PMCID: Regex = Regex::new(r#"PMCID(\d+)$"#).unwrap();
+        static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#).unwrap();
+        static ref RE_PMCID: Regex = Regex::new(r#"^PMCID(\d+)$"#).unwrap();
     }
 
     let mut wdp = WikidataPapers::new();
@@ -98,6 +98,7 @@ fn paper_from_id(id: &String, mut mw_api: &mut mediawiki::api::Api) {
         return;
     }
     ids = wdp.update_from_paper_ids(&ids);
+
     match wdp.create_or_update_item_from_ids(&mut mw_api, &ids) {
         Some(er) => {
             if er.edited {
