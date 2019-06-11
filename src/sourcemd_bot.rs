@@ -104,7 +104,7 @@ impl SourceMDbot {
         }
 
         //println!("Processing command {:?}", &command);
-        let mut wdp = self.new_wdp();
+        let mut wdp = self.new_wdp(&command);
 
         // Wikidata ID
         if RE_WD.is_match(&command.identifier) {
@@ -200,12 +200,16 @@ impl SourceMDbot {
         Ok(config.get_next_command(self.batch_id))
     }
 
-    fn new_wdp(&self) -> WikidataPapers {
+    fn new_wdp(&self, command: &SourceMDcommand) -> WikidataPapers {
         let mut wdp = WikidataPapers::new();
         wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
         wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
         wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
         wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
+        wdp.set_edit_summary(Some(format!(
+            "SourceMD/Rust, batch #{}, command #{}",
+            command.batch_id, command.id
+        )));
         wdp
     }
 

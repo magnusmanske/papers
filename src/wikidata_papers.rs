@@ -115,6 +115,7 @@ impl WikidataPapersCache {
 pub struct WikidataPapers {
     adapters: Vec<Box<ScientificPublicationAdapter>>,
     caches: WikidataPapersCache,
+    edit_summary: Option<String>,
     //id_cache: HashMap<String, String>,
 }
 
@@ -125,6 +126,7 @@ impl WikidataPapers {
         WikidataPapers {
             adapters: vec![],
             caches: WikidataPapersCache::new(),
+            edit_summary: None,
             //id_cache: HashMap::new(),
         }
     }
@@ -135,6 +137,14 @@ impl WikidataPapers {
 
     pub fn add_adapter(&mut self, adapter_box: Box<ScientificPublicationAdapter>) {
         self.adapters.push(adapter_box);
+    }
+
+    pub fn edit_summary(&self) -> &Option<String> {
+        &self.edit_summary
+    }
+
+    pub fn set_edit_summary(&mut self, edit_summary: Option<String>) {
+        self.edit_summary = edit_summary;
     }
 
     fn create_author_statements(&mut self, authors: &Vec<GenericAuthorInfo>, item: &mut Entity) {
@@ -329,8 +339,9 @@ impl WikidataPapers {
         params.labels.add = EntityDiffParamState::All;
         params.aliases.add = EntityDiffParamState::All;
         params.claims.add = EntityDiffParamState::All;
-        let diff = EntityDiff::new(&original_item, &item, &params);
+        let mut diff = EntityDiff::new(&original_item, &item, &params);
         if diff.is_empty() {
+            diff.set_edit_summary(self.edit_summary.to_owned());
             match original_item.id() {
                 "" => return None,
                 id => {
