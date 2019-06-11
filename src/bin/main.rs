@@ -12,7 +12,8 @@ use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::orcid2wikidata::Orcid2Wikidata;
 use papers::pubmed2wikidata::Pubmed2Wikidata;
 use papers::semanticscholar2wikidata::Semanticscholar2Wikidata;
-use papers::sourcemd::SourceMD;
+use papers::sourcemd_bot::SourceMDbot;
+use papers::sourcemd_config::SourceMD;
 use papers::wikidata_papers::WikidataPapers;
 use papers::*;
 use regex::Regex;
@@ -129,8 +130,7 @@ fn run_bot(config_arc: Arc<Mutex<SourceMD>>) {
     }
     thread::spawn(move || {
         println!("SPAWN: Starting batch {}", &batch_id);
-        /*
-        let mut bot = QuickStatementsBot::new(config_arc.clone(), batch_id, user_id);
+        let mut bot = SourceMDbot::new(config_arc.clone(), batch_id);
         match bot.start() {
             Ok(_) => while bot.run().unwrap_or(false) {},
             Err(error) => {
@@ -141,12 +141,12 @@ fn run_bot(config_arc: Arc<Mutex<SourceMD>>) {
                 // TODO mark this as problematic so it doesn't get run again next time?
             }
         }
-        */
     });
 }
 fn command_bot() {
     let smd = Arc::new(Mutex::new(SourceMD::new()));
     loop {
+        //println!("BOT!");
         run_bot(smd.clone());
         thread::sleep(Duration::from_millis(1000));
     }
