@@ -5,9 +5,10 @@ use crate::semanticscholar2wikidata::Semanticscholar2Wikidata;
 use crate::sourcemd_command::SourceMDcommand;
 use crate::sourcemd_config::SourceMD;
 use crate::wikidata_papers::WikidataPapers;
+use crate::*;
 use config::{Config, File};
+use regex::Regex;
 use std::sync::{Arc, Mutex};
-//use regex::Regex;
 
 #[derive(Debug, Clone)]
 pub struct SourceMDbot {
@@ -17,12 +18,14 @@ pub struct SourceMDbot {
 }
 
 impl SourceMDbot {
-    pub fn new(config: Arc<Mutex<SourceMD>>, batch_id: i64) -> Self {
-        Self {
-            config,
-            batch_id,
+    pub fn new(config: Arc<Mutex<SourceMD>>, batch_id: i64) -> Result<Self, String> {
+        let ret = Self {
+            config: config,
+            batch_id: batch_id,
             mw_api: SourceMDbot::get_mw_api("bot.ini"),
-        }
+        };
+        ret.start()?;
+        Ok(ret)
     }
 
     pub fn start(&self) -> Result<(), String> {
@@ -35,6 +38,7 @@ impl SourceMDbot {
     }
 
     pub fn run(self: &mut Self) -> Result<bool, String> {
+        //println!("Running command from batch #{}", self.batch_id);
         //Check if batch is still valid (STOP etc)
         let command = match self.get_next_command() {
             Ok(c) => c,
@@ -46,7 +50,6 @@ impl SourceMDbot {
                 return Ok(false);
             }
         };
-
         let mut command = match command {
             Some(c) => c,
             None => return Ok(false),
@@ -59,7 +62,7 @@ impl SourceMDbot {
                     self.set_command_status("DONE", None, &mut command)?;
                     Ok(true)
                 } else {
-                    // TODO
+                    self.set_command_status("DUNNO", None, &mut command)?;
                     Ok(false)
                 }
             }
@@ -71,8 +74,6 @@ impl SourceMDbot {
     }
 
     fn execute_command(self: &mut Self, command: &mut SourceMDcommand) -> Result<bool, String> {
-        let wdp = self.new_wdp();
-
         match command.mode.as_str() {
             "CREATE_PAPER_BY_ID" => self.process_paper(command),
             "ADD_AUTHOR_TO_PUBLICATION" => self.process_paper(command),
@@ -89,8 +90,81 @@ impl SourceMDbot {
     }
 
     fn process_paper(self: &mut Self, command: &mut SourceMDcommand) -> Result<bool, String> {
-        println!("Processing command {:?}", &command);
-        Ok(false)
+        lazy_static! {
+            static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#).unwrap();
+            static ref RE_DOI: Regex = Regex::new(r#"^(.+/.+)$"#).unwrap();
+            static ref RE_PMID: Regex = Regex::new(r#"(\d+)$"#).unwrap();
+            static ref RE_PMCID: Regex = Regex::new(r#"PMCID(\d+)$"#).unwrap();
+        }
+
+        //println!("Processing command {:?}", &command);
+        let mut wdp = self.new_wdp();
+
+        // Wikidata ID
+        if RE_WD.is_match(&command.identifier) {
+            return wdp
+                .create_or_update_item_from_q(&mut self.mw_api, &command.identifier)
+                .map(|_x| true)
+                .ok_or(format!("Can't update {}", &command.identifier));
+        }
+
+        // Others
+        let mut ids = vec![];
+        match RE_DOI.captures(&command.identifier) {
+            Some(caps) => ids.push(GenericWorkIdentifier::new_prop(
+                PROP_DOI,
+                caps.get(1).unwrap().as_str(),
+            )),
+            None => {}
+        };
+        match RE_PMID.captures(&command.identifier) {
+            Some(caps) => ids.push(GenericWorkIdentifier::new_prop(
+                PROP_PMID,
+                caps.get(1).unwrap().as_str(),
+            )),
+            None => {}
+        };
+        match RE_PMCID.captures(&command.identifier) {
+            Some(caps) => ids.push(GenericWorkIdentifier::new_prop(
+                PROP_PMCID,
+                caps.get(1).unwrap().as_str(),
+            )),
+            None => {}
+        };
+        match serde_json::from_str(&command.identifier) {
+            Ok(j) => {
+                let j: serde_json::Value = j;
+                match j["doi"].as_str() {
+                    Some(id) => {
+                        ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, id));
+                    }
+                    None => {}
+                }
+                match j["pmid"].as_str() {
+                    Some(id) => {
+                        ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, id));
+                    }
+                    None => {}
+                }
+                match j["pmcid"].as_str() {
+                    Some(id) => {
+                        ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, id));
+                    }
+                    None => {}
+                }
+            }
+            Err(_) => {}
+        }
+
+        if ids.len() == 0 {
+            return Ok(false);
+        }
+
+        ids = wdp.update_from_paper_ids(&ids);
+        match wdp.create_or_update_item_from_ids(&mut self.mw_api, &ids) {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        }
     }
 
     fn set_command_status(
@@ -99,6 +173,7 @@ impl SourceMDbot {
         message: Option<&str>,
         command: &mut SourceMDcommand,
     ) -> Result<(), String> {
+        //println!("Setting {} to {}", &command.id, &status);
         let mut config = self.config.lock().map_err(|e| format!("{:?}", e))?;
         config
             .set_command_status(command, status, message.map(|s| s.to_string()))

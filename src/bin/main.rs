@@ -129,17 +129,18 @@ fn run_bot(config_arc: Arc<Mutex<SourceMD>>) {
     }
     thread::spawn(move || {
         println!("SPAWN: Starting batch {}", &batch_id);
-        let mut bot = SourceMDbot::new(config_arc.clone(), batch_id);
-        match bot.start() {
-            Ok(_) => while bot.run().unwrap_or(false) {},
+        let mut bot = match SourceMDbot::new(config_arc.clone(), batch_id) {
+            Ok(bot) => bot,
             Err(error) => {
                 println!(
                     "Error when starting bot for batch #{}: '{}'",
                     &batch_id, &error
                 );
                 // TODO mark this as problematic so it doesn't get run again next time?
+                return;
             }
-        }
+        };
+        while bot.run().unwrap_or(false) {}
     });
 }
 fn command_bot() {
@@ -147,7 +148,7 @@ fn command_bot() {
     loop {
         //println!("BOT!");
         run_bot(smd.clone());
-        thread::sleep(Duration::from_millis(1000));
+        thread::sleep(Duration::from_millis(5000));
     }
 }
 

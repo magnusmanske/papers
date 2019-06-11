@@ -35,7 +35,7 @@ impl SourceMD {
         .ok()?;
         pool.prep_exec(
             r#"UPDATE `command` SET `status`="TODO",`note`="" WHERE `status`="RUNNING" AND `batch_id`=?"#,
-            (my::Value::from(self.timestamp()),my::Value::Int(batch_id),),
+            (my::Value::Int(batch_id),),
         )
         .ok()?;
         Some(())
@@ -62,8 +62,8 @@ impl SourceMD {
             None => return None,
         };
 
-        //let sql: String = "SELECT * FROM batch WHERE `status` ='TODO' ORDER BY `last_action`".into();
-        let sql: String = "SELECT * FROM batch WHERE id=551".into(); // TESTING
+        let sql: String = r#"SELECT * FROM batch WHERE `status` ='TODO' AND NOT EXISTS (SELECT * FROM command WHERE batch_id=batch.id AND `status` IN ("RUNNING","TODO") AND `mode` NOT IN ("CREATE_PAPER_BY_ID","ADD_AUTHOR_TO_PUBLICATION")) ORDER BY `last_action`"#.into();
+        //let sql: String = "SELECT * FROM batch WHERE id=551".into(); // TESTING
         for row in pool.prep_exec(sql, ()).ok()? {
             let row = row.ok()?;
             let id = match &row["id"] {
@@ -79,6 +79,7 @@ impl SourceMD {
     }
 
     pub fn deactivate_batch_run(self: &mut Self, batch_id: i64) -> Option<()> {
+        println!("Deactivating batch #{}", batch_id);
         self.running_batch_ids.remove(&batch_id);
         println!("Currently {} bots running", self.number_of_bots_running());
         Some(())
@@ -130,6 +131,7 @@ impl SourceMD {
             ),
         )
         .ok()?;
+        self.update_batch_stats(batch_id, pool)?;
         self.deactivate_batch_run(batch_id)
     }
 
@@ -139,7 +141,7 @@ impl SourceMD {
             None => return None,
         };
         let sql =
-            r#"SELECT * FROM command WHERE batch_id=? AND status IN ('TODO') ORDER BY num LIMIT 1"#;
+            r#"SELECT * FROM command FORCE INDEX (batch_id_4) WHERE `batch_id`=? AND `status`='TODO' ORDER BY `serial_number` LIMIT 1"#;
         for row in pool.prep_exec(sql, (my::Value::Int(batch_id),)).ok()? {
             let row = row.ok()?;
             return Some(SourceMDcommand::new_from_row(row));
@@ -164,6 +166,33 @@ impl SourceMD {
                 my::Value::from(new_message.unwrap_or("".to_string())),
                 my::Value::from(&command.q),
                 my::Value::from(&command.id),
+            ),
+        )
+        .ok()?;
+        self.update_batch_stats(command.batch_id, pool)
+    }
+
+    fn update_batch_stats(&self, batch_id: i64, pool: &my::Pool) -> Option<()> {
+        let mut j = json!({});
+        let sql =
+            r#"SELECT `status`,count(*) AS cnt FROM command WHERE batch_id=? GROUP BY `status`"#;
+        for row in pool.prep_exec(sql, (my::Value::from(batch_id),)).ok()? {
+            let row = row.ok()?;
+            let status = match &row["status"] {
+                my::Value::Bytes(x) => String::from_utf8_lossy(x),
+                _ => continue,
+            };
+            let cnt = match &row["cnt"] {
+                my::Value::Int(x) => *x as i64,
+                _ => continue,
+            };
+            j.as_object_mut()?.insert(status.to_string(), json!(cnt));
+        }
+        pool.prep_exec(
+            r#"UPDATE `batch` SET `overview`=? WHERE `id`=?"#,
+            (
+                my::Value::from(format!("{}", &j)),
+                my::Value::from(batch_id),
             ),
         )
         .ok()?;
@@ -199,6 +228,16 @@ impl SourceMD {
         if self.pool.is_none() {
             panic!("Can't establish DB connection!");
         }
+
+        let pool = match &self.pool {
+            Some(pool) => pool,
+            None => panic!("Oh no!"),
+        };
+        pool.prep_exec(
+            r#"UPDATE `batch` SET `status`='TODO' WHERE status='RUNNING'"#,
+            (),
+        )
+        .unwrap();
     }
 
     fn create_mysql_pool(&mut self) {
