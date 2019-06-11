@@ -1,26 +1,9 @@
-extern crate config;
-extern crate lazy_static;
-extern crate mediawiki;
-extern crate regex;
-//#[macro_use]
-extern crate serde_json;
-
+use crate::sourcemd_command::SourceMDcommand;
+use chrono::prelude::*;
 use config::{Config, File};
 use mysql as my;
 use serde_json::Value;
 use std::collections::HashSet;
-/*
-use crate::*;
-use regex::Regex;
-use std::env;
-use std::io;
-use std::io::prelude::*;
-use crate::crossref2wikidata::Crossref2Wikidata;
-use crate::orcid2wikidata::Orcid2Wikidata;
-use crate::pubmed2wikidata::Pubmed2Wikidata;
-use crate::semanticscholar2wikidata::Semanticscholar2Wikidata;
-use crate::wikidata_papers::WikidataPapers;
-*/
 
 #[derive(Debug, Clone)]
 pub struct SourceMD {
@@ -40,14 +23,47 @@ impl SourceMD {
         ret
     }
 
+    pub fn restart_batch(&self, batch_id: i64) -> Option<()> {
+        let pool = match &self.pool {
+            Some(pool) => pool,
+            None => return None,
+        };
+        pool.prep_exec(
+            r#"UPDATE `batch` SET `status`="RUNNING",`last_action`=? WHERE id=?"#,
+            (my::Value::from(self.timestamp()), my::Value::Int(batch_id)),
+        )
+        .ok()?;
+        pool.prep_exec(
+            r#"UPDATE `command` SET `status`="TODO",`note`="" WHERE `status`="RUNNING" AND `batch_id`=?"#,
+            (my::Value::from(self.timestamp()),my::Value::Int(batch_id),),
+        )
+        .ok()?;
+        Some(())
+    }
+
+    pub fn set_batch_running(&mut self, batch_id: i64) {
+        println!("set_batch_running: Starting batch #{}", batch_id);
+        self.running_batch_ids.insert(batch_id);
+        println!("Currently {} bots running", self.number_of_bots_running());
+    }
+
+    pub fn number_of_bots_running(&self) -> usize {
+        self.running_batch_ids.len()
+    }
+
+    pub fn timestamp(&self) -> String {
+        let now = Utc::now();
+        now.format("%Y-%m-%d %H:%M:%S").to_string()
+    }
+
     pub fn get_next_batch(&self) -> Option<i64> {
         let pool = match &self.pool {
             Some(pool) => pool,
             None => return None,
         };
 
-        let sql: String =
-            "SELECT * FROM batch WHERE `status` ='TODO' ORDER BY `last_action`".into();
+        //let sql: String = "SELECT * FROM batch WHERE `status` ='TODO' ORDER BY `last_action`".into();
+        let sql: String = "SELECT * FROM batch WHERE id=551".into(); // TESTING
         for row in pool.prep_exec(sql, ()).ok()? {
             let row = row.ok()?;
             let id = match &row["id"] {
@@ -60,6 +76,98 @@ impl SourceMD {
             return Some(id);
         }
         None
+    }
+
+    pub fn deactivate_batch_run(self: &mut Self, batch_id: i64) -> Option<()> {
+        self.running_batch_ids.remove(&batch_id);
+        println!("Currently {} bots running", self.number_of_bots_running());
+        Some(())
+    }
+
+    pub fn set_batch_finished(&mut self, batch_id: i64) -> Option<()> {
+        println!("set_batch_finished: Batch #{}", batch_id);
+        self.set_batch_status("DONE", batch_id)
+    }
+
+    pub fn check_batch_not_stopped(self: &mut Self, batch_id: i64) -> Result<(), String> {
+        let pool = match &self.pool {
+            Some(pool) => pool,
+            None => {
+                return Err(format!(
+                    "QuickStatementsConfig::check_batch_not_stopped: Can't get DB handle"
+                ))
+            }
+        };
+        let sql: String = format!(
+            "SELECT * FROM batch WHERE id={} AND `status` NOT IN ('RUNNING','TODO')",
+            batch_id
+        );
+        let result = match pool.prep_exec(sql, ()) {
+            Ok(r) => r,
+            Err(e) => return Err(format!("Error: {}", e)),
+        };
+        for _row in result {
+            return Err(format!(
+                "QuickStatementsConfig::check_batch_not_stopped: batch #{} is not RUNNING or TODO",
+                batch_id
+            ));
+        }
+        Ok(())
+    }
+
+    fn set_batch_status(&mut self, status: &str, batch_id: i64) -> Option<()> {
+        let pool = match &self.pool {
+            Some(pool) => pool,
+            None => return None,
+        };
+        // TODO stats
+        pool.prep_exec(
+            r#"UPDATE `batch` SET `status`=?,`last_action`=? WHERE id=?"#,
+            (
+                my::Value::from(status),
+                my::Value::from(self.timestamp()),
+                my::Value::Int(batch_id),
+            ),
+        )
+        .ok()?;
+        self.deactivate_batch_run(batch_id)
+    }
+
+    pub fn get_next_command(&mut self, batch_id: i64) -> Option<SourceMDcommand> {
+        let pool = match &self.pool {
+            Some(pool) => pool,
+            None => return None,
+        };
+        let sql =
+            r#"SELECT * FROM command WHERE batch_id=? AND status IN ('TODO') ORDER BY num LIMIT 1"#;
+        for row in pool.prep_exec(sql, (my::Value::Int(batch_id),)).ok()? {
+            let row = row.ok()?;
+            return Some(SourceMDcommand::new_from_row(row));
+        }
+        None
+    }
+
+    pub fn set_command_status(
+        self: &mut Self,
+        command: &mut SourceMDcommand,
+        new_status: &str,
+        new_message: Option<String>,
+    ) -> Option<()> {
+        let pool = match &self.pool {
+            Some(pool) => pool,
+            None => return None,
+        };
+        pool.prep_exec(
+            r#"UPDATE `command` SET `status`=?,`note`=?,`q`=? WHERE `id`=?"#,
+            (
+                my::Value::from(new_status),
+                my::Value::from(new_message.unwrap_or("".to_string())),
+                my::Value::from(&command.q),
+                my::Value::from(&command.id),
+            ),
+        )
+        .ok()?;
+        Some(())
     }
 
     fn init(&mut self) {

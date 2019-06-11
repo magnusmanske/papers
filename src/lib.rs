@@ -91,5 +91,6 @@ pub mod pubmed2wikidata;
 pub mod scientific_publication_adapter;
 pub mod semanticscholar2wikidata;
 pub mod sourcemd_bot;
+pub mod sourcemd_command;
 pub mod sourcemd_config;
 pub mod wikidata_papers;

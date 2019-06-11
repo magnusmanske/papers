@@ -7,7 +7,6 @@ extern crate regex;
 //#[macro_use]
 extern crate serde_json;
 
-use config::{Config, File};
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::orcid2wikidata::Orcid2Wikidata;
 use papers::pubmed2wikidata::Pubmed2Wikidata;
@@ -152,22 +151,8 @@ fn command_bot() {
     }
 }
 
-fn get_mw_api(ini_file: &str) -> mediawiki::api::Api {
-    let mut mw_api = mediawiki::api::Api::new("https://www.wikidata.org/w/api.php").unwrap();
-
-    let mut settings = Config::default();
-    // File::with_name(..) is shorthand for File::from(Path::new(..))
-    settings
-        .merge(File::with_name(ini_file))
-        .expect(format!("Config file '{}' can't be opened", ini_file).as_str());
-    let lgname = settings.get_str("user.user").expect("No user.name");
-    let lgpass = settings.get_str("user.pass").expect("No user.pass");
-    mw_api.login(lgname, lgpass).unwrap();
-    mw_api
-}
-
 fn main() {
-    let mut mw_api = get_mw_api("bot.ini");
+    let mut mw_api = SourceMDbot::get_mw_api("bot.ini");
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
