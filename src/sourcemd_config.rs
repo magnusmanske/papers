@@ -132,8 +132,8 @@ impl SourceMD {
             ),
         )
         .ok()?;
-        self.update_batch_stats(batch_id, pool)?;
-        self.deactivate_batch_run(batch_id)
+        self.update_batch_stats(batch_id, pool)
+        //self.deactivate_batch_run(batch_id)
     }
 
     pub fn get_next_command(&mut self, batch_id: i64) -> Option<SourceMDcommand> {
