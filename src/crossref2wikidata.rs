@@ -36,8 +36,6 @@ impl Crossref2Wikidata {
         publication_id: &String,
         ret: &mut Vec<GenericWorkIdentifier>,
     ) {
-        //let my_prop = GenericWorkType::Property(self.publication_property().unwrap());
-
         let work = match self.get_cached_publication_from_id(&publication_id) {
             Some(w) => w,
             None => return,
@@ -159,10 +157,10 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
                             Some(year) => {
                                 let month: Option<u8> = match dp.len() {
                                     1 => None,
-                                    _ => Some(dp[1].as_u64().unwrap() as u8),
+                                    _ => dp[1].as_u64().map(|x| x as u8),
                                 };
                                 let day: Option<u8> = match dp.len() {
-                                    3 => Some(dp[2].as_u64().unwrap() as u8),
+                                    3 => dp[2].as_u64().map(|x| x as u8),
                                     _ => None,
                                 };
                                 let statement = self.get_wb_time_from_partial(

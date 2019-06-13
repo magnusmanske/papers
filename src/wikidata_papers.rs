@@ -86,26 +86,29 @@ impl WikidataPapersCache {
     /// Loads all ISSNs from Wikidata via SPARQL
     fn init_issn_cache(&mut self, mw_api: &mediawiki::api::Api) {
         match mw_api.sparql_query("SELECT ?q ?issn { ?q wdt:P236 ?issn }") {
-            Ok(sparql_result) => {
-                for b in sparql_result["results"]["bindings"].as_array().unwrap() {
-                    match b["q"]["value"].as_str() {
-                        Some(entity_url) => {
-                            let q = mw_api.extract_entity_from_uri(entity_url).unwrap();
-                            match b["issn"]["value"].as_str() {
-                                Some(issn) => {
-                                    if self.issn2q.contains_key(issn) {
-                                        self.issn2q.insert(issn.to_string(), "".to_string());
-                                    } else {
-                                        self.issn2q.insert(issn.to_string(), q);
+            Ok(sparql_result) => match sparql_result["results"]["bindings"].as_array() {
+                Some(bindings) => {
+                    for b in bindings {
+                        match b["q"]["value"].as_str() {
+                            Some(entity_url) => match mw_api.extract_entity_from_uri(entity_url) {
+                                Ok(q) => match b["issn"]["value"].as_str() {
+                                    Some(issn) => {
+                                        if self.issn2q.contains_key(issn) {
+                                            self.issn2q.insert(issn.to_string(), "".to_string());
+                                        } else {
+                                            self.issn2q.insert(issn.to_string(), q);
+                                        }
                                     }
-                                }
-                                None => {}
-                            }
+                                    None => {}
+                                },
+                                Err(_) => {}
+                            },
+                            None => {}
                         }
-                        None => {}
                     }
                 }
-            }
+                None => {}
+            },
             _ => {}
         }
         //println!("ISSN cache size: {}", self.issn2q.len());
@@ -316,7 +319,7 @@ impl WikidataPapers {
         let original_item: wikibase::Entity;
         match items.get(0) {
             Some(q) => {
-                item = entities.load_entity(&mw_api, q.clone()).unwrap().to_owned();
+                item = entities.load_entity(&mw_api, q.clone()).ok()?.to_owned();
                 original_item = item.clone();
             }
             None => {
@@ -352,7 +355,7 @@ impl WikidataPapers {
                 }
             }
         }
-        let new_json = diff.apply_diff(mw_api, &diff).unwrap();
+        let new_json = diff.apply_diff(mw_api, &diff).ok()?;
         let q = EntityDiff::get_entity_id(&new_json)?;
         Some(EditResult {
             q: q.to_string(),

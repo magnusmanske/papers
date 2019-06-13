@@ -47,7 +47,10 @@ impl Semanticscholar2Wikidata {
         publication_id: &String,
         ret: &mut Vec<GenericWorkIdentifier>,
     ) {
-        let my_prop = GenericWorkType::Property(self.publication_property().unwrap());
+        let my_prop = match self.publication_property() {
+            Some(p) => GenericWorkType::Property(p),
+            None => return,
+        };
 
         let work = match self.get_cached_publication_from_id(&publication_id) {
             Some(w) => w,
@@ -180,6 +183,11 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
             None => return ret,
         };
 
+        let author_property = match self.author_property() {
+            Some(p) => p,
+            None => return ret,
+        };
+
         for num in 0..work.authors.len() {
             let author = &work.authors[num];
             let mut entry = GenericAuthorInfo {
@@ -193,7 +201,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
                 Some(id) => {
                     entry
                         .prop2id
-                        .insert(self.author_property().unwrap(), id.to_string());
+                        .insert(author_property.to_owned(), id.to_string());
                 }
                 None => {}
             }

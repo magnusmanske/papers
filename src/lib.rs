@@ -29,11 +29,13 @@ pub trait WikidataInteraction {
         .into_iter()
         .map(|(x, y)| (x.to_string(), y.to_string()))
         .collect();
-        let res = mw_api.get_query_api_json(&params).unwrap();
+        let res = mw_api
+            .get_query_api_json(&params)
+            .map_err(|e| format!("{}", e))?;
         match res["query"]["search"].as_array() {
             Some(items) => Ok(items
                 .iter()
-                .map(|item| item["title"].as_str().unwrap().to_string())
+                .filter_map(|item| item["title"].as_str().map(|s| s.to_string()))
                 .collect()),
             None => Ok(vec![]),
         }
@@ -58,7 +60,7 @@ pub trait WikidataInteraction {
         if diff.is_empty() {
             return None;
         }
-        let new_json = diff.apply_diff(mw_api, &diff).unwrap();
+        let new_json = diff.apply_diff(mw_api, &diff).ok()?;
         EntityDiff::get_entity_id(&new_json)
     }
 }
