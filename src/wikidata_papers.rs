@@ -326,7 +326,7 @@ impl WikidataPapers {
                 original_item = Entity::new_empty_item();
                 item = Entity::new_empty_item();
                 item.add_claim(Statement::new_normal(
-                    Snak::new_item("P31", "Q591041"),
+                    Snak::new_item("P31", "Q13442814"),
                     vec![],
                     vec![],
                 ));
