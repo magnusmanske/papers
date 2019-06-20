@@ -369,24 +369,34 @@ impl WikidataPapers {
         original_ids: &Vec<GenericWorkIdentifier>,
     ) -> Vec<GenericWorkIdentifier> {
         let mut ids: HashSet<GenericWorkIdentifier> = HashSet::new();
-        for id in original_ids {
-            ids.insert(id.to_owned());
-        }
+        original_ids
+            .iter()
+            .filter(|id| id.is_legit())
+            .for_each(|id| {
+                ids.insert(id.to_owned());
+            });
         loop {
             let last_id_size = ids.len();
             for adapter_id in 0..self.adapters.len() {
                 let adapter = &mut self.adapters[adapter_id];
                 let vids: Vec<GenericWorkIdentifier> = ids.iter().map(|x| x.to_owned()).collect();
                 //println!("Adapter {}", adapter.name());
-                adapter.get_identifier_list(&vids).iter().for_each(|id| {
-                    ids.insert(id.clone());
-                });
+                adapter
+                    .get_identifier_list(&vids)
+                    .iter()
+                    .filter(|id| id.is_legit())
+                    .for_each(|id| {
+                        ids.insert(id.clone());
+                    });
             }
             if last_id_size == ids.len() {
                 break;
             }
         }
-        ids.iter().map(|x| x.to_owned()).collect()
+        ids.iter()
+            .filter(|id| id.is_legit())
+            .map(|x| x.to_owned())
+            .collect()
     }
 
     pub fn get_items_for_ids(

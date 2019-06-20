@@ -84,6 +84,10 @@ impl GenericWorkIdentifier {
             id: id.to_string(),
         };
     }
+
+    pub fn is_legit(&self) -> bool {
+        !self.id.is_empty() && self.id != "0"
+    }
 }
 
 pub mod crossref2wikidata;
