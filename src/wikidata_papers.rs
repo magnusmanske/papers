@@ -293,6 +293,9 @@ impl WikidataPapers {
         mw_api: &mut mediawiki::api::Api,
         ids: &Vec<GenericWorkIdentifier>,
     ) -> Option<EditResult> {
+        if ids.is_empty() {
+            return None;
+        }
         self.caches.init(&mw_api);
         let items = self.get_items_for_ids(&mw_api, &ids);
         self.create_or_update_item_from_items(mw_api, ids, &items)
