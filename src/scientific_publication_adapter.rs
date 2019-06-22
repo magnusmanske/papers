@@ -1,8 +1,3 @@
-extern crate crossref;
-extern crate lazy_static;
-extern crate reqwest;
-extern crate serde_json;
-
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::wikidata_papers::WikidataPapersCache;
 use crate::*;

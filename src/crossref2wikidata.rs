@@ -1,8 +1,3 @@
-extern crate chrono;
-extern crate config;
-extern crate mediawiki;
-extern crate serde_json;
-
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
 use chrono::prelude::*;

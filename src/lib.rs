@@ -5,6 +5,7 @@ extern crate serde_json;
 #[macro_use]
 extern crate lazy_static;
 
+use mediawiki;
 use std::collections::HashMap;
 use wikibase::entity_diff::*;
 use wikibase::*;

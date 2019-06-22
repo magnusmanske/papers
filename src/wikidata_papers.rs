@@ -1,10 +1,3 @@
-extern crate config;
-extern crate lazy_static;
-extern crate mediawiki;
-extern crate regex;
-extern crate serde_json;
-extern crate wikibase;
-
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
@@ -322,7 +315,7 @@ impl WikidataPapers {
         let original_item: wikibase::Entity;
         match items.get(0) {
             Some(q) => {
-                item = entities.load_entity(&mw_api, q.clone()).ok()?.to_owned();
+                item = entities.load_entity(mw_api, q.clone()).ok()?.to_owned();
                 original_item = item.clone();
             }
             None => {
