@@ -14,14 +14,14 @@ include = [
 ]
 
 [dependencies]
-multimap = "0.4.0"
-serde_json = "1.0.39"
+multimap = "0.5.0"
+serde_json = "1"
 mysql = { version="16.0.2" , features = ["ssl"] }
-reqwest = "0.9.11"
+reqwest = "0.9.18"
 config = "0.9.2"
 regex = "1"
 lazy_static = "1"
-chrono = "0.4.6"
+chrono = "0.4.7"
 
 crossref = "0.2.1"
 #crossref = { git = "https://github.com/MattsSe/crossref-rs" }
@@ -34,7 +34,7 @@ pubmed="0.1"
 #pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
 #pubmed = { path='../pubmed' }
 
-mediawiki = "0.1.15"
+mediawiki = "0.1.16"
 #mediawiki = { git = "https://github.com/magnusmanske/mediawiki_rust" }
 
 wikibase = { git="https://gitlab.com/tobias47n9e/wikibase_rs"}
