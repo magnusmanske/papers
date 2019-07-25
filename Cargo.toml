@@ -36,5 +36,6 @@ pubmed="0.1"
 mediawiki = "0.1.16"
 #mediawiki = { git = "https://github.com/magnusmanske/mediawiki_rust" }
 
+#wikibase = { path='../wikibase_rs' }
 wikibase = { git="https://gitlab.com/tobias47n9e/wikibase_rs"}
 #wikibase = "0.3.7"

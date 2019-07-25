@@ -341,7 +341,7 @@ impl WikidataPapers {
         let mut diff = EntityDiff::new(&original_item, &item, &params);
         if diff.is_empty() {
             diff.set_edit_summary(self.edit_summary.to_owned());
-            match original_item.id() {
+            match original_item.id().as_str() {
                 "" => return None,
                 id => {
                     return Some(EditResult {
