@@ -1,5 +1,5 @@
 use crate::generic_author_info::GenericAuthorInfo;
-use crate::wikidata_papers::WikidataStringCache;
+use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -175,7 +175,7 @@ pub trait ScientificPublicationAdapter {
         &self,
         publication_id: &String,
         item: &mut Entity,
-        cache: Arc<Mutex<wikidata_papers::WikidataStringCache>>,
+        cache: Arc<Mutex<WikidataStringCache>>,
     ) {
         if item.has_claims_with_property("P1433") {
             return;

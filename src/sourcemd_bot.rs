@@ -5,7 +5,7 @@ use crate::semanticscholar2wikidata::Semanticscholar2Wikidata;
 use crate::sourcemd_command::SourceMDcommand;
 use crate::sourcemd_config::SourceMD;
 use crate::wikidata_papers::WikidataPapers;
-use crate::wikidata_papers::WikidataStringCache;
+use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
 use config::{Config, File};
 use regex::Regex;
@@ -31,7 +31,6 @@ impl SourceMDbot {
             mw_api: SourceMDbot::get_mw_api("bot.ini"),
             cache: cache,
         };
-        ret.cache.lock().unwrap().set_api(&ret.mw_api);
         ret.start()?;
         Ok(ret)
     }

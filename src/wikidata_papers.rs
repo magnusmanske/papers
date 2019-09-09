@@ -1,5 +1,6 @@
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
+use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
 use mediawiki::api::Api;
 use std::collections::HashMap;
@@ -10,77 +11,6 @@ use std::sync::Mutex;
 pub struct EditResult {
     pub q: String,
     pub edited: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct WikidataStringCache {
-    cache: HashMap<String, HashMap<String, Option<String>>>,
-    mw_api: Option<Api>,
-}
-
-impl WikidataInteraction for WikidataStringCache {}
-
-impl WikidataStringCache {
-    pub fn new() -> Self {
-        Self {
-            cache: HashMap::new(),
-            mw_api: None,
-        }
-    }
-
-    /// Creates a new cache for a specific property
-    fn ensure_property(&mut self, property: &str) {
-        if !self.cache.contains_key(property) {
-            self.cache.insert(property.to_string(), HashMap::new());
-        }
-    }
-
-    /// Searches for items with a specific property/value
-    /// Stores result in cache, and returns it
-    /// Stores/returns None if no result found
-    /// Stores/returns the first result, if multiple found
-    fn search(&mut self, property: &str, value: &String) -> Option<String> {
-        let mw_api = match &self.mw_api {
-            Some(x) => x,
-            None => panic!("no mw_api set in WikidataStringCache".to_string()),
-        };
-        let ret =
-            match self.search_wikibase(&format!("haswbstatement:{}={}", property, value), mw_api) {
-                Ok(items) => match items.len() {
-                    0 => None,
-                    _ => Some(items[0].to_string()), // Picking first one, if several
-                },
-                Err(_) => None,
-            };
-        self.cache
-            .get_mut(property)
-            .unwrap()
-            .insert(value.to_string(), ret.to_owned());
-        ret
-    }
-
-    /// Gets an item ID for the property/value
-    /// Uses search to find it if it's not in the cache
-    pub fn get(&mut self, property: &str, value: &String) -> Option<String> {
-        self.ensure_property(property);
-        match self.cache.get_mut(property) {
-            Some(data) => match data.get(value) {
-                Some(ret) => ret.to_owned(),
-                None => self.search(property, value),
-            },
-            None => None, // This can not happen
-        }
-    }
-
-    /// Convenience wrapper
-    pub fn issn2q(&mut self, issn: &String) -> Option<String> {
-        self.get("P236", issn)
-    }
-
-    /// Sets the MediaWiki API
-    pub fn set_api(&mut self, mw_api: &Api) {
-        self.mw_api = Some(mw_api.clone());
-    }
 }
 
 pub struct WikidataPapers {

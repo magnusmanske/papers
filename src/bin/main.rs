@@ -7,6 +7,7 @@ extern crate regex;
 //#[macro_use]
 extern crate serde_json;
 
+use crate::wikidata_string_cache::WikidataStringCache;
 use mediawiki::api::Api;
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::orcid2wikidata::Orcid2Wikidata;
@@ -14,7 +15,7 @@ use papers::pubmed2wikidata::Pubmed2Wikidata;
 use papers::semanticscholar2wikidata::Semanticscholar2Wikidata;
 use papers::sourcemd_bot::SourceMDbot;
 use papers::sourcemd_config::SourceMD;
-use papers::wikidata_papers::{WikidataPapers, WikidataStringCache};
+use papers::wikidata_papers::WikidataPapers;
 use papers::*;
 use regex::Regex;
 use std::env;
@@ -47,9 +48,8 @@ fn paper_from_id(id: &String, mut mw_api: &mut Api) {
         static ref RE_PMCID: Regex = Regex::new(r#"^PMCID(\d+)$"#).unwrap();
     }
 
-    let cache = Arc::new(Mutex::new(WikidataStringCache::new()));
     let api = Api::new("https://www.wikidata.org/w/api.php").unwrap();
-    cache.lock().unwrap().set_api(&api);
+    let cache = Arc::new(Mutex::new(WikidataStringCache::new(&api)));
 
     let mut wdp = WikidataPapers::new(cache.clone());
     wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
@@ -151,9 +151,8 @@ fn run_bot(config_arc: Arc<Mutex<SourceMD>>, cache: Arc<Mutex<WikidataStringCach
 }
 fn command_bot() {
     let smd = Arc::new(Mutex::new(SourceMD::new()));
-    let cache = Arc::new(Mutex::new(WikidataStringCache::new()));
     let api = Api::new("https://www.wikidata.org/w/api.php").unwrap();
-    cache.lock().unwrap().set_api(&api);
+    let cache = Arc::new(Mutex::new(WikidataStringCache::new(&api)));
     loop {
         //println!("BOT!");
         run_bot(smd.clone(), cache.clone());

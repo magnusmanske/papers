@@ -101,3 +101,4 @@ pub mod sourcemd_bot;
 pub mod sourcemd_command;
 pub mod sourcemd_config;
 pub mod wikidata_papers;
+pub mod wikidata_string_cache;
