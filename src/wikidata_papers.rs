@@ -1,116 +1,91 @@
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
+use mediawiki::api::Api;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 pub struct EditResult {
     pub q: String,
     pub edited: bool,
 }
 
-pub struct WikidataPapersCache {
-    issn2q: HashMap<String, String>,
-    is_initialized: bool,
-    mw_api: Option<mediawiki::api::Api>,
+#[derive(Debug, Clone)]
+pub struct WikidataStringCache {
+    cache: HashMap<String, HashMap<String, Option<String>>>,
+    mw_api: Option<Api>,
 }
 
-impl WikidataInteraction for WikidataPapersCache {}
+impl WikidataInteraction for WikidataStringCache {}
 
-impl WikidataPapersCache {
+impl WikidataStringCache {
     pub fn new() -> Self {
         Self {
-            issn2q: HashMap::new(),
-            is_initialized: false,
+            cache: HashMap::new(),
             mw_api: None,
         }
     }
-    pub fn issn2q(&mut self, issn: &String) -> Option<String> {
-        match self.issn2q.get(issn) {
-            Some(q) => {
-                if q.is_empty() {
-                    None
-                } else {
-                    Some(q.to_string())
-                }
-            }
-            None => match self.search_issn2q(issn) {
-                Some(q) => {
-                    self.issn2q.insert(issn.to_string(), q.clone());
-                    Some(q)
-                }
-                None => None,
-            },
+
+    /// Creates a new cache for a specific property
+    fn ensure_property(&mut self, property: &str) {
+        if !self.cache.contains_key(property) {
+            self.cache.insert(property.to_string(), HashMap::new());
         }
     }
 
-    fn search_issn2q(&mut self, issn: &String) -> Option<String> {
+    /// Searches for items with a specific property/value
+    /// Stores result in cache, and returns it
+    /// Stores/returns None if no result found
+    /// Stores/returns the first result, if multiple found
+    fn search(&mut self, property: &str, value: &String) -> Option<String> {
         let mw_api = match &self.mw_api {
             Some(x) => x,
-            None => panic!("no mw_api set in WikidataPapersCache".to_string()),
+            None => panic!("no mw_api set in WikidataStringCache".to_string()),
         };
-        match self.search_wikibase(&("haswbstatement:P236=".to_string() + issn), mw_api) {
-            Ok(items) => match items.len() {
-                1 => Some(items[0].to_string()),
-                _ => None,
+        let ret =
+            match self.search_wikibase(&format!("haswbstatement:{}={}", property, value), mw_api) {
+                Ok(items) => match items.len() {
+                    0 => None,
+                    _ => Some(items[0].to_string()), // Picking first one, if several
+                },
+                Err(_) => None,
+            };
+        self.cache
+            .get_mut(property)
+            .unwrap()
+            .insert(value.to_string(), ret.to_owned());
+        ret
+    }
+
+    /// Gets an item ID for the property/value
+    /// Uses search to find it if it's not in the cache
+    pub fn get(&mut self, property: &str, value: &String) -> Option<String> {
+        self.ensure_property(property);
+        match self.cache.get_mut(property) {
+            Some(data) => match data.get(value) {
+                Some(ret) => ret.to_owned(),
+                None => self.search(property, value),
             },
-            Err(e) => {
-                println!("ERROR:{}", e);
-                None
-            }
+            None => None, // This can not happen
         }
     }
 
-    pub fn init(&mut self, mw_api: &mediawiki::api::Api) {
-        if self.is_initialized {
-            return;
-        }
+    /// Convenience wrapper
+    pub fn issn2q(&mut self, issn: &String) -> Option<String> {
+        self.get("P236", issn)
+    }
 
+    /// Sets the MediaWiki API
+    pub fn set_api(&mut self, mw_api: &Api) {
         self.mw_api = Some(mw_api.clone());
-
-        // DEACTIVATE FOR TESTING
-        if false {
-            self.init_issn_cache(&mw_api);
-        }
-
-        self.is_initialized = true;
-    }
-
-    /// Loads all ISSNs from Wikidata via SPARQL
-    fn init_issn_cache(&mut self, mw_api: &mediawiki::api::Api) {
-        match mw_api.sparql_query("SELECT ?q ?issn { ?q wdt:P236 ?issn }") {
-            Ok(sparql_result) => match sparql_result["results"]["bindings"].as_array() {
-                Some(bindings) => {
-                    for b in bindings {
-                        match b["q"]["value"].as_str() {
-                            Some(entity_url) => match mw_api.extract_entity_from_uri(entity_url) {
-                                Ok(q) => match b["issn"]["value"].as_str() {
-                                    Some(issn) => {
-                                        if self.issn2q.contains_key(issn) {
-                                            self.issn2q.insert(issn.to_string(), "".to_string());
-                                        } else {
-                                            self.issn2q.insert(issn.to_string(), q);
-                                        }
-                                    }
-                                    None => {}
-                                },
-                                Err(_) => {}
-                            },
-                            None => {}
-                        }
-                    }
-                }
-                None => {}
-            },
-            _ => {}
-        }
-        //println!("ISSN cache size: {}", self.issn2q.len());
     }
 }
 
 pub struct WikidataPapers {
-    adapters: Vec<Box<ScientificPublicationAdapter>>,
-    caches: WikidataPapersCache,
+    adapters: Vec<Box<dyn ScientificPublicationAdapter>>,
+    cache: Arc<Mutex<WikidataStringCache>>,
     edit_summary: Option<String>,
     //id_cache: HashMap<String, String>,
 }
@@ -118,20 +93,20 @@ pub struct WikidataPapers {
 impl WikidataInteraction for WikidataPapers {}
 
 impl WikidataPapers {
-    pub fn new() -> WikidataPapers {
+    pub fn new(cache: Arc<Mutex<WikidataStringCache>>) -> WikidataPapers {
         WikidataPapers {
             adapters: vec![],
-            caches: WikidataPapersCache::new(),
+            cache: cache,
             edit_summary: None,
             //id_cache: HashMap::new(),
         }
     }
 
-    pub fn adapters_mut(&mut self) -> &mut Vec<Box<ScientificPublicationAdapter>> {
+    pub fn adapters_mut(&mut self) -> &mut Vec<Box<dyn ScientificPublicationAdapter>> {
         &mut self.adapters
     }
 
-    pub fn add_adapter(&mut self, adapter_box: Box<ScientificPublicationAdapter>) {
+    pub fn add_adapter(&mut self, adapter_box: Box<dyn ScientificPublicationAdapter>) {
         self.adapters.push(adapter_box);
     }
 
@@ -201,7 +176,7 @@ impl WikidataPapers {
         &mut self,
         mut item: &mut Entity,
         adapter2work_id: &mut HashMap<usize, String>,
-        mw_api: &mut mediawiki::api::Api,
+        mw_api: &mut Api,
     ) {
         let mut authors: Vec<GenericAuthorInfo> = vec![];
         for adapter_id in 0..self.adapters.len() {
@@ -216,7 +191,7 @@ impl WikidataPapers {
             adapter.update_statements_for_publication_id_default(
                 &publication_id,
                 &mut item,
-                &mut self.caches,
+                self.cache.clone(),
             );
             adapter.update_statements_for_publication_id(&publication_id, &mut item);
 
@@ -235,11 +210,7 @@ impl WikidataPapers {
         self.create_or_update_author_statements(&mut item, &authors);
     }
 
-    fn update_author_items(
-        &self,
-        authors: &Vec<GenericAuthorInfo>,
-        mw_api: &mut mediawiki::api::Api,
-    ) {
+    fn update_author_items(&self, authors: &Vec<GenericAuthorInfo>, mw_api: &mut Api) {
         let mut qs: Vec<String> = vec![];
         for author in authors {
             let q = match &author.wikidata_item {
@@ -283,30 +254,28 @@ impl WikidataPapers {
 
     pub fn create_or_update_item_from_ids(
         &mut self,
-        mw_api: &mut mediawiki::api::Api,
+        mw_api: &mut Api,
         ids: &Vec<GenericWorkIdentifier>,
     ) -> Option<EditResult> {
         if ids.is_empty() {
             return None;
         }
-        self.caches.init(&mw_api);
         let items = self.get_items_for_ids(&mw_api, &ids);
         self.create_or_update_item_from_items(mw_api, ids, &items)
     }
 
     pub fn create_or_update_item_from_q(
         &mut self,
-        mw_api: &mut mediawiki::api::Api,
+        mw_api: &mut Api,
         q: &String,
     ) -> Option<EditResult> {
-        self.caches.init(&mw_api);
         let items = vec![q.to_owned()];
         self.create_or_update_item_from_items(mw_api, &vec![], &items)
     }
 
     fn create_or_update_item_from_items(
         &mut self,
-        mw_api: &mut mediawiki::api::Api,
+        mw_api: &mut Api,
         ids: &Vec<GenericWorkIdentifier>,
         items: &Vec<String>,
     ) -> Option<EditResult> {
@@ -395,11 +364,7 @@ impl WikidataPapers {
             .collect()
     }
 
-    pub fn get_items_for_ids(
-        &self,
-        mw_api: &mediawiki::api::Api,
-        ids: &Vec<GenericWorkIdentifier>,
-    ) -> Vec<String> {
+    pub fn get_items_for_ids(&self, mw_api: &Api, ids: &Vec<GenericWorkIdentifier>) -> Vec<String> {
         let mut parts: Vec<String> = vec![];
         for id in ids {
             match &id.work_type {

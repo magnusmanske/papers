@@ -22,14 +22,14 @@ regex = "1"
 lazy_static = "1"
 chrono = "0.4.7"
 
-crossref = "0.2.1"
+crossref = "*"
 #crossref = { git = "https://github.com/MattsSe/crossref-rs" }
 
-semanticscholar = "0.1"
+semanticscholar = "*"
 
-orcid="0.1"
+orcid="*"
 
-pubmed="0.1"
+pubmed="*"
 #pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
 #pubmed = { path='../pubmed' }
 

@@ -5,6 +5,7 @@ use crate::semanticscholar2wikidata::Semanticscholar2Wikidata;
 use crate::sourcemd_command::SourceMDcommand;
 use crate::sourcemd_config::SourceMD;
 use crate::wikidata_papers::WikidataPapers;
+use crate::wikidata_papers::WikidataStringCache;
 use crate::*;
 use config::{Config, File};
 use regex::Regex;
@@ -14,16 +15,23 @@ use std::sync::{Arc, Mutex};
 pub struct SourceMDbot {
     mw_api: mediawiki::api::Api,
     config: Arc<Mutex<SourceMD>>,
+    cache: Arc<Mutex<WikidataStringCache>>,
     batch_id: i64,
 }
 
 impl SourceMDbot {
-    pub fn new(config: Arc<Mutex<SourceMD>>, batch_id: i64) -> Result<Self, String> {
+    pub fn new(
+        config: Arc<Mutex<SourceMD>>,
+        cache: Arc<Mutex<WikidataStringCache>>,
+        batch_id: i64,
+    ) -> Result<Self, String> {
         let ret = Self {
             config: config,
             batch_id: batch_id,
             mw_api: SourceMDbot::get_mw_api("bot.ini"),
+            cache: cache,
         };
+        ret.cache.lock().unwrap().set_api(&ret.mw_api);
         ret.start()?;
         Ok(ret)
     }
@@ -201,7 +209,7 @@ impl SourceMDbot {
     }
 
     fn new_wdp(&self, command: &SourceMDcommand) -> WikidataPapers {
-        let mut wdp = WikidataPapers::new();
+        let mut wdp = WikidataPapers::new(self.cache.clone());
         wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
         wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
         wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));

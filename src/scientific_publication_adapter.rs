@@ -1,7 +1,9 @@
 use crate::generic_author_info::GenericAuthorInfo;
-use crate::wikidata_papers::WikidataPapersCache;
+use crate::wikidata_papers::WikidataStringCache;
 use crate::*;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 pub trait ScientificPublicationAdapter {
     // You will need to implement these yourself
@@ -93,11 +95,11 @@ pub trait ScientificPublicationAdapter {
         &self,
         publication_id: &String,
         item: &mut Entity,
-        caches: &mut WikidataPapersCache,
+        cache: Arc<Mutex<WikidataStringCache>>,
     ) {
         self.update_work_item_with_title(publication_id, item);
         self.update_work_item_with_property(publication_id, item);
-        self.update_work_item_with_journal(publication_id, item, caches);
+        self.update_work_item_with_journal(publication_id, item, cache);
     }
 
     fn titles_are_equal(&self, t1: &String, t2: &String) -> bool {
@@ -173,13 +175,13 @@ pub trait ScientificPublicationAdapter {
         &self,
         publication_id: &String,
         item: &mut Entity,
-        caches: &mut wikidata_papers::WikidataPapersCache,
+        cache: Arc<Mutex<wikidata_papers::WikidataStringCache>>,
     ) {
         if item.has_claims_with_property("P1433") {
             return;
         }
         match self.get_work_issn(publication_id) {
-            Some(issn) => match caches.issn2q(&issn) {
+            Some(issn) => match cache.lock().unwrap().issn2q(&issn) {
                 Some(q) => item.add_claim(Statement::new_normal(
                     Snak::new_item("P1433", &q),
                     vec![],
