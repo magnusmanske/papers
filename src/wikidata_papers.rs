@@ -5,8 +5,7 @@ use crate::*;
 use mediawiki::api::Api;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub struct EditResult {
     pub q: String,
@@ -132,7 +131,7 @@ impl WikidataPapers {
 
         let authors: Vec<GenericAuthorInfo> = authors
             .iter()
-            .map(|author| author.get_or_create_author_item(mw_api))
+            .map(|author| author.get_or_create_author_item(mw_api, self.cache.clone()))
             .collect();
 
         self.update_author_items(&authors, mw_api);

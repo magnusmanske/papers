@@ -1,3 +1,5 @@
+use crate::wikidata_string_cache::WikidataStringCache;
+use std::sync::{Arc, Mutex};
 extern crate crossref;
 extern crate lazy_static;
 extern crate reqwest;
@@ -119,7 +121,11 @@ impl GenericAuthorInfo {
         }
     }
 
-    pub fn get_or_create_author_item(&self, mw_api: &mut mediawiki::api::Api) -> GenericAuthorInfo {
+    pub fn get_or_create_author_item(
+        &self,
+        mw_api: &mut mediawiki::api::Api,
+        cache: Arc<Mutex<WikidataStringCache>>,
+    ) -> GenericAuthorInfo {
         let mut ret = self.clone();
         // Already has item?
         if ret.wikidata_item.is_some() {
@@ -132,10 +138,12 @@ impl GenericAuthorInfo {
 
         // Use search
         for (prop, id) in &ret.prop2id {
-            let items = self.search_external_id(prop, id, mw_api);
-            if !items.is_empty() {
-                ret.wikidata_item = Some(items[0].clone());
-                return ret;
+            match cache.lock().unwrap().get(prop, id) {
+                Some(q) => {
+                    ret.wikidata_item = Some(q);
+                    return ret;
+                }
+                None => {}
             }
         }
 
@@ -145,6 +153,12 @@ impl GenericAuthorInfo {
 
         // Create new item and use its ID
         ret.wikidata_item = self.create_item(&item, mw_api);
+        for (prop, id) in &ret.prop2id {
+            cache
+                .lock()
+                .unwrap()
+                .set(prop, id, ret.wikidata_item.clone());
+        }
         ret
     }
 
