@@ -16,7 +16,6 @@ pub struct WikidataPapers {
     adapters: Vec<Box<dyn ScientificPublicationAdapter>>,
     cache: Arc<Mutex<WikidataStringCache>>,
     edit_summary: Option<String>,
-    //id_cache: HashMap<String, String>,
 }
 
 impl WikidataInteraction for WikidataPapers {}
@@ -27,7 +26,6 @@ impl WikidataPapers {
             adapters: vec![],
             cache: cache,
             edit_summary: None,
-            //id_cache: HashMap::new(),
         }
     }
 

@@ -6,6 +6,7 @@ extern crate reqwest;
 extern crate serde_json;
 
 use crate::*;
+use mediawiki::api::Api;
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -21,6 +22,16 @@ pub struct GenericAuthorInfo {
 impl WikidataInteraction for GenericAuthorInfo {}
 
 impl GenericAuthorInfo {
+    pub fn new() -> Self {
+        Self {
+            name: None,
+            prop2id: HashMap::new(),
+            wikidata_item: None,
+            list_number: None,
+            alternative_names: vec![],
+        }
+    }
+
     pub fn create_author_statement_in_paper_item(&self, item: &mut Entity) {
         let name = match &self.name {
             Some(s) => s.to_string(),
@@ -123,7 +134,7 @@ impl GenericAuthorInfo {
 
     pub fn get_or_create_author_item(
         &self,
-        mw_api: &mut mediawiki::api::Api,
+        mw_api: &mut Api,
         cache: Arc<Mutex<WikidataStringCache>>,
     ) -> GenericAuthorInfo {
         let mut ret = self.clone();
@@ -276,7 +287,7 @@ impl GenericAuthorInfo {
     pub fn update_author_item(
         &self,
         entities: &entity_container::EntityContainer,
-        mw_api: &mut mediawiki::api::Api,
+        mw_api: &mut Api,
     ) {
         let q = match &self.wikidata_item {
             Some(q) => q.to_string(),
@@ -302,4 +313,43 @@ impl GenericAuthorInfo {
         //EntityDiff::get_entity_id(&new_json);
         // TODO
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    //use mediawiki::api::Api;
+
+    #[test]
+    fn asciify_string() {
+        let ga = GenericAuthorInfo::new();
+        assert_eq!(
+            ga.asciify_string("äöüáàâéèñïçß"),
+            "aouaaaeenicss"
+        );
+    }
+
+    #[test]
+    fn author_names_match() {
+        let ga = GenericAuthorInfo::new();
+        assert_eq!(ga.author_names_match("Manske M", "Manske HM"), 1);
+        assert_eq!(ga.author_names_match("Manske M", "HM Manske"), 1);
+        assert_eq!(
+            ga.author_names_match("Heinrich M Manske", "manske heinrich"),
+            2
+        );
+        assert_eq!(
+            ga.author_names_match("Notmyname M Manske", "Heinrich M Manske"),
+            1
+        );
+    }
+
+    /*
+    fn create_author_statement_in_paper_item(&self, item: &mut Entity)
+    fn amend_author_item(&self, item: &mut Entity)
+    fn get_or_create_author_item(
+    fn merge_from(&mut self, author2: &GenericAuthorInfo)
+    fn compare(&self, author2: &GenericAuthorInfo) -> u16
+    fn update_author_item(
+    */
 }
