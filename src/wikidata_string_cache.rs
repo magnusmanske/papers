@@ -81,7 +81,7 @@ impl WikidataStringCache {
     }
 
     fn fix_key(&self, key: &String) -> SmallString {
-        let ret: SmallString = key.to_string().to_lowercase().into();
+        let ret: SmallString = key.to_string().trim().to_lowercase().into();
         ret
     }
 
@@ -134,4 +134,95 @@ impl WikidataStringCache {
         self.prune_property(property);
         ret
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mediawiki::api::Api;
+    use std::thread;
+
+    fn api() -> Api {
+        Api::new("https://www.wikidata.org/w/api.php").unwrap()
+    }
+
+    #[test]
+    fn wsv_new() {
+        assert_eq!(
+            WikidataStringValue::new(Some("foobar".to_string())).key(),
+            Some("foobar".to_string())
+        );
+    }
+
+    #[test]
+    fn wsv_timestamp() {
+        let mut wsv = WikidataStringValue::new(Some("foobar".to_string()));
+        let ts1 = wsv.timestamp();
+        thread::sleep(Duration::from_millis(100));
+        let _tmp = wsv.key();
+        let ts2 = wsv.timestamp();
+        assert_ne!(ts1, ts2);
+    }
+
+    #[test]
+    fn fix_key() {
+        let wsc = WikidataStringCache::new(&api());
+        assert_eq!(
+            wsc.fix_key(&" fOoBAr  ".to_string()),
+            "foobar".to_string().into()
+        );
+    }
+
+    #[test]
+    fn ensure_property() {
+        let mut wsc = WikidataStringCache::new(&api());
+        assert!(!wsc.cache.contains_key("P123"));
+        wsc.ensure_property("P123");
+        assert!(wsc.cache.contains_key("P123"));
+    }
+
+    #[test]
+    fn search() {
+        let mut wsc = WikidataStringCache::new(&api());
+        assert_eq!(
+            wsc.search("P698", &"16116339".to_string().into()),
+            Some("Q46664291".to_string())
+        );
+        assert_eq!(
+            wsc.search("P698", &"not_a_valid_id".to_string().into()),
+            None
+        );
+    }
+
+    #[test]
+    fn get_set() {
+        let mut wsc = WikidataStringCache::new(&api());
+        assert_eq!(
+            wsc.get("P698", &"16116339".to_string()),
+            Some("Q46664291".to_string())
+        );
+        assert_eq!(wsc.get("P698", &"not_a_valid_id".to_string()), None);
+        wsc.set("P698", &"16116339".to_string(), Some("foobar".to_string()));
+        assert_eq!(
+            wsc.get("P698", &"16116339".to_string()),
+            Some("foobar".to_string())
+        );
+        wsc.set("P698", &"16116339".to_string(), None);
+        assert_eq!(wsc.get("P698", &"16116339".to_string()), None);
+    }
+
+    #[test]
+    fn issn2q() {
+        let mut wsc = WikidataStringCache::new(&api());
+        assert_eq!(
+            wsc.issn2q(&"1351-5101".to_string()),
+            Some("Q15757256".to_string())
+        );
+        assert_eq!(wsc.issn2q(&"nope-di-dope".to_string()), None);
+    }
+
+    /*
+    TODO:
+    fn prune_property(&mut self, property: &str) {
+    */
 }
