@@ -1,14 +1,19 @@
-use crate::wikidata_string_cache::WikidataStringCache;
-use std::sync::{Arc, Mutex};
 extern crate crossref;
 extern crate lazy_static;
 extern crate reqwest;
 extern crate serde_json;
 
+use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
 use mediawiki::api::Api;
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+const SCORE_LIST_NUMBER: u16 = 30;
+const SCORE_NAME_MATCH: u16 = 50;
+const SCORE_PROP_MATCH: u16 = 90;
+const SCORE_ITEM_MATCH: u16 = 100;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GenericAuthorInfo {
@@ -51,7 +56,12 @@ impl GenericAuthorInfo {
                 }
                 Statement::new_normal(Snak::new_item("P50", &q), qualifiers, vec![])
             }
-            None => Statement::new_normal(Snak::new_string("P2093", &name), qualifiers, vec![]),
+            None => {
+                if name.is_empty() && qualifiers.is_empty() {
+                    return; // No addition
+                }
+                Statement::new_normal(Snak::new_string("P2093", &name), qualifiers, vec![])
+            }
         };
         item.add_claim(statement);
     }
@@ -242,7 +252,7 @@ impl GenericAuthorInfo {
         match (&self.wikidata_item, &author2.wikidata_item) {
             (Some(q1), Some(q2)) => {
                 if q1 == q2 {
-                    return 100; // This is it
+                    return SCORE_ITEM_MATCH; // This is it
                 } else {
                     return 0; // Different items
                 }
@@ -256,7 +266,7 @@ impl GenericAuthorInfo {
             match author2.prop2id.get(k) {
                 Some(v2) => {
                     if v == v2 {
-                        ret += 90;
+                        ret += SCORE_PROP_MATCH;
                     }
                 }
                 None => {}
@@ -266,7 +276,7 @@ impl GenericAuthorInfo {
         // Name match
         match (&self.name, &author2.name) {
             (Some(n1), Some(n2)) => {
-                ret += 50 * self.author_names_match(&n1.as_str(), &n2.as_str());
+                ret += SCORE_NAME_MATCH * self.author_names_match(&n1.as_str(), &n2.as_str());
             }
             _ => {}
         }
@@ -275,7 +285,7 @@ impl GenericAuthorInfo {
         match (&self.list_number, &author2.list_number) {
             (Some(n1), Some(n2)) => {
                 if n1 == n2 {
-                    ret += 30;
+                    ret += SCORE_LIST_NUMBER;
                 }
             }
             _ => {}
@@ -344,12 +354,94 @@ mod tests {
         );
     }
 
+    #[test]
+    fn compare_by_item() {
+        let mut ga1 = GenericAuthorInfo::new();
+        let mut ga2 = GenericAuthorInfo::new();
+        assert_eq!(ga1.compare(&ga2), 0);
+        ga1.wikidata_item = Some("Q1".to_string());
+        assert_eq!(ga1.compare(&ga2), 0);
+        ga2.wikidata_item = Some("Q1".to_string());
+        assert_eq!(ga1.compare(&ga2), SCORE_ITEM_MATCH);
+        ga1.wikidata_item = Some("Q2".to_string());
+        assert_eq!(ga1.compare(&ga2), 0);
+    }
+
+    #[test]
+    fn compare_by_props() {
+        let mut ga1 = GenericAuthorInfo::new();
+        let mut ga2 = GenericAuthorInfo::new();
+        assert_eq!(ga1.compare(&ga2), 0);
+        ga1.prop2id.insert("foo".to_string(), "bar".to_string());
+        assert_eq!(ga1.compare(&ga2), 0);
+        ga2.prop2id.insert("foo".to_string(), "bar".to_string());
+        assert_eq!(ga1.compare(&ga2), SCORE_PROP_MATCH);
+        ga1.prop2id.insert("foo2".to_string(), "bar2".to_string());
+        ga2.prop2id.insert("foo2".to_string(), "bar2".to_string());
+        assert_eq!(ga1.compare(&ga2), SCORE_PROP_MATCH * 2);
+    }
+
+    #[test]
+    fn compare_by_name() {
+        let mut ga1 = GenericAuthorInfo::new();
+        let mut ga2 = GenericAuthorInfo::new();
+        assert_eq!(ga1.compare(&ga2), 0);
+        ga1.name = Some("Heinrich M Manske".to_string());
+        assert_eq!(ga1.compare(&ga2), 0);
+        ga2.name = Some("Manske Heinrich M".to_string());
+        assert_eq!(ga1.compare(&ga2), SCORE_NAME_MATCH * 2);
+        ga1.name = Some("Manske HM".to_string());
+        assert_eq!(ga1.compare(&ga2), SCORE_NAME_MATCH);
+    }
+
+    #[test]
+    fn compare_by_list_number() {
+        let mut ga1 = GenericAuthorInfo::new();
+        let mut ga2 = GenericAuthorInfo::new();
+        assert_eq!(ga1.compare(&ga2), 0);
+        ga1.list_number = Some("123".to_string());
+        assert_eq!(ga1.compare(&ga2), 0);
+        ga2.list_number = Some("123".to_string());
+        assert_eq!(ga1.compare(&ga2), SCORE_LIST_NUMBER);
+        ga1.list_number = Some("456".to_string());
+        assert_eq!(ga1.compare(&ga2), 0);
+    }
+
+    #[test]
+    fn create_author_statement_in_paper_item() {
+        let mut item = Entity::new_empty_item();
+        let ga = GenericAuthorInfo::new();
+        ga.create_author_statement_in_paper_item(&mut item);
+        assert!(item.claims().is_empty());
+
+        let mut item = Entity::new_empty_item();
+        let mut ga = GenericAuthorInfo::new();
+        ga.name = Some("Magnus Manske".to_string());
+        ga.create_author_statement_in_paper_item(&mut item);
+        assert_eq!(item.claims().len(), 1);
+        assert_eq!(item.claims()[0].main_snak().property(), "P2093");
+        assert!(item.claims()[0].qualifiers().is_empty());
+
+        ga.list_number = Some("123".to_string());
+        let mut item = Entity::new_empty_item();
+        ga.create_author_statement_in_paper_item(&mut item);
+        assert_eq!(item.claims().len(), 1);
+        assert_eq!(item.claims()[0].qualifiers().len(), 1);
+
+        ga.wikidata_item = Some("Q12345".to_string());
+        let mut item = Entity::new_empty_item();
+        ga.create_author_statement_in_paper_item(&mut item);
+        assert_eq!(item.claims().len(), 1);
+        assert_eq!(item.claims()[0].main_snak().property(), "P50");
+        let qualifiers = item.claims()[0].qualifiers();
+        assert_eq!(qualifiers[0], Snak::new_string("P1545", "123"));
+        assert_eq!(qualifiers[1], Snak::new_string("P1932", "Magnus Manske"));
+    }
+
     /*
-    fn create_author_statement_in_paper_item(&self, item: &mut Entity)
     fn amend_author_item(&self, item: &mut Entity)
     fn get_or_create_author_item(
     fn merge_from(&mut self, author2: &GenericAuthorInfo)
-    fn compare(&self, author2: &GenericAuthorInfo) -> u16
     fn update_author_item(
     */
 }
