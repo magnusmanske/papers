@@ -89,3 +89,17 @@ pub mod sourcemd_command;
 pub mod sourcemd_config;
 pub mod wikidata_papers;
 pub mod wikidata_string_cache;
+
+#[cfg(test)]
+mod tests {
+    //use super::*;
+    //use mediawiki::api::Api;
+
+    /*
+    TODO:
+    fn search_wikibase(
+    fn create_item(&self, item: &Entity, mw_api: &mut mediawiki::api::Api) -> Option<String> {
+    pub fn new_prop(prop: &str, id: &str) -> Self {
+    pub fn is_legit(&self) -> bool {
+    */
+}

@@ -330,3 +330,29 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         ret
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //use super::*;
+    //use mediawiki::api::Api;
+
+    /*
+    TODO:
+    pub fn new() -> Self {
+    pub fn get_cached_publication_from_id(
+    fn get_author_name_string(&self, author: &Author) -> Option<String> {
+    fn publication_id_from_pubmed(&mut self, publication_id: &String) -> Option<String> {
+    fn publication_ids_from_doi(&mut self, doi: &String) -> Vec<String> {
+    fn add_identifiers_from_cached_publication(
+    fn name(&self) -> &str {
+    fn author_cache(&self) -> &HashMap<String, String> {
+    fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
+    fn publication_property(&self) -> Option<String> {
+    fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
+    fn get_work_issn(&self, publication_id: &String) -> Option<String> {
+    fn get_identifier_list(
+    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
+    fn do_cache_work(&mut self, publication_id: &String) -> Option<String> {
+    fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {
+    */
+}

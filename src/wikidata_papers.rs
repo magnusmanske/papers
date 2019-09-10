@@ -368,3 +368,30 @@ impl WikidataPapers {
         items
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //use super::*;
+    //use mediawiki::api::Api;
+
+    /*
+    TODO:
+    pub fn new(cache: Arc<Mutex<WikidataStringCache>>) -> WikidataPapers {
+    pub fn adapters_mut(&mut self) -> &mut Vec<Box<dyn ScientificPublicationAdapter>> {
+    pub fn add_adapter(&mut self, adapter_box: Box<dyn ScientificPublicationAdapter>) {
+    pub fn edit_summary(&self) -> &Option<String> {
+    pub fn set_edit_summary(&mut self, edit_summary: Option<String>) {
+    fn create_author_statements(&mut self, authors: &Vec<GenericAuthorInfo>, item: &mut Entity) {
+    fn update_author_statements(&self, authors: &Vec<GenericAuthorInfo>, item: &mut Entity) {
+    fn create_or_update_author_statements(
+    fn merge_authors(
+    pub fn update_item_from_adapters(
+    fn update_author_items(&self, authors: &Vec<GenericAuthorInfo>, mw_api: &mut Api) {
+    fn update_item_with_ids(&self, item: &mut wikibase::Entity, ids: &Vec<GenericWorkIdentifier>) {
+    pub fn create_or_update_item_from_ids(
+    pub fn create_or_update_item_from_q(
+    fn create_or_update_item_from_items(
+    pub fn update_from_paper_ids(
+    pub fn get_items_for_ids(&self, ids: &Vec<GenericWorkIdentifier>) -> Vec<String> {
+    */
+}

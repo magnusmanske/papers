@@ -309,3 +309,39 @@ pub trait ScientificPublicationAdapter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //use super::*;
+    //use mediawiki::api::Api;
+
+    /*
+    TODO:
+    fn name(&self) -> &str;
+    fn author_cache(&self) -> &HashMap<String, String>;
+    fn author_cache_mut(&mut self) -> &mut HashMap<String, String>;
+    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity);
+    fn get_author_list(&mut self, _publication_id: &String) -> Vec<GenericAuthorInfo> {
+    fn get_identifier_list(
+    fn author_property(&self) -> Option<String> {
+    fn publication_property(&self) -> Option<String> {
+    fn topic_property(&self) -> Option<String> {
+    fn get_work_issn(&self, _publication_id: &String) -> Option<String> {
+    fn get_work_titles(&self, _publication_id: &String) -> Vec<LocaleString> {
+    fn do_cache_work(&mut self, _publication_id: &String) -> Option<String> {
+    fn reference(&self) -> Vec<Reference> {
+    fn sanitize_author_name(&self, author_name: &String) -> String {
+    fn update_statements_for_publication_id_default(
+    fn titles_are_equal(&self, t1: &String, t2: &String) -> bool {
+    fn update_work_item_with_title(&self, publication_id: &String, item: &mut Entity) {
+    fn update_work_item_with_journal(
+    fn update_work_item_with_property(&self, publication_id: &String, item: &mut Entity) {
+    fn get_wb_time_from_partial(
+    fn get_external_identifier_from_item(&self, item: &Entity, property: &str) -> Option<String> {
+    fn set_author_cache_entry(&mut self, catalog_author_id: &String, q: &String) {
+    fn get_author_item_from_cache(&self, catalog_author_id: &String) -> Option<&String> {
+    fn author_cache_is_empty(&self) -> bool {
+    fn update_author_item(
+    */
+}

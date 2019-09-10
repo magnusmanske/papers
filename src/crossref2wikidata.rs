@@ -212,3 +212,26 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         // TODO authors
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //use super::*;
+    //use mediawiki::api::Api;
+
+    /*
+    TODO:
+    pub fn new() -> Self {
+    pub fn get_cached_publication_from_id(
+    fn add_identifiers_from_cached_publication(
+    fn should_add_string(&self, s: &String) -> bool {
+    fn name(&self) -> &str {
+    fn get_work_issn(&self, publication_id: &String) -> Option<String> {
+    fn author_cache(&self) -> &HashMap<String, String> {
+    fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
+    fn get_identifier_list(
+    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+    fn reference(&self) -> Vec<Reference> {
+    fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
+    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
+    */
+}

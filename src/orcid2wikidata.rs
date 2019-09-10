@@ -171,3 +171,25 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
         ret
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //use super::*;
+    //use mediawiki::api::Api;
+
+    /*
+    TODO:
+
+    pub fn new() -> Self {
+    pub fn new() -> Self {
+    pub fn get_cached_publication_from_id(&self, publication_id: &String) -> Option<&PseudoWork> {
+    pub fn get_or_load_author_data(&mut self, orcid_author_id: &String) -> Option<Author> {
+    fn name(&self) -> &str {
+    fn author_property(&self) -> Option<String> {
+    fn author_cache(&self) -> &HashMap<String, String> {
+    fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
+    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+    fn update_statements_for_publication_id(&self, publication_id: &String, _item: &mut Entity) {
+    fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {
+    */
+}

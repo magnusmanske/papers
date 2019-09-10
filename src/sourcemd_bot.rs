@@ -234,3 +234,22 @@ impl SourceMDbot {
         mw_api
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //use super::*;
+    //use mediawiki::api::Api;
+
+    /*
+    TODO:
+    pub fn new(
+    pub fn start(&self) -> Result<(), String> {
+    pub fn run(self: &mut Self) -> Result<bool, String> {
+    fn execute_command(self: &mut Self, command: &mut SourceMDcommand) -> Result<bool, String> {
+    fn process_paper(self: &mut Self, command: &mut SourceMDcommand) -> Result<bool, String> {
+    fn set_command_status(
+    fn get_next_command(&self) -> Result<Option<SourceMDcommand>, String> {
+    fn new_wdp(&self, command: &SourceMDcommand) -> WikidataPapers {
+    pub fn get_mw_api(ini_file: &str) -> mediawiki::api::Api {
+    */
+}

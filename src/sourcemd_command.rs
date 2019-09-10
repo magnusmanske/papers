@@ -42,3 +42,16 @@ impl SourceMDcommand {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //use super::*;
+    //use mediawiki::api::Api;
+
+    /*
+    TODO:
+    pub fn new_from_row(row: my::Row) -> Self {
+    fn rowvalue_as_i64(v: &my::Value) -> i64 {
+    fn rowvalue_as_string(v: &my::Value) -> String {
+    */
+}

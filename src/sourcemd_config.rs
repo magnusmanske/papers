@@ -267,3 +267,28 @@ impl SourceMD {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //use super::*;
+    //use mediawiki::api::Api;
+
+    /*
+    TODO:
+    pub fn new() -> Self {
+    pub fn restart_batch(&self, batch_id: i64) -> Option<()> {
+    pub fn set_batch_running(&mut self, batch_id: i64) {
+    pub fn number_of_bots_running(&self) -> usize {
+    pub fn timestamp(&self) -> String {
+    pub fn get_next_batch(&self) -> Option<i64> {
+    pub fn deactivate_batch_run(self: &mut Self, batch_id: i64) -> Option<()> {
+    pub fn set_batch_finished(&mut self, batch_id: i64) -> Option<()> {
+    pub fn check_batch_not_stopped(self: &mut Self, batch_id: i64) -> Result<(), String> {
+    fn set_batch_status(&mut self, status: &str, batch_id: i64) -> Option<()> {
+    pub fn get_next_command(&mut self, batch_id: i64) -> Option<SourceMDcommand> {
+    pub fn set_command_status(
+    fn update_batch_stats(&self, batch_id: i64, pool: &my::Pool) -> Option<()> {
+    fn init(&mut self) {
+    fn create_mysql_pool(&mut self) {
+    */
+}
