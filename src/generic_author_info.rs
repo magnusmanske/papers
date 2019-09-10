@@ -298,7 +298,7 @@ impl GenericAuthorInfo {
 
     pub fn update_author_item(
         &self,
-        entities: &entity_container::EntityContainer,
+        entities: &mut wikibase::entity_container::EntityContainer,
         mw_api: &mut Api,
     ) {
         let q = match &self.wikidata_item {
@@ -321,7 +321,8 @@ impl GenericAuthorInfo {
             return;
         }
         //println!("{}", diff.actions());
-        let _new_json = diff.apply_diff(mw_api, &diff).unwrap();
+        entities.apply_diff(mw_api, &diff);
+        //let _new_json = diff.apply_diff(mw_api, &diff).unwrap();
         //EntityDiff::get_entity_id(&new_json);
         // TODO
     }
