@@ -234,6 +234,10 @@ impl WikidataPapers {
         params.labels.add = EntityDiffParamState::All;
         params.aliases.add = EntityDiffParamState::All;
         params.claims.add = EntityDiffParamState::All;
+        params.references.list = vec![(
+            EntityDiffParamState::All,
+            EntityDiffParamState::except(&vec!["P813"]),
+        )];
         let mut diff = EntityDiff::new(&original_item, &item, &params);
         if diff.is_empty() {
             diff.set_edit_summary(self.edit_summary.to_owned());
@@ -247,6 +251,7 @@ impl WikidataPapers {
                 }
             }
         }
+
         let new_json = diff.apply_diff(mw_api, &diff).ok()?;
         let q = EntityDiff::get_entity_id(&new_json)?;
         Some(EditResult {

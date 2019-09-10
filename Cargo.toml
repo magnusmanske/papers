@@ -30,8 +30,8 @@ semanticscholar = "*"
 
 orcid="*"
 
-pubmed="*"
-#pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
+#pubmed="*"
+pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
 #pubmed = { path='../pubmed' }
 
 mediawiki = "0.1.16"
@@ -39,4 +39,4 @@ mediawiki = "0.1.16"
 
 #wikibase = { path='../wikibase_rs' }
 wikibase = { git="https://gitlab.com/tobias47n9e/wikibase_rs"}
-#wikibase = "0.3.7"
+#wikibase = "*"

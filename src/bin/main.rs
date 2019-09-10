@@ -102,6 +102,7 @@ fn paper_from_id(id: &String, mut mw_api: &mut Api) {
         println!("Can't find a valid ID in '{}'", &id);
         return;
     }
+    //println!("IDs: {:?}", &ids);
     ids = wdp.update_from_paper_ids(&ids);
 
     match wdp.create_or_update_item_from_ids(&mut mw_api, &ids) {

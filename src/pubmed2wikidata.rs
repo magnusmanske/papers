@@ -106,6 +106,29 @@ impl Pubmed2Wikidata {
             None => return,
         };
 
+        match &work.pubmed_data {
+            Some(pubmed_data) => match &pubmed_data.article_ids {
+                Some(article_ids) => {
+                    article_ids
+                        .ids
+                        .iter()
+                        .for_each(|id| match (&id.id_type, &id.id) {
+                            (Some(key), Some(id)) => match key.as_str() {
+                                "doi" => ret.push(GenericWorkIdentifier {
+                                    work_type: GenericWorkType::Property("P356".to_string()),
+                                    id: id.clone(),
+                                }),
+                                _ => {}
+                            },
+                            _ => {}
+                        });
+                }
+                None => {}
+            },
+            None => {}
+        }
+
+        // ???
         for elid in &article.e_location_ids {
             if !elid.valid {
                 continue;
