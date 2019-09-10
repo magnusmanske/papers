@@ -11,20 +11,20 @@ const MAX_CACHE_SIZE_PER_PROPERTY: usize = 100000;
 #[derive(Debug, Clone)]
 struct WikidataStringValue {
     timestamp: SystemTime,
-    value: Option<SmallString>, // "Qxxx", or none
+    key: Option<SmallString>, // "Qxxx", or none
 }
 
 impl WikidataStringValue {
-    pub fn new(value: Option<String>) -> Self {
+    pub fn new(key: Option<String>) -> Self {
         Self {
-            value: value.map(|v| v.into()),
+            key: key.map(|v| v.into()),
             timestamp: SystemTime::now(),
         }
     }
 
-    pub fn value(&mut self) -> Option<String> {
+    pub fn key(&mut self) -> Option<String> {
         self.update_timestamp();
-        self.value.to_owned().map(|v| v.into())
+        self.key.to_owned().map(|v| v.into())
     }
 
     pub fn timestamp(&self) -> SystemTime {
@@ -54,29 +54,35 @@ impl WikidataStringCache {
         }
     }
 
-    /// Gets an item ID for the property/value
+    /// Gets an item ID for the property/key
     /// Uses search to find it if it's not in the cache
-    pub fn get(&mut self, property: &str, value: &String) -> Option<String> {
-        let value: SmallString = value.to_string().into();
-        match self.ensure_property(property).get_mut(&value) {
+    pub fn get(&mut self, property: &str, key: &String) -> Option<String> {
+        let key = self.fix_key(key);
+        match self.ensure_property(property).get_mut(&key) {
             Some(ret) => {
                 ret.update_timestamp();
-                ret.value()
+                ret.key()
             }
-            None => self.search(property, &value),
+            None => self.search(property, &key),
         }
     }
 
-    /// Set the value/q tuple for a property
-    pub fn set(&mut self, property: &str, value: &String, q: Option<String>) {
+    /// Set the key/q tuple for a property
+    pub fn set(&mut self, property: &str, key: &String, q: Option<String>) {
+        let key = self.fix_key(key);
         self.ensure_property(property)
-            .insert(value.to_string().into(), WikidataStringValue::new(q));
+            .insert(key, WikidataStringValue::new(q));
         self.prune_property(property);
     }
 
     /// Convenience wrapper
     pub fn issn2q(&mut self, issn: &String) -> Option<String> {
         self.get("P236", issn)
+    }
+
+    fn fix_key(&self, key: &String) -> SmallString {
+        let ret: SmallString = key.to_string().to_lowercase().into();
+        ret
     }
 
     fn prune_property(&mut self, property: &str) {
@@ -108,13 +114,13 @@ impl WikidataStringCache {
         self.cache.get_mut(property).unwrap()
     }
 
-    /// Searches for items with a specific property/value
+    /// Searches for items with a specific property/key
     /// Stores result in cache, and returns it
     /// Stores/returns None if no result found
     /// Stores/returns the first result, if multiple found
-    fn search(&mut self, property: &str, value: &SmallString) -> Option<String> {
+    fn search(&mut self, property: &str, key: &SmallString) -> Option<String> {
         let ret = match self.search_wikibase(
-            &format!("haswbstatement:{}={}", property, value),
+            &format!("haswbstatement:{}={}", property, key),
             &self.mw_api,
         ) {
             Ok(items) => match items.len() {
@@ -124,7 +130,7 @@ impl WikidataStringCache {
             Err(_) => None,
         };
         self.ensure_property(property)
-            .insert(value.to_owned(), WikidataStringValue::new(ret.to_owned()));
+            .insert(key.to_owned(), WikidataStringValue::new(ret.to_owned()));
         self.prune_property(property);
         ret
     }

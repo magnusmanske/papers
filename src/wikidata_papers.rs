@@ -189,7 +189,7 @@ impl WikidataPapers {
         if ids.is_empty() {
             return None;
         }
-        let items = self.get_items_for_ids(&mw_api, &ids);
+        let items = self.get_items_for_ids(&ids);
         self.create_or_update_item_from_items(mw_api, ids, &items)
     }
 
@@ -293,31 +293,16 @@ impl WikidataPapers {
             .collect()
     }
 
-    pub fn get_items_for_ids(&self, mw_api: &Api, ids: &Vec<GenericWorkIdentifier>) -> Vec<String> {
-        let mut parts: Vec<String> = vec![];
-        for id in ids {
-            match &id.work_type {
-                GenericWorkType::Property(prop) => {
-                    parts.push(format!("?q wdt:{} '{}'", &prop, &id.id));
-                    if prop == PROP_DOI {
-                        parts.push(format!("?q wdt:{} '{}'", &prop, &id.id.to_lowercase()));
-                        parts.push(format!("?q wdt:{} '{}'", &prop, &id.id.to_uppercase()));
-                    }
-                }
-                GenericWorkType::Item => {
-                    parts.push(format!("VALUES ?q {{ wd:{} }}", &id.id));
-                }
-            }
-        }
-        if parts.is_empty() {
-            return vec![];
-        }
-        parts.sort();
-        parts.dedup();
-        let sparql = format!("SELECT DISTINCT ?q {{ {{ {} }} }}", parts.join("} UNION {"));
-        match mw_api.sparql_query(&sparql) {
-            Ok(result) => mw_api.entities_from_sparql_result(&result, "q"),
-            _ => vec![],
-        }
+    pub fn get_items_for_ids(&self, ids: &Vec<GenericWorkIdentifier>) -> Vec<String> {
+        let mut items: Vec<String> = ids
+            .iter()
+            .filter_map(|id| match &id.work_type {
+                GenericWorkType::Property(prop) => self.cache.lock().unwrap().get(prop, &id.id),
+                GenericWorkType::Item => Some(id.id.to_owned()),
+            })
+            .collect();
+        items.sort();
+        items.dedup();
+        items
     }
 }

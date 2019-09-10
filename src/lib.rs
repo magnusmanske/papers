@@ -42,19 +42,6 @@ pub trait WikidataInteraction {
         }
     }
 
-    fn search_external_id(
-        &self,
-        property: &str,
-        id: &str,
-        mw_api: &mediawiki::api::Api,
-    ) -> Vec<String> {
-        let query = format!("haswbstatement:{}={}", property, id);
-        match self.search_wikibase(&query, mw_api) {
-            Ok(v) => v,
-            _ => vec![],
-        }
-    }
-
     fn create_item(&self, item: &Entity, mw_api: &mut mediawiki::api::Api) -> Option<String> {
         let params = EntityDiffParams::all();
         let diff = EntityDiff::new(&Entity::new_empty_item(), item, &params);
