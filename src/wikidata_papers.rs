@@ -157,7 +157,7 @@ impl WikidataPapers {
         }
 
         for author in authors {
-            author.update_author_item(&entities, mw_api);
+            author.update_author_item(&mut entities, mw_api);
         }
     }
 
