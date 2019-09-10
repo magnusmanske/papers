@@ -48,7 +48,7 @@ pub trait WikidataInteraction {
         id: &str,
         mw_api: &mediawiki::api::Api,
     ) -> Vec<String> {
-        let query: String = "haswbstatement:".to_owned() + &property + &"=".to_owned() + &id;
+        let query = format!("haswbstatement:{}={}", property, id);
         match self.search_wikibase(&query, mw_api) {
             Ok(v) => v,
             _ => vec![],
