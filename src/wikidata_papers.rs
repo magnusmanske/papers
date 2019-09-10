@@ -51,8 +51,67 @@ impl WikidataPapers {
         }
     }
 
-    fn update_author_statements(&self, _authors: &Vec<GenericAuthorInfo>, _item: &mut Entity) {
-        // TODO
+    fn update_author_statements(&self, authors: &Vec<GenericAuthorInfo>, item: &mut Entity) {
+        let p50: Vec<String> = item
+            .claims()
+            .iter()
+            .filter(|statement| statement.property() == "P50")
+            .filter_map(|statement| match statement.main_snak().data_value() {
+                Some(dv) => match dv.value() {
+                    Value::Entity(entity) => Some(entity.id().to_string()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+
+        // HACK used as "remove" tag
+        let snak_remove_statement = Snak::new_no_value("P2093", SnakDataType::String);
+
+        item.claims_mut().iter_mut().for_each(|statement| {
+            if statement.property() != "P2093" {
+                return;
+            }
+            match GenericAuthorInfo::new_from_statement(statement) {
+                Some(author) => {
+                    match author.find_best_match(authors) {
+                        Some((candidate, _points)) => {
+                            match &authors[candidate].wikidata_item {
+                                Some(q) => {
+                                    if p50.contains(&q) {
+                                        // Strange, we already have this one, remove
+                                        if author.list_number.is_some()
+                                            && author.list_number == authors[candidate].list_number
+                                        {
+                                            // Same list number, remove P2093
+                                            // HACK change to "no value", then remove downstream
+                                            statement.set_main_snak(snak_remove_statement.clone());
+                                        }
+                                    } else {
+                                        match &authors[candidate].generate_author_statement() {
+                                            Some(s) => {
+                                                // Preserve references
+                                                let references = statement.references().clone();
+                                                *statement = s.clone();
+                                                statement.set_references(references);
+                                            }
+                                            None => {}
+                                        }
+                                    }
+                                }
+                                None => {}
+                            }
+                        }
+                        None => {}
+                    }
+                }
+                None => {}
+            }
+        });
+
+        // Remove no-value P2093s
+        item.claims_mut()
+            .retain(|statement| *statement.main_snak() != snak_remove_statement);
     }
 
     fn create_or_update_author_statements(
@@ -73,28 +132,18 @@ impl WikidataPapers {
         authors: &mut Vec<GenericAuthorInfo>,
         authors2: &Vec<GenericAuthorInfo>,
     ) {
+        // Shortcut
         if authors.is_empty() {
             authors2
                 .iter()
                 .for_each(|author| authors.push(author.clone()));
             return;
         }
-        //println!("MERGING AUTHOR: {:?} AND {:?}", &authors, &authors2);
+
         for author in authors2.iter() {
-            let mut best_candidate: usize = 0;
-            let mut best_points: u16 = 0;
-            for candidate_id in 0..authors.len() {
-                let points = author.compare(&authors[candidate_id]);
-                if points > best_points {
-                    best_points = points;
-                    best_candidate = candidate_id;
-                }
-            }
-            if best_points == 0 {
-                // No match found, add the author
-                authors.push(author.clone());
-            } else {
-                authors[best_candidate].merge_from(&author);
+            match author.find_best_match(authors) {
+                Some((candidate, _points)) => authors[candidate].merge_from(&author),
+                None => authors.push(author.clone()), // No match found, add the author
             }
         }
     }
@@ -234,11 +283,15 @@ impl WikidataPapers {
         params.labels.add = EntityDiffParamState::All;
         params.aliases.add = EntityDiffParamState::All;
         params.claims.add = EntityDiffParamState::All;
+        params.claims.remove = EntityDiffParamState::some(&vec!["P2093"]);
         params.references.list = vec![(
             EntityDiffParamState::All,
             EntityDiffParamState::except(&vec!["P813"]),
         )];
         let mut diff = EntityDiff::new(&original_item, &item, &params);
+
+        //println!("{}", ::serde_json::to_string_pretty(&json!(item)).unwrap());
+
         if diff.is_empty() {
             diff.set_edit_summary(self.edit_summary.to_owned());
             match original_item.id().as_str() {
@@ -252,12 +305,18 @@ impl WikidataPapers {
             }
         }
 
-        let new_json = diff.apply_diff(mw_api, &diff).ok()?;
-        let q = EntityDiff::get_entity_id(&new_json)?;
-        Some(EditResult {
-            q: q.to_string(),
-            edited: true,
-        })
+        // TESTING?
+        if false {
+            println!("{:?}", diff);
+            None
+        } else {
+            let new_json = diff.apply_diff(mw_api, &diff).ok()?;
+            let q = EntityDiff::get_entity_id(&new_json)?;
+            Some(EditResult {
+                q: q.to_string(),
+                edited: true,
+            })
+        }
     }
 
     // ID keys need to be uppercase (e.g. "PMID","DOI")

@@ -37,7 +37,84 @@ impl GenericAuthorInfo {
         }
     }
 
-    pub fn create_author_statement_in_paper_item(&self, item: &mut Entity) {
+    pub fn new_from_statement(statement: &Statement) -> Option<Self> {
+        let mut ret = Self::new();
+        if statement.property() == "P2093" {
+            match statement.main_snak().data_value() {
+                Some(dv) => match dv.value() {
+                    Value::StringValue(name) => {
+                        ret.name = Some(name.to_string());
+                    }
+                    _ => return None,
+                },
+                _ => return None,
+            }
+        } else if statement.property() == "P50" {
+            match statement.main_snak().data_value() {
+                Some(dv) => match dv.value() {
+                    Value::Entity(entity) => {
+                        ret.wikidata_item = Some(entity.id().to_string());
+                    }
+                    _ => return None,
+                },
+                _ => return None,
+            }
+        } else {
+            return None;
+        }
+
+        statement
+            .qualifiers()
+            .iter()
+            .for_each(|snak| match snak.property() {
+                // List number
+                "P1545" => match snak.data_value() {
+                    Some(dv) => match dv.value() {
+                        Value::StringValue(s) => ret.list_number = Some(s.to_string()),
+                        _ => {}
+                    },
+                    None => {}
+                },
+                // Named as
+                "P1932" => match snak.data_value() {
+                    Some(dv) => match dv.value() {
+                        Value::StringValue(s) => ret.name = Some(s.to_string()),
+                        _ => {}
+                    },
+                    None => {}
+                },
+                _ => {}
+            });
+
+        // TODO "named as"
+
+        Some(ret)
+    }
+
+    pub fn find_best_match(&self, authors: &Vec<GenericAuthorInfo>) -> Option<(usize, u16)> {
+        let mut best_candidate: usize = 0;
+        let mut best_points: u16 = 0;
+        let mut multiple_best: bool = false;
+        for candidate_id in 0..authors.len() {
+            let points = self.compare(&authors[candidate_id]);
+            if points > best_points {
+                best_points = points;
+                best_candidate = candidate_id;
+                multiple_best = false;
+            } else if points == best_points && points > 0 {
+                multiple_best = true;
+            }
+        }
+        if multiple_best {
+            return None;
+        }
+        match best_points {
+            0 => None,
+            points => Some((best_candidate, points)),
+        }
+    }
+
+    pub fn generate_author_statement(&self) -> Option<Statement> {
         let name = match &self.name {
             Some(s) => s.to_string(),
             None => "".to_string(),
@@ -58,12 +135,21 @@ impl GenericAuthorInfo {
             }
             None => {
                 if name.is_empty() && qualifiers.is_empty() {
-                    return; // No addition
+                    return None; // No addition
                 }
                 Statement::new_normal(Snak::new_string("P2093", &name), qualifiers, vec![])
             }
         };
-        item.add_claim(statement);
+        Some(statement)
+    }
+
+    pub fn create_author_statement_in_paper_item(&self, item: &mut Entity) {
+        match self.generate_author_statement() {
+            Some(statement) => {
+                item.add_claim(statement);
+            }
+            None => {}
+        }
     }
 
     pub fn amend_author_item(&self, item: &mut Entity) {
@@ -464,6 +550,9 @@ mod tests {
     }
 
     /*
+    TODO:
+    fn new_from_statement
+    fn find_best_match
     fn get_or_create_author_item(
     fn merge_from(&mut self, author2: &GenericAuthorInfo)
     fn update_author_item(
