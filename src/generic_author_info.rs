@@ -174,6 +174,8 @@ impl GenericAuthorInfo {
 
         // Create new item and use its ID
         ret.wikidata_item = self.create_item(&item, mw_api);
+
+        // Update external IDs cache
         for (prop, id) in &ret.prop2id {
             cache
                 .lock()
@@ -438,8 +440,29 @@ mod tests {
         assert_eq!(qualifiers[1], Snak::new_string("P1932", "Magnus Manske"));
     }
 
+    #[test]
+    fn amend_author_item() {
+        let mut ga = GenericAuthorInfo::new();
+        ga.name = Some("Magnus Manske".to_string());
+        ga.alternative_names.push("HM Manske".to_string());
+        ga.prop2id
+            .insert("P496".to_string(), "1234-5678-1234-5678".to_string());
+        let mut item = Entity::new_empty_item();
+        ga.amend_author_item(&mut item);
+        assert_eq!(item.label_in_locale("en"), Some("Magnus Manske"));
+        assert_eq!(*item.aliases(), vec![LocaleString::new("en", "HM Manske")]);
+        assert_eq!(*item.claims()[0].main_snak(), Snak::new_item("P31", "Q5"));
+        assert_eq!(
+            *item.claims()[1].main_snak(),
+            Snak::new_item("P106", "Q1650915")
+        );
+        assert_eq!(
+            *item.claims()[2].main_snak(),
+            Snak::new_external_id("P496", "1234-5678-1234-5678")
+        );
+    }
+
     /*
-    fn amend_author_item(&self, item: &mut Entity)
     fn get_or_create_author_item(
     fn merge_from(&mut self, author2: &GenericAuthorInfo)
     fn update_author_item(
