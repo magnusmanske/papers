@@ -112,6 +112,10 @@ impl SourceMDbot {
 
         //println!("Processing command {:?}", &command);
         let mut wdp = self.new_wdp(&command);
+        wdp.set_edit_summary(Some(format!(
+            "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}]",
+            self.batch_id, self.batch_id
+        )));
 
         // Wikidata ID
         if RE_WD.is_match(&command.identifier) {
