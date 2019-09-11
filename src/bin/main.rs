@@ -4,7 +4,6 @@ extern crate papers;
 #[macro_use]
 extern crate lazy_static;
 extern crate regex;
-//#[macro_use]
 extern crate serde_json;
 
 use crate::wikidata_string_cache::WikidataStringCache;
@@ -24,6 +23,8 @@ use std::io::prelude::*;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+const INI_FILE: &str = "bot.ini";
 
 fn command_papers(ini_file: &str) {
     let mut mw_api = SourceMD::create_mw_api(ini_file).unwrap();
@@ -180,8 +181,8 @@ fn main() {
         return;
     }
     match args[1].as_str() {
-        "papers" => command_papers("bot.ini"),
-        "bot" => command_bot("bot.ini"),
+        "papers" => command_papers(INI_FILE),
+        "bot" => command_bot(INI_FILE),
         _ => usage(&args[0]),
     }
 }
