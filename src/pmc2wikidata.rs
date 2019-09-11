@@ -148,6 +148,26 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         Some("P932".to_string())
     }
 
+    // Overriding default function
+    fn update_work_item_with_property(&self, publication_id: &String, item: &mut Entity) {
+        println!(":: {}", publication_id);
+        if publication_id[0..4].to_string() == "PMID_" {
+            return;
+        }
+        match self.publication_property() {
+            Some(prop) => {
+                if !item.has_claims_with_property(prop.to_owned()) {
+                    item.add_claim(Statement::new_normal(
+                        Snak::new_external_id(prop.to_string(), publication_id.to_string()),
+                        vec![],
+                        self.reference(),
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         let pmcid = match self
             .get_external_identifier_from_item(item, &self.publication_property().unwrap())
