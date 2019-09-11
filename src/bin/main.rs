@@ -59,6 +59,7 @@ fn paper_from_id(id: &String, mut mw_api: &mut Api) {
     let cache = Arc::new(Mutex::new(WikidataStringCache::new(&api)));
 
     let mut wdp = WikidataPapers::new(cache.clone());
+    wdp.testing = true;
     wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
     wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
     wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));

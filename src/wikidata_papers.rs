@@ -16,6 +16,7 @@ pub struct WikidataPapers {
     adapters: Vec<Box<dyn ScientificPublicationAdapter>>,
     cache: Arc<Mutex<WikidataStringCache>>,
     edit_summary: Option<String>,
+    pub testing: bool,
 }
 
 impl WikidataInteraction for WikidataPapers {}
@@ -26,6 +27,7 @@ impl WikidataPapers {
             adapters: vec![],
             cache: cache,
             edit_summary: None,
+            testing: false,
         }
     }
 
@@ -236,7 +238,10 @@ impl WikidataPapers {
         if ids.is_empty() {
             return None;
         }
-        let items = self.get_items_for_ids(&ids);
+        let items = match self.testing {
+            true => vec![],
+            false => self.get_items_for_ids(&ids),
+        };
         self.create_or_update_item_from_items(mw_api, ids, &items)
     }
 
@@ -305,8 +310,7 @@ impl WikidataPapers {
             }
         }
 
-        // TESTING?
-        if false {
+        if self.testing {
             println!("{:?}", diff);
             None
         } else {
