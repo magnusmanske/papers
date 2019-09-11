@@ -3,7 +3,6 @@ extern crate lazy_static;
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
-use mediawiki::api::Api;
 use pubmed::*;
 use std::collections::HashMap;
 
@@ -45,27 +44,6 @@ impl Pubmed2Wikidata {
             },
         }
         Some(self.sanitize_author_name(&ret))
-    }
-
-    fn language2q(&self, language: &str) -> Option<String> {
-        lazy_static! {
-            static ref MW_API: Api = Api::new("https://www.wikidata.org/w/api.php").unwrap();
-            static ref L2Q: HashMap<String, String> = MW_API
-                .sparql_query("SELECT DISTINCT ?l ?q { ?q wdt:P31/wdt:P279* wd:Q20162172; (wdt:P219|wdt:P220) ?l }")
-                .unwrap()["results"]["bindings"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .filter_map(|j| {
-                    let l = j["l"]["value"].as_str()?;
-                    let q = MW_API
-                        .extract_entity_from_uri(j["q"]["value"].as_str()?)
-                        .ok()?;
-                    Some((l.to_string(), q.to_string()))
-                })
-                .collect();
-        }
-        L2Q.get(language).map(|s| s.to_string())
     }
 
     fn publication_id_from_pubmed(&mut self, publication_id: &String) -> Option<String> {
@@ -263,6 +241,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
             None => return,
         };
 
+        // Work language
         if !item.has_claims_with_property("P407") {
             match &work.medline_citation {
                 Some(medline_citation) => match &medline_citation.article {
@@ -285,68 +264,75 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                 None => {}
             }
         }
+    }
 
-        // Publication date
-        if !item.has_claims_with_property("P577") {
-            match &work.medline_citation {
-                Some(medline_citation) => match &medline_citation.article {
-                    Some(article) => match &article.journal {
-                        Some(journal) => match &journal.journal_issue {
-                            Some(journal_issue) => match &journal_issue.pub_date {
-                                Some(pub_date) => {
-                                    let month = match pub_date.month {
-                                        0 => None,
-                                        x => Some(x),
-                                    };
-                                    let day = match pub_date.day {
-                                        0 => None,
-                                        x => Some(x),
-                                    };
-                                    let statement = self.get_wb_time_from_partial(
-                                        "P577".to_string(),
-                                        pub_date.year as u32,
-                                        month,
-                                        day,
-                                    );
-                                    item.add_claim(statement);
-                                }
-                                None => {}
-                            },
-                            None => {}
-                        },
-                        None => {}
-                    },
-                    None => {}
-                },
-                None => {}
-            };
-        }
+    fn get_language_item(&self, publication_id: &String) -> Option<String> {
+        self.language2q(
+            self.get_cached_publication_from_id(publication_id)?
+                .medline_citation
+                .as_ref()?
+                .article
+                .as_ref()?
+                .language
+                .as_ref()?,
+        )
+    }
 
-        if !item.has_claims_with_property("P478") {
-            match &work.medline_citation {
-                Some(medline_citation) => match &medline_citation.article {
-                    Some(article) => match &article.journal {
-                        Some(journal) => match &journal.journal_issue {
-                            Some(journal_issue) => match &journal_issue.volume {
-                                Some(volume) => {
-                                    let statement = Statement::new_normal(
-                                        Snak::new_string("P478", volume),
-                                        vec![],
-                                        vec![],
-                                    );
-                                    item.add_claim(statement);
-                                }
-                                None => {}
-                            },
-                            None => {}
-                        },
-                        None => {}
-                    },
-                    None => {}
-                },
-                None => {}
-            };
-        }
+    fn get_publication_date(
+        &self,
+        publication_id: &String,
+    ) -> Option<(u32, Option<u8>, Option<u8>)> {
+        let pub_date = self
+            .get_cached_publication_from_id(publication_id)?
+            .medline_citation
+            .as_ref()?
+            .article
+            .as_ref()?
+            .journal
+            .as_ref()?
+            .journal_issue
+            .as_ref()?
+            .pub_date
+            .as_ref()?;
+        let month = match pub_date.month {
+            0 => None,
+            x => Some(x),
+        };
+        let day = match pub_date.day {
+            0 => None,
+            x => Some(x),
+        };
+        Some((pub_date.year, month, day))
+    }
+
+    fn get_volume(&self, publication_id: &String) -> Option<String> {
+        self.get_cached_publication_from_id(publication_id)?
+            .medline_citation
+            .as_ref()?
+            .article
+            .as_ref()?
+            .journal
+            .as_ref()?
+            .journal_issue
+            .as_ref()?
+            .volume
+            .as_ref()
+            .map(|s| s.to_string())
+    }
+
+    fn get_issue(&self, publication_id: &String) -> Option<String> {
+        self.get_cached_publication_from_id(publication_id)?
+            .medline_citation
+            .as_ref()?
+            .article
+            .as_ref()?
+            .journal
+            .as_ref()?
+            .journal_issue
+            .as_ref()?
+            .issue
+            .as_ref()
+            .map(|s| s.to_string())
     }
 
     fn do_cache_work(&mut self, publication_id: &String) -> Option<String> {

@@ -1,6 +1,7 @@
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
+use mediawiki::api::Api;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -45,6 +46,29 @@ pub trait ScientificPublicationAdapter {
         _ids: &Vec<GenericWorkIdentifier>,
     ) -> Vec<GenericWorkIdentifier> {
         vec![]
+    }
+
+    /// Returns a lanuage item identifier, or None
+    fn get_language_item(&self, _publication_id: &String) -> Option<String> {
+        None
+    }
+
+    /// Returns a volume string, or None
+    fn get_volume(&self, _publication_id: &String) -> Option<String> {
+        None
+    }
+
+    /// Returns an issue string, or None
+    fn get_issue(&self, _publication_id: &String) -> Option<String> {
+        None
+    }
+
+    /// Returns the publication date, or None
+    fn get_publication_date(
+        &self,
+        _publication_id: &String,
+    ) -> Option<(u32, Option<u8>, Option<u8>)> {
+        None
     }
 
     /// Returns the property for an author ID of the resource as a `String`, e.g. P4012 for Semantic Scholar
@@ -100,6 +124,70 @@ pub trait ScientificPublicationAdapter {
         self.update_work_item_with_title(publication_id, item);
         self.update_work_item_with_property(publication_id, item);
         self.update_work_item_with_journal(publication_id, item, cache);
+        self.update_work_item_with_volume(publication_id, item);
+        self.update_work_item_with_issue(publication_id, item);
+        self.update_work_item_with_publication_date(publication_id, item);
+        self.update_work_item_with_language(publication_id, item);
+    }
+
+    fn update_work_item_with_language(&self, publication_id: &String, item: &mut Entity) {
+        if item.has_claims_with_property("P407") {
+            return;
+        }
+        match self.get_language_item(publication_id) {
+            Some(language_q) => item.add_claim(Statement::new_normal(
+                Snak::new_item("P407", &language_q),
+                vec![],
+                self.reference(),
+            )),
+            None => {}
+        }
+    }
+
+    fn update_work_item_with_volume(&self, publication_id: &String, item: &mut Entity) {
+        if item.has_claims_with_property("P478") {
+            return;
+        }
+        match self.get_volume(publication_id) {
+            Some(volume) => item.add_claim(Statement::new_normal(
+                Snak::new_string("P478", &volume),
+                vec![],
+                self.reference(),
+            )),
+            None => {}
+        }
+    }
+
+    fn update_work_item_with_issue(&self, publication_id: &String, item: &mut Entity) {
+        if item.has_claims_with_property("P433") {
+            return;
+        }
+        match self.get_issue(publication_id) {
+            Some(issue) => item.add_claim(Statement::new_normal(
+                Snak::new_string("P433", &issue),
+                vec![],
+                self.reference(),
+            )),
+            None => {}
+        }
+    }
+
+    fn update_work_item_with_publication_date(&self, publication_id: &String, item: &mut Entity) {
+        if item.has_claims_with_property("P577") {
+            return;
+        }
+        match self.get_publication_date(publication_id) {
+            Some(pubdate) => {
+                let statement = self.get_wb_time_from_partial(
+                    "P577".to_string(),
+                    pubdate.0,
+                    pubdate.1,
+                    pubdate.2,
+                );
+                item.add_claim(statement);
+            }
+            None => {}
+        }
     }
 
     fn titles_are_equal(&self, t1: &String, t2: &String) -> bool {
@@ -305,6 +393,28 @@ pub trait ScientificPublicationAdapter {
             None => {}
         }
     }
+
+    /// Caches language ISO codes and their mapping to Wikidata items
+    fn language2q(&self, language: &str) -> Option<String> {
+        lazy_static! {
+            static ref MW_API: Api = Api::new("https://www.wikidata.org/w/api.php").unwrap();
+            static ref L2Q: HashMap<String, String> = MW_API
+                .sparql_query("SELECT DISTINCT ?l ?q { ?q wdt:P31/wdt:P279* wd:Q20162172; (wdt:P219|wdt:P220) ?l }")
+                .unwrap()["results"]["bindings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|j| {
+                    let l = j["l"]["value"].as_str()?;
+                    let q = MW_API
+                        .extract_entity_from_uri(j["q"]["value"].as_str()?)
+                        .ok()?;
+                    Some((l.to_string(), q.to_string()))
+                })
+                .collect();
+        }
+        L2Q.get(language).map(|s| s.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -340,5 +450,6 @@ mod tests {
     fn get_author_item_from_cache(&self, catalog_author_id: &String) -> Option<&String> {
     fn author_cache_is_empty(&self) -> bool {
     fn update_author_item(
+    fn language2q
     */
 }

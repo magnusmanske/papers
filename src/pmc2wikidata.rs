@@ -153,7 +153,13 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
             .get_external_identifier_from_item(item, &self.publication_property().unwrap())
         {
             Some(s) => s,
-            None => return None,
+            None => {
+                // Attempt fallback to PubMed ID
+                return match self.get_external_identifier_from_item(item, "P698") {
+                    Some(pmid) => self.publication_id_from_pubmed(&pmid),
+                    None => None,
+                };
+            }
         };
         self.publication_id_from_pmcid(&pmcid)
     }
@@ -168,10 +174,49 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         }
     }
 
+    fn get_volume(&self, publication_id: &String) -> Option<String> {
+        self.get_cached_publication_from_id(publication_id)?["journalInfo"]["volume"]
+            .as_str()
+            .map(|s| s.to_string())
+    }
+
+    fn get_issue(&self, publication_id: &String) -> Option<String> {
+        self.get_cached_publication_from_id(publication_id)?["journalInfo"]["issue"]
+            .as_str()
+            .map(|s| s.to_string())
+    }
+
     fn get_work_issn(&self, publication_id: &String) -> Option<String> {
         self.get_cached_publication_from_id(publication_id)?["journalInfo"]["journal"]["issn"]
             .as_str()
             .map(|s| s.to_string())
+    }
+
+    fn get_publication_date(
+        &self,
+        publication_id: &String,
+    ) -> Option<(u32, Option<u8>, Option<u8>)> {
+        let year = match self.get_cached_publication_from_id(publication_id)?["journalInfo"]
+            ["yearOfPublication"]
+            .as_u64()
+        {
+            Some(year) => year as u32,
+            None => return None,
+        };
+        Some((
+            year,
+            self.get_cached_publication_from_id(publication_id)?["journalInfo"]
+                ["monthOfPublication"]
+                .as_u64()
+                .map(|x| x as u8),
+            self.get_cached_publication_from_id(publication_id)?["journalInfo"]["dayOfPublication"]
+                .as_u64()
+                .map(|x| x as u8),
+        ))
+    }
+
+    fn get_language_item(&self, publication_id: &String) -> Option<String> {
+        self.language2q(self.get_cached_publication_from_id(publication_id)?["language"].as_str()?)
     }
 
     fn get_identifier_list(
@@ -208,6 +253,7 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
             None => return,
         };
 
+        // Work language
         if !item.has_claims_with_property("P407") {
             match &work.medline_citation {
                 Some(medline_citation) => match &medline_citation.article {
@@ -267,60 +313,14 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
             };
         }
 
-        if !item.has_claims_with_property("P478") {
-            match &work.medline_citation {
-                Some(medline_citation) => match &medline_citation.article {
-                    Some(article) => match &article.journal {
-                        Some(journal) => match &journal.journal_issue {
-                            Some(journal_issue) => match &journal_issue.volume {
-                                Some(volume) => {
-                                    let statement = Statement::new_normal(
-                                        Snak::new_string("P478", volume),
-                                        vec![],
-                                        vec![],
-                                    );
-                                    item.add_claim(statement);
-                                }
-                                None => {}
-                            },
-                            None => {}
-                        },
-                        None => {}
-                    },
-                    None => {}
-                },
-                None => {}
-            };
-        }
         */
     }
 
+    // Not sure what this does
     fn do_cache_work(&mut self, _publication_id: &String) -> Option<String> {
         None
-        /*
-        let pub_id_u64 = match publication_id.parse::<u64>() {
-            Ok(x) => x,
-            _ => return None,
-        };
-        let work = match self.client.article(pub_id_u64) {
-            Ok(x) => x,
-            _ => return None,
-        };
-        self.work_cache.insert(publication_id.clone(), work);
-        Some(publication_id.to_string())
-        */
     }
 
-    /*
-    GenericAuthorInfo {
-                    name: self.get_author_name_string(&author),
-                    prop2id: HashMap::new(),
-                    wikidata_item: None,
-                    list_number: Some(list_num.to_string()),
-                    alternative_names: vec![],
-                })
-
-    */
     fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(work) => match work["authorList"]["author"].as_array() {
@@ -337,63 +337,6 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
             },
             None => vec![],
         }
-
-        /*
-        let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w,
-            None => return vec![],
-        };
-        let mut ret: Vec<GenericAuthorInfo> = vec![];
-
-        let medline_citation = match &work.medline_citation {
-            Some(x) => x,
-            None => return ret,
-        };
-        let article = match &medline_citation.article {
-            Some(x) => x,
-            None => return ret,
-        };
-        let author_list = match &article.author_list {
-            Some(x) => x,
-            None => return ret,
-        };
-
-        if !author_list.complete {
-            return ret;
-        }
-
-        let mut list_num = 1;
-        for author in &author_list.authors {
-            let mut prop2id: HashMap<String, String> = HashMap::new();
-            for aid in &author.identifiers {
-                match (&aid.source, &aid.id) {
-                    (Some(source), Some(id)) => match source.as_str() {
-                        "ORCID" => {
-                            // URL => ID
-                            match id.split('/').last() {
-                                Some(id) => {
-                                    prop2id.insert("P496".to_string(), id.to_string());
-                                }
-                                None => {}
-                            }
-                        }
-                        other => println!("Unknown author source: {}:{}", &other, &id),
-                    },
-                    _ => {}
-                }
-            }
-            ret.push(GenericAuthorInfo {
-                name: self.get_author_name_string(&author),
-                prop2id: prop2id,
-                wikidata_item: None,
-                list_number: Some(list_num.to_string()),
-                alternative_names: vec![],
-            });
-            list_num = list_num + 1;
-        }
-
-        ret
-        */
     }
 }
 
