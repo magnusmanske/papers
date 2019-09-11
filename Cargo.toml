@@ -23,12 +23,13 @@ lazy_static = "1"
 chrono = "0.4.7"
 smallstring = "0.1.2"
 
-crossref = "*"
-#crossref = { git = "https://github.com/MattsSe/crossref-rs" }
+#crossref = "*"
+crossref = { git = "https://github.com/MattsSe/crossref-rs" }
 
 semanticscholar = "*"
 
-orcid="*"
+#orcid="*"
+orcid = { git = "https://github.com/magnusmanske/orcid_rs" }
 
 #pubmed="*"
 pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
