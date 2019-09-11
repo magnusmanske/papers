@@ -63,45 +63,50 @@ fn paper_from_id(id: &String, mut mw_api: &mut Api) {
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
 
     match RE_WD.captures(&id) {
-        Some(caps) => {
-            let q = caps.get(1).unwrap().as_str().to_string();
-            match wdp.create_or_update_item_from_q(&mut mw_api, &q) {
-                Some(er) => {
-                    if er.edited {
-                        println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
-                    } else {
-                        println!("https://www.wikidata.org/wiki/{}, no changes ", &er.q)
+        Some(caps) => match caps.get(1) {
+            Some(q) => {
+                match wdp.create_or_update_item_from_q(&mut mw_api, &q.as_str().to_string()) {
+                    Some(er) => {
+                        if er.edited {
+                            println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
+                        } else {
+                            println!("https://www.wikidata.org/wiki/{}, no changes ", &er.q)
+                        }
                     }
+                    None => println!("No item ID!"),
                 }
-                None => println!("No item ID!"),
+                return;
             }
-            return;
-        }
+            None => {}
+        },
         None => {}
     }
 
     let mut ids = vec![];
     match RE_DOI.captures(&id) {
-        Some(caps) => ids.push(GenericWorkIdentifier::new_prop(
-            PROP_DOI,
-            caps.get(1).unwrap().as_str(),
-        )),
+        Some(caps) => match caps.get(1) {
+            Some(id) => ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, id.as_str())),
+            None => {}
+        },
         None => {}
     };
     match RE_PMID.captures(&id) {
-        Some(caps) => ids.push(GenericWorkIdentifier::new_prop(
-            PROP_PMID,
-            caps.get(1).unwrap().as_str(),
-        )),
+        Some(caps) => match caps.get(1) {
+            Some(id) => ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, id.as_str())),
+            None => {}
+        },
         None => {}
     };
     match RE_PMCID.captures(&id) {
-        Some(caps) => ids.push(GenericWorkIdentifier::new_prop(
-            PROP_PMCID,
-            caps.get(1).unwrap().as_str(),
-        )),
+        Some(caps) => match caps.get(1) {
+            Some(id) => ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, id.as_str())),
+            None => {}
+        },
         None => {}
     };
+
+    // Paranoia
+    ids.retain(|id| !id.id.is_empty());
 
     if ids.len() == 0 {
         println!("Can't find a valid ID in '{}'", &id);

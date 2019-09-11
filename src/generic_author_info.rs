@@ -86,8 +86,6 @@ impl GenericAuthorInfo {
                 _ => {}
             });
 
-        // TODO "named as"
-
         Some(ret)
     }
 
