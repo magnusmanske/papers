@@ -28,7 +28,7 @@ impl SourceMDbot {
         let ret = Self {
             config: config,
             batch_id: batch_id,
-            mw_api: SourceMDbot::get_mw_api("bot.ini"),
+            mw_api: SourceMDbot::get_mw_api("bot.ini")?,
             cache: cache,
         };
         ret.start()?;
@@ -104,10 +104,14 @@ impl SourceMDbot {
 
     fn process_paper(self: &mut Self, command: &mut SourceMDcommand) -> Result<bool, String> {
         lazy_static! {
-            static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#).unwrap();
-            static ref RE_DOI: Regex = Regex::new(r#"^(.+/.+)$"#).unwrap();
-            static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#).unwrap();
-            static ref RE_PMCID: Regex = Regex::new(r#"^PMCID(\d+)$"#).unwrap();
+            static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
+                .expect("SourceMDbot::process_paper: RE_WD does not compile");
+            static ref RE_DOI: Regex = Regex::new(r#"^(.+/.+)$"#)
+                .expect("SourceMDbot::process_paper: RE_DOI does not compile");
+            static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#)
+                .expect("SourceMDbot::process_paper: RE_PMID does not compile");
+            static ref RE_PMCID: Regex = Regex::new(r#"^PMCID(\d+)$"#)
+                .expect("SourceMDbot::process_paper: RE_PMCID does not compile");
         }
 
         //println!("Processing command {:?}", &command);
@@ -224,9 +228,9 @@ impl SourceMDbot {
         wdp
     }
 
-    pub fn get_mw_api(ini_file: &str) -> mediawiki::api::Api {
-        let mut mw_api = mediawiki::api::Api::new("https://www.wikidata.org/w/api.php").unwrap();
-
+    pub fn get_mw_api(ini_file: &str) -> Result<mediawiki::api::Api, String> {
+        let mut mw_api = mediawiki::api::Api::new("https://www.wikidata.org/w/api.php")
+            .map_err(|e| format!("{:?}", e))?;
         let mut settings = Config::default();
         // File::with_name(..) is shorthand for File::from(Path::new(..))
         settings
@@ -234,8 +238,10 @@ impl SourceMDbot {
             .expect(format!("Config file '{}' can't be opened", ini_file).as_str());
         let lgname = settings.get_str("user.user").expect("No user.name");
         let lgpass = settings.get_str("user.pass").expect("No user.pass");
-        mw_api.login(lgname, lgpass).unwrap();
         mw_api
+            .login(lgname, lgpass)
+            .map_err(|e| format!("{:?}", e))?;
+        Ok(mw_api)
     }
 }
 

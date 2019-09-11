@@ -309,8 +309,13 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                 match (&aid.source, &aid.id) {
                     (Some(source), Some(id)) => match source.as_str() {
                         "ORCID" => {
-                            let id = id.split('/').last().unwrap(); // URL => ID
-                            prop2id.insert("P496".to_string(), id.to_string());
+                            // URL => ID
+                            match id.split('/').last() {
+                                Some(id) => {
+                                    prop2id.insert("P496".to_string(), id.to_string());
+                                }
+                                None => {}
+                            }
                         }
                         other => println!("Unknown author source: {}:{}", &other, &id),
                     },

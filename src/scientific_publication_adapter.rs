@@ -196,12 +196,9 @@ pub trait ScientificPublicationAdapter {
     fn update_work_item_with_property(&self, publication_id: &String, item: &mut Entity) {
         match self.publication_property() {
             Some(prop) => {
-                if !item.has_claims_with_property(prop) {
+                if !item.has_claims_with_property(prop.to_owned()) {
                     item.add_claim(Statement::new_normal(
-                        Snak::new_external_id(
-                            self.publication_property().unwrap(),
-                            publication_id.to_string(),
-                        ),
+                        Snak::new_external_id(prop.to_string(), publication_id.to_string()),
                         vec![],
                         self.reference(),
                     ));

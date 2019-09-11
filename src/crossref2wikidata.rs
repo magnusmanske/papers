@@ -15,7 +15,9 @@ impl Crossref2Wikidata {
         Crossref2Wikidata {
             author_cache: HashMap::new(),
             work_cache: HashMap::new(),
-            client: Crossref::builder().build().unwrap(),
+            client: Crossref::builder()
+                .build()
+                .expect("Crossref2Wikidata::new: Could not build Crossref client"),
         }
     }
 

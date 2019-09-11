@@ -312,7 +312,8 @@ impl GenericAuthorInfo {
     fn author_names_match(&self, name1: &str, name2: &str) -> u16 {
         let mut ret = 0;
         lazy_static! {
-            static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b").unwrap();
+            static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b")
+                .expect("GenericAuthorInfo::author_names_match: could not compile RE1");
         }
         let name1_mod = self.asciify_string(name1);
         let name2_mod = self.asciify_string(name2);
@@ -406,11 +407,9 @@ impl GenericAuthorInfo {
         if diff.is_empty() {
             return;
         }
-        //println!("{}", diff.actions());
+
         entities.apply_diff(mw_api, &diff);
-        //let _new_json = diff.apply_diff(mw_api, &diff).unwrap();
-        //EntityDiff::get_entity_id(&new_json);
-        // TODO
+        // TODO what?
     }
 }
 

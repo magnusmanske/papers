@@ -242,7 +242,7 @@ impl SourceMD {
             r#"UPDATE `batch` SET `status`='TODO' WHERE status='RUNNING'"#,
             (),
         )
-        .unwrap();
+        .expect("SourceMD::init: Resetting old running batches to TODO has failed");
     }
 
     fn create_mysql_pool(&mut self) {

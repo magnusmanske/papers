@@ -4,7 +4,7 @@ use crate::*;
 use mediawiki::api::Api;
 use smallstring::SmallString;
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 const MAX_CACHE_SIZE_PER_PROPERTY: usize = 100000;
 
@@ -42,6 +42,7 @@ type WikidataStringHash = HashMap<SmallString, WikidataStringValue>;
 pub struct WikidataStringCache {
     cache: HashMap<String, WikidataStringHash>,
     mw_api: Api,
+    max_cache_size_per_property: usize,
 }
 
 impl WikidataInteraction for WikidataStringCache {}
@@ -51,6 +52,7 @@ impl WikidataStringCache {
         Self {
             cache: HashMap::new(),
             mw_api: mw_api.clone(),
+            max_cache_size_per_property: MAX_CACHE_SIZE_PER_PROPERTY,
         }
     }
 
@@ -90,16 +92,15 @@ impl WikidataStringCache {
             Some(data) => data,
             None => return,
         };
-        if data.len() < MAX_CACHE_SIZE_PER_PROPERTY {
+        if data.len() < self.max_cache_size_per_property {
             return;
         }
         println!("Pruning {}", property);
-        let now = SystemTime::now();
-        let allowed = Duration::from_secs(60 * 60); // 1h
-        data.retain(|_k, v| {
-            let diff = now.duration_since(v.timestamp()).unwrap();
-            diff < allowed
-        });
+        let mut times: Vec<SystemTime> = data.iter().map(|(_k, v)| v.timestamp()).collect();
+        times.sort();
+        // Remove older half of cache
+        let half_time = times[times.len() / 2];
+        data.retain(|_k, v| v.timestamp() >= half_time);
         println!("Pruned {} to {}", property, data.len());
     }
 
@@ -108,10 +109,9 @@ impl WikidataStringCache {
         &mut self,
         property: &str,
     ) -> &mut HashMap<SmallString, WikidataStringValue> {
-        if !self.cache.contains_key(property) {
-            self.cache.insert(property.to_string(), HashMap::new());
-        }
-        self.cache.get_mut(property).unwrap()
+        self.cache
+            .entry(property.to_string())
+            .or_insert(HashMap::new())
     }
 
     /// Searches for items with a specific property/key
@@ -141,6 +141,7 @@ mod tests {
     use super::*;
     use mediawiki::api::Api;
     use std::thread;
+    use std::time::Duration;
 
     fn api() -> Api {
         Api::new("https://www.wikidata.org/w/api.php").unwrap()
@@ -221,8 +222,19 @@ mod tests {
         assert_eq!(wsc.issn2q(&"nope-di-dope".to_string()), None);
     }
 
-    /*
-    TODO:
-    fn prune_property(&mut self, property: &str) {
-    */
+    #[test]
+    fn prune() {
+        let mut wsc = WikidataStringCache::new(&api());
+        for num in 1..10 {
+            wsc.set(
+                "P123",
+                &format!("Key #{}", num),
+                Some(format!("Value #{}", num)),
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        wsc.max_cache_size_per_property = 5;
+        wsc.prune_property("P123");
+        assert_eq!(wsc.ensure_property("P123").len(), 5);
+    }
 }

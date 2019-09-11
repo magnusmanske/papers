@@ -42,13 +42,18 @@ fn command_papers(mw_api: &mut Api) {
 
 fn paper_from_id(id: &String, mut mw_api: &mut Api) {
     lazy_static! {
-        static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#).unwrap();
-        static ref RE_DOI: Regex = Regex::new(r#"^(.+/.+)$"#).unwrap();
-        static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#).unwrap();
-        static ref RE_PMCID: Regex = Regex::new(r#"^PMCID(\d+)$"#).unwrap();
+        static ref RE_WD: Regex =
+            Regex::new(r#"^(Q\d+)$"#).expect("main.rs::paper_from_id: RE_WD does not compile");
+        static ref RE_DOI: Regex =
+            Regex::new(r#"^(.+/.+)$"#).expect("main.rs::paper_from_id: RE_DOI does not compile");
+        static ref RE_PMID: Regex =
+            Regex::new(r#"^(\d+)$"#).expect("main.rs::paper_from_id: RE_PMID does not compile");
+        static ref RE_PMCID: Regex = Regex::new(r#"^PMCID(\d+)$"#)
+            .expect("main.rs::paper_from_id: RE_PMCID does not compile");
     }
 
-    let api = Api::new("https://www.wikidata.org/w/api.php").unwrap();
+    let api = Api::new("https://www.wikidata.org/w/api.php")
+        .expect("main.rs::paper_from_id: cannot get Wikidata API");
     let cache = Arc::new(Mutex::new(WikidataStringCache::new(&api)));
 
     let mut wdp = WikidataPapers::new(cache.clone());
@@ -152,7 +157,8 @@ fn run_bot(config_arc: Arc<Mutex<SourceMD>>, cache: Arc<Mutex<WikidataStringCach
 }
 fn command_bot() {
     let smd = Arc::new(Mutex::new(SourceMD::new()));
-    let api = Api::new("https://www.wikidata.org/w/api.php").unwrap();
+    let api = Api::new("https://www.wikidata.org/w/api.php")
+        .expect("main.rs::command_bot: cannot get Wikidata API");
     let cache = Arc::new(Mutex::new(WikidataStringCache::new(&api)));
     loop {
         //println!("BOT!");
@@ -162,7 +168,7 @@ fn command_bot() {
 }
 
 fn main() {
-    let mut mw_api = SourceMDbot::get_mw_api("bot.ini");
+    let mut mw_api = SourceMDbot::get_mw_api("bot.ini").unwrap();
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
