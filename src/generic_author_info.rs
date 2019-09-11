@@ -37,6 +37,16 @@ impl GenericAuthorInfo {
         }
     }
 
+    pub fn new_from_name_num(name: &str, num: usize) -> Self {
+        Self {
+            name: Some(name.to_string()),
+            prop2id: HashMap::new(),
+            wikidata_item: None,
+            list_number: Some(num.to_string()),
+            alternative_names: vec![],
+        }
+    }
+
     pub fn new_from_statement(statement: &Statement) -> Option<Self> {
         let mut ret = Self::new();
         if statement.property() == "P2093" {

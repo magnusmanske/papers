@@ -96,6 +96,19 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         return Some("P4011".to_string());
     }
 
+    /*
+    // TODO load direct from SS via own ID
+    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+        let publication_id = match self
+            .get_external_identifier_from_item(item, &self.publication_property().unwrap())
+        {
+            Some(s) => s,
+            None => return None,
+        };
+        self.publication_id_from_pubmed(&publication_id)
+    }
+    */
+
     fn topic_property(&self) -> Option<String> {
         return Some("P6611".to_string());
     }

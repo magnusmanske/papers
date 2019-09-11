@@ -193,6 +193,16 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         Some("P698".to_string())
     }
 
+    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+        let publication_id = match self
+            .get_external_identifier_from_item(item, &self.publication_property().unwrap())
+        {
+            Some(s) => s,
+            None => return None,
+        };
+        self.publication_id_from_pubmed(&publication_id)
+    }
+
     fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(work) => match &work.medline_citation {

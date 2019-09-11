@@ -165,7 +165,6 @@ impl WikidataPapers {
 
             let adapter = &mut self.adapters[adapter_id];
             adapter2work_id.insert(adapter_id, publication_id.clone());
-
             adapter.update_statements_for_publication_id_default(
                 &publication_id,
                 &mut item,
@@ -323,7 +322,6 @@ impl WikidataPapers {
         }
     }
 
-    // ID keys need to be uppercase (e.g. "PMID","DOI")
     pub fn update_from_paper_ids(
         &mut self,
         original_ids: &Vec<GenericWorkIdentifier>,
