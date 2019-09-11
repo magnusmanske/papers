@@ -1,5 +1,6 @@
 use crate::crossref2wikidata::Crossref2Wikidata;
 use crate::orcid2wikidata::Orcid2Wikidata;
+use crate::pmc2wikidata::PMC2Wikidata;
 use crate::pubmed2wikidata::Pubmed2Wikidata;
 use crate::semanticscholar2wikidata::Semanticscholar2Wikidata;
 use crate::sourcemd_command::SourceMDcommand;
@@ -217,6 +218,7 @@ impl SourceMDbot {
 
     fn new_wdp(&self, command: &SourceMDcommand) -> WikidataPapers {
         let mut wdp = WikidataPapers::new(self.cache.clone());
+        wdp.add_adapter(Box::new(PMC2Wikidata::new()));
         wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
         wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
         wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));

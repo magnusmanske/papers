@@ -81,6 +81,7 @@ impl GenericWorkIdentifier {
 pub mod crossref2wikidata;
 pub mod generic_author_info;
 pub mod orcid2wikidata;
+pub mod pmc2wikidata;
 pub mod pubmed2wikidata;
 pub mod scientific_publication_adapter;
 pub mod semanticscholar2wikidata;

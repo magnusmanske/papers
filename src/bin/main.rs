@@ -10,6 +10,7 @@ use crate::wikidata_string_cache::WikidataStringCache;
 use mediawiki::api::Api;
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::orcid2wikidata::Orcid2Wikidata;
+use papers::pmc2wikidata::PMC2Wikidata;
 use papers::pubmed2wikidata::Pubmed2Wikidata;
 use papers::semanticscholar2wikidata::Semanticscholar2Wikidata;
 use papers::sourcemd_bot::SourceMDbot;
@@ -60,10 +61,11 @@ fn paper_from_id(id: &String, mut mw_api: &mut Api) {
 
     let mut wdp = WikidataPapers::new(cache.clone());
     wdp.testing = true;
-    wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
-    wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
-    wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
-    wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
+    wdp.add_adapter(Box::new(PMC2Wikidata::new()));
+    //wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
+    //wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
+    //wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
+    //wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
 
     match RE_WD.captures(&id) {
         Some(caps) => match caps.get(1) {
