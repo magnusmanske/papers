@@ -1,6 +1,9 @@
+extern crate lazy_static;
+
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
+use mediawiki::api::Api;
 use pubmed::*;
 use std::collections::HashMap;
 
@@ -42,6 +45,27 @@ impl Pubmed2Wikidata {
             },
         }
         Some(self.sanitize_author_name(&ret))
+    }
+
+    fn language2q(&self, language: &str) -> Option<String> {
+        lazy_static! {
+            static ref MW_API: Api = Api::new("https://www.wikidata.org/w/api.php").unwrap();
+            static ref L2Q: HashMap<String, String> = MW_API
+                .sparql_query("SELECT DISTINCT ?l ?q { ?q wdt:P31/wdt:P279* wd:Q20162172; (wdt:P219|wdt:P220) ?l }")
+                .unwrap()["results"]["bindings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|j| {
+                    let l = j["l"]["value"].as_str()?;
+                    let q = MW_API
+                        .extract_entity_from_uri(j["q"]["value"].as_str()?)
+                        .ok()?;
+                    Some((l.to_string(), q.to_string()))
+                })
+                .collect();
+        }
+        L2Q.get(language).map(|s| s.to_string())
     }
 
     fn publication_id_from_pubmed(&mut self, publication_id: &String) -> Option<String> {
@@ -228,6 +252,29 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
             Some(w) => w,
             None => return,
         };
+
+        if !item.has_claims_with_property("P407") {
+            match &work.medline_citation {
+                Some(medline_citation) => match &medline_citation.article {
+                    Some(article) => match &article.language {
+                        Some(language) => match self.language2q(&language) {
+                            Some(q) => {
+                                let statement = Statement::new_normal(
+                                    Snak::new_item("P407", &q),
+                                    vec![],
+                                    vec![],
+                                );
+                                item.add_claim(statement);
+                            }
+                            None => {}
+                        },
+                        None => {}
+                    },
+                    None => {}
+                },
+                None => {}
+            }
+        }
 
         if !item.has_claims_with_property("P577") {
             match &work.medline_citation {

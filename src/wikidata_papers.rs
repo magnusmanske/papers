@@ -311,7 +311,7 @@ impl WikidataPapers {
         }
 
         if self.testing {
-            println!("{:?}", diff);
+            println!("{}", diff.to_string_pretty().unwrap());
             None
         } else {
             let new_json = diff.apply_diff(mw_api, &diff).ok()?;
