@@ -25,7 +25,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-fn command_papers(mw_api: &mut Api) {
+fn command_papers(ini_file: &str) {
+    let mut mw_api = SourceMD::create_mw_api(ini_file).unwrap();
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         let line = match line {
@@ -36,7 +37,7 @@ fn command_papers(mw_api: &mut Api) {
             continue;
         }
         //println!("Processing {}", &line);
-        paper_from_id(&line, mw_api);
+        paper_from_id(&line, &mut mw_api);
     }
 }
 
@@ -160,8 +161,8 @@ fn run_bot(config_arc: Arc<Mutex<SourceMD>>, cache: Arc<Mutex<WikidataStringCach
         while bot.run().unwrap_or(false) {}
     });
 }
-fn command_bot() {
-    let smd = Arc::new(Mutex::new(SourceMD::new()));
+fn command_bot(ini_file: &str) {
+    let smd = Arc::new(Mutex::new(SourceMD::new(ini_file)));
     let api = Api::new("https://www.wikidata.org/w/api.php")
         .expect("main.rs::command_bot: cannot get Wikidata API");
     let cache = Arc::new(Mutex::new(WikidataStringCache::new(&api)));
@@ -173,16 +174,14 @@ fn command_bot() {
 }
 
 fn main() {
-    let mut mw_api = SourceMDbot::get_mw_api("bot.ini").unwrap();
-
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         usage(&args[0]);
         return;
     }
     match args[1].as_str() {
-        "papers" => command_papers(&mut mw_api),
-        "bot" => command_bot(),
+        "papers" => command_papers("bot.ini"),
+        "bot" => command_bot("bot.ini"),
         _ => usage(&args[0]),
     }
 }

@@ -10,14 +10,16 @@ pub struct SourceMD {
     params: Value,
     running_batch_ids: HashSet<i64>,
     pool: Option<my::Pool>,
+    pub mw_api: mediawiki::api::Api,
 }
 
 impl SourceMD {
-    pub fn new() -> Self {
+    pub fn new(ini_file: &str) -> Self {
         let mut ret = Self {
             params: json!({}),
             running_batch_ids: HashSet::new(),
             pool: None,
+            mw_api: Self::create_mw_api(ini_file).unwrap(),
         };
         ret.init();
         ret
@@ -266,6 +268,22 @@ impl SourceMD {
             _ => None,
         }
     }
+
+    pub fn create_mw_api(ini_file: &str) -> Result<mediawiki::api::Api, String> {
+        let mut mw_api = mediawiki::api::Api::new("https://www.wikidata.org/w/api.php")
+            .map_err(|e| format!("{:?}", e))?;
+        let mut settings = Config::default();
+        // File::with_name(..) is shorthand for File::from(Path::new(..))
+        settings
+            .merge(File::with_name(ini_file))
+            .expect(format!("Config file '{}' can't be opened", ini_file).as_str());
+        let lgname = settings.get_str("user.user").expect("No user.name");
+        let lgpass = settings.get_str("user.pass").expect("No user.pass");
+        mw_api
+            .login(lgname, lgpass)
+            .map_err(|e| format!("{:?}", e))?;
+        Ok(mw_api)
+    }
 }
 
 #[cfg(test)]
@@ -290,5 +308,6 @@ mod tests {
     fn update_batch_stats(&self, batch_id: i64, pool: &my::Pool) -> Option<()> {
     fn init(&mut self) {
     fn create_mysql_pool(&mut self) {
+    fn create_mw_api
     */
 }

@@ -6,7 +6,7 @@ use smallstring::SmallString;
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-const MAX_CACHE_SIZE_PER_PROPERTY: usize = 100000;
+const MAX_CACHE_SIZE_PER_PROPERTY: usize = 10000;
 
 #[derive(Debug, Clone)]
 struct WikidataStringValue {

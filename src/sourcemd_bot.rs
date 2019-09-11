@@ -7,13 +7,11 @@ use crate::sourcemd_config::SourceMD;
 use crate::wikidata_papers::WikidataPapers;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
-use config::{Config, File};
 use regex::Regex;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 pub struct SourceMDbot {
-    mw_api: mediawiki::api::Api,
     config: Arc<Mutex<SourceMD>>,
     cache: Arc<Mutex<WikidataStringCache>>,
     batch_id: i64,
@@ -28,7 +26,6 @@ impl SourceMDbot {
         let ret = Self {
             config: config,
             batch_id: batch_id,
-            mw_api: SourceMDbot::get_mw_api("bot.ini")?,
             cache: cache,
         };
         ret.start()?;
@@ -124,7 +121,10 @@ impl SourceMDbot {
         // Wikidata ID
         if RE_WD.is_match(&command.identifier) {
             return wdp
-                .create_or_update_item_from_q(&mut self.mw_api, &command.identifier)
+                .create_or_update_item_from_q(
+                    &mut self.config.lock().unwrap().mw_api,
+                    &command.identifier,
+                )
                 .map(|_x| true)
                 .ok_or(format!("Can't update {}", &command.identifier));
         }
@@ -182,7 +182,7 @@ impl SourceMDbot {
         }
 
         ids = wdp.update_from_paper_ids(&ids);
-        match wdp.create_or_update_item_from_ids(&mut self.mw_api, &ids) {
+        match wdp.create_or_update_item_from_ids(&mut self.config.lock().unwrap().mw_api, &ids) {
             Some(er) => {
                 if command.q == "" {
                     command.q = er.q;
@@ -227,22 +227,6 @@ impl SourceMDbot {
         )));
         wdp
     }
-
-    pub fn get_mw_api(ini_file: &str) -> Result<mediawiki::api::Api, String> {
-        let mut mw_api = mediawiki::api::Api::new("https://www.wikidata.org/w/api.php")
-            .map_err(|e| format!("{:?}", e))?;
-        let mut settings = Config::default();
-        // File::with_name(..) is shorthand for File::from(Path::new(..))
-        settings
-            .merge(File::with_name(ini_file))
-            .expect(format!("Config file '{}' can't be opened", ini_file).as_str());
-        let lgname = settings.get_str("user.user").expect("No user.name");
-        let lgpass = settings.get_str("user.pass").expect("No user.pass");
-        mw_api
-            .login(lgname, lgpass)
-            .map_err(|e| format!("{:?}", e))?;
-        Ok(mw_api)
-    }
 }
 
 #[cfg(test)]
@@ -260,6 +244,5 @@ mod tests {
     fn set_command_status(
     fn get_next_command(&self) -> Result<Option<SourceMDcommand>, String> {
     fn new_wdp(&self, command: &SourceMDcommand) -> WikidataPapers {
-    pub fn get_mw_api(ini_file: &str) -> mediawiki::api::Api {
     */
 }
