@@ -276,6 +276,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
             }
         }
 
+        // Publication date
         if !item.has_claims_with_property("P577") {
             match &work.medline_citation {
                 Some(medline_citation) => match &medline_citation.article {
@@ -296,6 +297,32 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                                         pub_date.year as u32,
                                         month,
                                         day,
+                                    );
+                                    item.add_claim(statement);
+                                }
+                                None => {}
+                            },
+                            None => {}
+                        },
+                        None => {}
+                    },
+                    None => {}
+                },
+                None => {}
+            };
+        }
+
+        if !item.has_claims_with_property("P478") {
+            match &work.medline_citation {
+                Some(medline_citation) => match &medline_citation.article {
+                    Some(article) => match &article.journal {
+                        Some(journal) => match &journal.journal_issue {
+                            Some(journal_issue) => match &journal_issue.volume {
+                                Some(volume) => {
+                                    let statement = Statement::new_normal(
+                                        Snak::new_string("P478", volume),
+                                        vec![],
+                                        vec![],
                                     );
                                     item.add_claim(statement);
                                 }
