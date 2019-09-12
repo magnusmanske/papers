@@ -27,6 +27,34 @@ use std::time::Duration;
 
 const INI_FILE: &str = "bot.ini";
 
+fn command_authors(ini_file: &str) {
+    let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).unwrap()));
+    let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(l) => l.trim().to_string(),
+            Err(_) => break,
+        };
+        if line.is_empty() {
+            continue;
+        }
+        //println!("Processing {}", &line);
+        author_from_id(&line, mw_api.clone(), cache.clone());
+    }
+}
+
+fn author_from_id(_id: &String, _mw_api: Arc<RwLock<Api>>, cache: Arc<WikidataStringCache>) {
+    let mut wdp = WikidataPapers::new(cache.clone());
+    wdp.testing = true;
+    wdp.add_adapter(Box::new(PMC2Wikidata::new()));
+    wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
+    wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
+    wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
+    wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
+    // TODO INCOMPLETE
+}
+
 fn command_papers(ini_file: &str) {
     let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).unwrap()));
     let stdin = io::stdin();
@@ -55,9 +83,7 @@ fn paper_from_id(id: &String, mw_api: Arc<RwLock<Api>>) {
             Regex::new(r#"^(PMC\d+)$"#).expect("main.rs::paper_from_id: RE_PMCID does not compile");
     }
 
-    let api = Api::new("https://www.wikidata.org/w/api.php")
-        .expect("main.rs::paper_from_id: cannot get Wikidata API");
-    let cache = Arc::new(WikidataStringCache::new(&api));
+    let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
 
     let mut wdp = WikidataPapers::new(cache.clone());
     wdp.testing = true;
@@ -148,7 +174,7 @@ fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> bo
     };
 
     println!("SPAWN: Starting batch #{}", batch_id);
-    let mut bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id) {
+    let bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id) {
         Ok(bot) => bot,
         Err(error) => {
             println!(
@@ -166,9 +192,8 @@ fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> bo
 }
 fn command_bot(ini_file: &str) {
     let smd = Arc::new(RwLock::new(SourceMD::new(ini_file)));
-    let api = Api::new("https://www.wikidata.org/w/api.php")
-        .expect("main.rs::command_bot: cannot get Wikidata API");
-    let cache = Arc::new(WikidataStringCache::new(&api));
+    let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).unwrap()));
+    let cache = Arc::new(WikidataStringCache::new(mw_api));
     loop {
         //println!("BOT!");
         if run_bot(smd.clone(), cache.clone()) {
@@ -187,6 +212,7 @@ fn main() {
     }
     match args[1].as_str() {
         "papers" => command_papers(INI_FILE),
+        "authors" => command_authors(INI_FILE),
         "bot" => command_bot(INI_FILE),
         _ => usage(&args[0]),
     }

@@ -43,7 +43,7 @@ impl SourceMDbot {
         Ok(())
     }
 
-    pub fn run(self: &mut Self) -> Result<bool, String> {
+    pub fn run(&self) -> Result<bool, String> {
         //println!("Running command from batch #{}", self.batch_id);
 
         //Check if batch is still valid (STOP etc)
@@ -86,7 +86,7 @@ impl SourceMDbot {
         }
     }
 
-    fn execute_command(self: &mut Self, command: &mut SourceMDcommand) -> Result<bool, String> {
+    fn execute_command(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
         match command.mode.as_str() {
             "CREATE_PAPER_BY_ID" => self.process_paper(command),
             "ADD_AUTHOR_TO_PUBLICATION" => self.process_paper(command),
@@ -109,10 +109,7 @@ impl SourceMDbot {
         }
     }
 
-    fn get_author_item(
-        self: &mut Self,
-        command: &mut SourceMDcommand,
-    ) -> Result<GenericAuthorInfo, String> {
+    fn get_author_item(&self, identifier: &String) -> Result<GenericAuthorInfo, String> {
         lazy_static! {
             static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
                 .expect("SourceMDbot::process_author: RE_WD does not compile");
@@ -121,12 +118,12 @@ impl SourceMDbot {
         }
 
         let mut author = GenericAuthorInfo::new();
-        if RE_WD.is_match(&command.identifier) {
-            author.wikidata_item = Some(command.identifier.to_owned());
-        } else if RE_ORCID.is_match(&command.identifier) {
+        if RE_WD.is_match(identifier) {
+            author.wikidata_item = Some(identifier.to_owned());
+        } else if RE_ORCID.is_match(identifier) {
             author
                 .prop2id
-                .insert("P496".to_string(), command.identifier.to_owned());
+                .insert("P496".to_string(), identifier.to_owned());
             author = author.get_or_create_author_item(
                 self.config.read().unwrap().mw_api(),
                 self.cache.clone(),
@@ -134,7 +131,7 @@ impl SourceMDbot {
         } else {
             return Err(format!(
                 "Not a Wikidata item, nor an ORCID ID {}",
-                &command.identifier
+                identifier
             ));
         }
 
@@ -142,22 +139,28 @@ impl SourceMDbot {
         if author.wikidata_item.is_none() {
             return Err(format!(
                 "Failed to get/create author item for {}",
-                &command.identifier
+                identifier
             ));
         }
 
         Ok(author)
     }
 
-    fn process_author_metadata(
-        self: &mut Self,
-        command: &mut SourceMDcommand,
-    ) -> Result<bool, String> {
-        let _author = self.get_author_item(command)?;
+    fn process_author_metadata(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
+        let author = self.get_author_item(&command.identifier)?;
+
+        // Create paper object
+        let mut wdp = self.new_wdp(&command);
+        wdp.set_edit_summary(Some(format!(
+            "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{}",
+            self.batch_id, self.batch_id, command.serial_number
+        )));
+        wdp.update_author_items(&vec![author], self.config.read().unwrap().mw_api());
+
         return Ok(true);
     }
 
-    fn process_paper(self: &mut Self, command: &mut SourceMDcommand) -> Result<bool, String> {
+    fn process_paper(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
         lazy_static! {
             static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
                 .expect("SourceMDbot::process_paper: RE_WD does not compile");
@@ -261,7 +264,7 @@ impl SourceMDbot {
     }
 
     fn set_command_status(
-        self: &mut Self,
+        &self,
         status: &str,
         message: Option<&str>,
         command: &mut SourceMDcommand,

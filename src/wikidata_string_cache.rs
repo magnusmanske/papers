@@ -46,10 +46,10 @@ pub struct WikidataStringCache {
 impl WikidataInteraction for WikidataStringCache {}
 
 impl WikidataStringCache {
-    pub fn new(mw_api: &Api) -> Self {
+    pub fn new(mw_api: Arc<RwLock<Api>>) -> Self {
         Self {
             cache: Arc::new(RwLock::new(HashMap::new())),
-            mw_api: Arc::new(RwLock::new(mw_api.clone())),
+            mw_api: mw_api,
             max_cache_size_per_property: MAX_CACHE_SIZE_PER_PROPERTY,
         }
     }
@@ -180,8 +180,13 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    fn api() -> Api {
-        Api::new("https://www.wikidata.org/w/api.php").unwrap()
+    fn api() -> Arc<RwLock<Api>> {
+        lazy_static! {
+            static ref API: Arc<RwLock<Api>> = Arc::new(RwLock::new(
+                Api::new("https://www.wikidata.org/w/api.php").unwrap(),
+            ));
+        }
+        API.clone()
     }
 
     #[test]
@@ -204,13 +209,13 @@ mod tests {
 
     #[test]
     fn fix_key() {
-        let wsc = WikidataStringCache::new(&api());
+        let wsc = WikidataStringCache::new(api());
         assert_eq!(wsc.fix_key(&" fOoBAr  ".to_string()), "foobar".to_string());
     }
 
     #[test]
     fn ensure_property() {
-        let wsc = WikidataStringCache::new(&api());
+        let wsc = WikidataStringCache::new(api());
         assert!(!wsc.cache.read().unwrap().contains_key("P123"));
         wsc.ensure_property("P123");
         assert!(wsc.cache.read().unwrap().contains_key("P123"));
@@ -218,7 +223,7 @@ mod tests {
 
     #[test]
     fn search() {
-        let wsc = WikidataStringCache::new(&api());
+        let wsc = WikidataStringCache::new(api());
         assert_eq!(
             wsc.search("P698", &"16116339".to_string().into()),
             Some("Q46664291".to_string())
@@ -231,7 +236,7 @@ mod tests {
 
     #[test]
     fn get_set() {
-        let wsc = WikidataStringCache::new(&api());
+        let wsc = WikidataStringCache::new(api());
         assert_eq!(
             wsc.get("P698", &"16116339".to_string()),
             Some("Q46664291".to_string())
@@ -248,7 +253,7 @@ mod tests {
 
     #[test]
     fn issn2q() {
-        let wsc = WikidataStringCache::new(&api());
+        let wsc = WikidataStringCache::new(api());
         assert_eq!(
             wsc.issn2q(&"1351-5101".to_string()),
             Some("Q15757256".to_string())
@@ -258,7 +263,7 @@ mod tests {
 
     #[test]
     fn prune() {
-        let mut wsc = WikidataStringCache::new(&api());
+        let mut wsc = WikidataStringCache::new(api());
         for num in 1..10 {
             wsc.set(
                 "P123",

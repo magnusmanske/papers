@@ -187,7 +187,7 @@ impl WikidataPapers {
         self.create_or_update_author_statements(&mut item, &authors);
     }
 
-    fn update_author_items(&self, authors: &Vec<GenericAuthorInfo>, mw_api: Arc<RwLock<Api>>) {
+    pub fn update_author_items(&self, authors: &Vec<GenericAuthorInfo>, mw_api: Arc<RwLock<Api>>) {
         let mut qs: Vec<String> = vec![];
         for author in authors {
             let q = match &author.wikidata_item {
