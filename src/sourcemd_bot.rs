@@ -1,4 +1,5 @@
 use crate::crossref2wikidata::Crossref2Wikidata;
+use crate::generic_author_info::GenericAuthorInfo;
 use crate::orcid2wikidata::Orcid2Wikidata;
 use crate::pmc2wikidata::PMC2Wikidata;
 use crate::pubmed2wikidata::Pubmed2Wikidata;
@@ -88,9 +89,16 @@ impl SourceMDbot {
         match command.mode.as_str() {
             "CREATE_PAPER_BY_ID" => self.process_paper(command),
             "ADD_AUTHOR_TO_PUBLICATION" => self.process_paper(command),
-            "ADD_METADATA_FROM_ORCID_TO_AUTHOR" => Ok(false), // TODO
-            "EDIT_PAPER_FOR_ORCID_AUTHOR" => Ok(false),       // TODO
-            "CREATE_BOOK_FROM_ISBN" => Ok(false),             // TODO
+            "ADD_METADATA_FROM_ORCID_TO_AUTHOR" => {
+                // TODO
+                if true {
+                    Ok(false)
+                } else {
+                    self.process_author_metadata(command)
+                }
+            }
+            "EDIT_PAPER_FOR_ORCID_AUTHOR" => Ok(false), // TODO
+            "CREATE_BOOK_FROM_ISBN" => Ok(false),       // TODO
             other => {
                 return Err(format!(
                     "Unrecognized command '{}' on command #{}",
@@ -98,6 +106,54 @@ impl SourceMDbot {
                 ))
             }
         }
+    }
+
+    fn get_author_item(
+        self: &mut Self,
+        command: &mut SourceMDcommand,
+    ) -> Result<GenericAuthorInfo, String> {
+        lazy_static! {
+            static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
+                .expect("SourceMDbot::process_author: RE_WD does not compile");
+            static ref RE_ORCID: Regex = Regex::new(r#"^(\d{4}-\d{4}-\d{4}-\d{4})$"#)
+                .expect("SourceMDbot::process_author: RE_ORCID does not compile");
+        }
+
+        let mut author = GenericAuthorInfo::new();
+        if RE_WD.is_match(&command.identifier) {
+            author.wikidata_item = Some(command.identifier.to_owned());
+        } else if RE_ORCID.is_match(&command.identifier) {
+            author
+                .prop2id
+                .insert("P496".to_string(), command.identifier.to_owned());
+            author = author.get_or_create_author_item(
+                &mut self.config.write().unwrap().mw_api(),
+                self.cache.clone(),
+            );
+        } else {
+            return Err(format!(
+                "Not a Wikidata item, nor an ORCID ID {}",
+                &command.identifier
+            ));
+        }
+
+        // Paranoia
+        if author.wikidata_item.is_none() {
+            return Err(format!(
+                "Failed to get/create author item for {}",
+                &command.identifier
+            ));
+        }
+
+        Ok(author)
+    }
+
+    fn process_author_metadata(
+        self: &mut Self,
+        command: &mut SourceMDcommand,
+    ) -> Result<bool, String> {
+        let _author = self.get_author_item(command)?;
+        return Ok(true);
     }
 
     fn process_paper(self: &mut Self, command: &mut SourceMDcommand) -> Result<bool, String> {
