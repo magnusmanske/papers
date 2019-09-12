@@ -150,6 +150,10 @@ fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) {
     }
     thread::spawn(move || {
         println!("SPAWN: Starting batch {}", &batch_id);
+        match config.write() {
+            Ok(mut config) => config.set_batch_running(batch_id),
+            _ => return,
+        }
         let mut bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id) {
             Ok(bot) => bot,
             Err(error) => {
