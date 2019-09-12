@@ -59,23 +59,15 @@ impl WikidataStringCache {
     pub fn get(&self, property: &str, key: &String) -> Option<String> {
         let key = self.fix_key(key);
         self.ensure_property(property);
-        let mut do_search = false;
-        let ret = match self
-            .cache
-            .write()
-            .unwrap()
-            .get_mut(property)
-            .unwrap() // Safe
-            .get_mut(&key)
-        {
-            Some(ret) => {
-                ret.update_timestamp();
-                ret.key()
-            }
-            None => {
-                do_search = true;
-                None
-            }
+        let (ret, do_search) = match self.cache.write() {
+            Ok(mut cache) => match cache.get_mut(property).unwrap().get_mut(&key) {
+                Some(ret) => {
+                    ret.update_timestamp();
+                    (ret.key(), false)
+                }
+                None => (None, true),
+            },
+            _ => (None, false),
         };
         if do_search {
             self.search(property, &key)
@@ -108,13 +100,12 @@ impl WikidataStringCache {
     }
 
     fn proterty_needs_pruning(&self, property: &str) -> bool {
-        if !self.has_property(property) {
-            return false;
-        }
-        let cache = self.cache.read().unwrap(); // Safe
-        match cache.get(&property.to_string()) {
-            Some(hash) => hash.len() >= self.max_cache_size_per_property,
-            None => false,
+        match self.cache.read() {
+            Ok(cache) => match cache.get(&property.to_string()) {
+                Some(hash) => hash.len() >= self.max_cache_size_per_property,
+                None => false,
+            },
+            _ => false,
         }
     }
 
@@ -127,6 +118,8 @@ impl WikidataStringCache {
             Some(data) => data,
             None => return,
         };
+
+        // Do prune
         println!("Pruning {}", property);
         let mut times: Vec<SystemTime> = data.iter().map(|(_k, v)| v.timestamp()).collect();
         times.sort();
@@ -138,21 +131,21 @@ impl WikidataStringCache {
 
     /// Checks if a property has a key-value hash in the cache
     fn has_property(&self, property: &str) -> bool {
-        self.cache
-            .read()
-            .unwrap()
-            .get(&property.to_string())
-            .is_some()
+        match self.cache.read() {
+            Ok(cache) => cache.get(&property.to_string()).is_some(),
+            _ => false,
+        }
     }
 
     /// Creates a new cache for a specific property
     fn ensure_property(&self, property: &str) {
         if !self.has_property(property) {
-            self.cache
-                .write()
-                .unwrap()
-                .entry(property.to_string())
-                .or_insert(HashMap::new());
+            match self.cache.write() {
+                Ok(mut cache) => {
+                    cache.insert(property.to_string(), HashMap::new());
+                }
+                _ => {}
+            }
         }
     }
 

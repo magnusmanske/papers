@@ -202,8 +202,11 @@ impl WikidataPapers {
 
         let mut entities = entity_container::EntityContainer::new();
         entities.allow_special_entity_data(false);
-        match entities.load_entities(&mw_api.read().unwrap(), &qs) {
-            Ok(_) => {}
+        match mw_api.read() {
+            Ok(mw_api) => match entities.load_entities(&mw_api, &qs) {
+                Ok(_) => {}
+                _ => return,
+            },
             _ => return,
         }
 
@@ -226,7 +229,11 @@ impl WikidataPapers {
                 .adapters
                 .iter()
                 .filter(|adapter| adapter.publication_property().is_some())
-                .filter(|adapter| prop == adapter.publication_property().unwrap())
+                .filter(|adapter| {
+                    prop == adapter
+                        .publication_property()
+                        .unwrap_or("NOPENOPE".to_string())
+                })
                 .filter_map(|adapter| adapter.publication_id_for_statement(&id.id))
                 .nth(0);
             match id2statement {
@@ -264,6 +271,16 @@ impl WikidataPapers {
         self.create_or_update_item_from_items(mw_api, &vec![], &items)
     }
 
+    fn new_publication_item(&self) -> Entity {
+        let mut item = Entity::new_empty_item();
+        item.add_claim(Statement::new_normal(
+            Snak::new_item("P31", "Q13442814"),
+            vec![],
+            vec![],
+        ));
+        item
+    }
+
     fn create_or_update_item_from_items(
         &mut self,
         mw_api: Arc<RwLock<Api>>,
@@ -273,24 +290,16 @@ impl WikidataPapers {
         let mut entities = entity_container::EntityContainer::new();
         entities.allow_special_entity_data(false);
         let mut item: wikibase::Entity;
-        let original_item: wikibase::Entity;
+        let mut original_item = Entity::new_empty_item();
         match items.get(0) {
-            Some(q) => {
-                item = entities
-                    .load_entity(&mw_api.read().unwrap(), q.clone())
-                    .ok()?
-                    .to_owned();
-                original_item = item.clone();
-            }
-            None => {
-                original_item = Entity::new_empty_item();
-                item = Entity::new_empty_item();
-                item.add_claim(Statement::new_normal(
-                    Snak::new_item("P31", "Q13442814"),
-                    vec![],
-                    vec![],
-                ));
-            }
+            Some(q) => match mw_api.read() {
+                Ok(mw_api) => {
+                    item = entities.load_entity(&mw_api, q.clone()).ok()?.to_owned();
+                    original_item = item.clone();
+                }
+                _ => item = self.new_publication_item(),
+            },
+            None => item = self.new_publication_item(),
         }
 
         self.update_item_with_ids(&mut item, &ids);
@@ -315,8 +324,6 @@ impl WikidataPapers {
         )];
         let mut diff = EntityDiff::new(&original_item, &item, &params);
         diff.set_edit_summary(self.edit_summary.to_owned());
-
-        //println!("{}", ::serde_json::to_string_pretty(&json!(item)).unwrap());
 
         if diff.is_empty() {
             return match original_item.id().as_str() {
