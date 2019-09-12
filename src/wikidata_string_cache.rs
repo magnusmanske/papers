@@ -111,18 +111,18 @@ impl WikidataStringCache {
         if !self.has_property(property) {
             return false;
         }
-        let cache = self.cache.read().unwrap();
-        if cache.get(&property.to_string()).unwrap().len() < self.max_cache_size_per_property {
-            return false;
+        let cache = self.cache.read().unwrap(); // Safe
+        match cache.get(&property.to_string()) {
+            Some(hash) => hash.len() >= self.max_cache_size_per_property,
+            None => false,
         }
-        true
     }
 
     fn prune_property(&self, property: &str) {
         if !self.proterty_needs_pruning(property) {
             return;
         }
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = self.cache.write().unwrap(); // Safe
         let data = match cache.get_mut(&property.to_string()) {
             Some(data) => data,
             None => return,

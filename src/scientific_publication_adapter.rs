@@ -404,7 +404,7 @@ pub trait ScientificPublicationAdapter {
     /// Caches language ISO codes and their mapping to Wikidata items
     fn language2q(&self, language: &str) -> Option<String> {
         lazy_static! {
-            static ref MW_API: Api = Api::new("https://www.wikidata.org/w/api.php").unwrap();
+            static ref MW_API: Api = Api::new("https://www.wikidata.org/w/api.php").expect("ScientificPublicationAdapter::language2q: Could not get Wikidata API");
             static ref L2Q: HashMap<String, String> = MW_API
                 .sparql_query("SELECT DISTINCT ?l ?q { ?q wdt:P31/wdt:P279* wd:Q20162172; (wdt:P219|wdt:P220) ?l }")
                 .unwrap()["results"]["bindings"]

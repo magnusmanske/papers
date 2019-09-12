@@ -193,24 +193,24 @@ impl SourceMDbot {
         // Others
         let mut ids = vec![];
         match RE_DOI.captures(&command.identifier) {
-            Some(caps) => ids.push(GenericWorkIdentifier::new_prop(
-                PROP_DOI,
-                caps.get(1).unwrap().as_str(),
-            )),
+            Some(caps) => match caps.get(1) {
+                Some(x) => ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, x.as_str())),
+                None => {}
+            },
             None => {}
         };
         match RE_PMID.captures(&command.identifier) {
-            Some(caps) => ids.push(GenericWorkIdentifier::new_prop(
-                PROP_PMID,
-                caps.get(1).unwrap().as_str(),
-            )),
+            Some(caps) => match caps.get(1) {
+                Some(x) => ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, x.as_str())),
+                None => {}
+            },
             None => {}
         };
         match RE_PMCID.captures(&command.identifier) {
-            Some(caps) => ids.push(GenericWorkIdentifier::new_prop(
-                PROP_PMCID,
-                caps.get(1).unwrap().as_str(),
-            )),
+            Some(caps) => match caps.get(1) {
+                Some(x) => ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, x.as_str())),
+                None => {}
+            },
             None => {}
         };
         match serde_json::from_str(&command.identifier) {

@@ -29,7 +29,7 @@ use std::time::Duration;
 const INI_FILE: &str = "bot.ini";
 
 fn command_authors(ini_file: &str) {
-    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file)));
+    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).unwrap()));
     let mw_api = smd.read().unwrap().mw_api();
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
     let stdin = io::stdin();
@@ -188,7 +188,7 @@ fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> bo
     true
 }
 fn command_bot(ini_file: &str) {
-    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file)));
+    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).unwrap()));
     let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).unwrap()));
     let cache = Arc::new(WikidataStringCache::new(mw_api));
     loop {

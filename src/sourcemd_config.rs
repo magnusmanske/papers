@@ -16,16 +16,16 @@ pub struct SourceMD {
 }
 
 impl SourceMD {
-    pub fn new(ini_file: &str) -> Self {
+    pub fn new(ini_file: &str) -> Result<Self, String> {
         let mut ret = Self {
             params: json!({}),
             running_batch_ids: Arc::new(RwLock::new(HashSet::new())),
             failed_batch_ids: Arc::new(RwLock::new(HashSet::new())),
             pool: None,
-            mw_api: Arc::new(RwLock::new(Self::create_mw_api(ini_file).unwrap())),
+            mw_api: Arc::new(RwLock::new(Self::create_mw_api(ini_file)?)),
         };
         ret.init();
-        ret
+        Ok(ret)
     }
 
     pub fn set_batch_failed(&self, batch_id: i64) {
