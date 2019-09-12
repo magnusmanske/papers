@@ -14,6 +14,20 @@ pub struct SourceMDcommand {
 }
 
 impl SourceMDcommand {
+    pub fn new_dummy(mode: &str, identifier: &String) -> Self {
+        Self {
+            id: 0,
+            batch_id: 0,
+            serial_number: 0,
+            mode: mode.to_string(),
+            identifier: identifier.clone(),
+            status: "TODO".to_string(),
+            note: "".to_string(),
+            q: "".to_string(),
+            auto_escalate: false,
+        }
+    }
+
     pub fn new_from_row(row: my::Row) -> Self {
         Self {
             id: SourceMDcommand::rowvalue_as_i64(&row["id"]),

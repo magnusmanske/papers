@@ -6,6 +6,7 @@ extern crate lazy_static;
 extern crate regex;
 extern crate serde_json;
 
+use crate::sourcemd_command::SourceMDcommand;
 use crate::wikidata_string_cache::WikidataStringCache;
 use mediawiki::api::Api;
 use papers::crossref2wikidata::Crossref2Wikidata;
@@ -28,7 +29,8 @@ use std::time::Duration;
 const INI_FILE: &str = "bot.ini";
 
 fn command_authors(ini_file: &str) {
-    let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).unwrap()));
+    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file)));
+    let mw_api = smd.read().unwrap().mw_api();
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
@@ -39,20 +41,15 @@ fn command_authors(ini_file: &str) {
         if line.is_empty() {
             continue;
         }
-        //println!("Processing {}", &line);
-        author_from_id(&line, mw_api.clone(), cache.clone());
+        println!("Processing {}", &line);
+        author_from_id(&line, cache.clone(), smd.clone());
     }
 }
 
-fn author_from_id(_id: &String, _mw_api: Arc<RwLock<Api>>, cache: Arc<WikidataStringCache>) {
-    let mut wdp = WikidataPapers::new(cache.clone());
-    wdp.testing = true;
-    wdp.add_adapter(Box::new(PMC2Wikidata::new()));
-    wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
-    wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
-    wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
-    wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
-    // TODO INCOMPLETE
+fn author_from_id(id: &String, cache: Arc<WikidataStringCache>, smd: Arc<RwLock<SourceMD>>) {
+    let mut command = SourceMDcommand::new_dummy("DUMMY", id);
+    let bot = SourceMDbot::new(smd.clone(), cache.clone(), 0).unwrap();
+    bot.process_author_metadata(&mut command).unwrap();
 }
 
 fn command_papers(ini_file: &str) {

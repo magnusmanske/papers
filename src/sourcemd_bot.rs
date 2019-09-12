@@ -146,7 +146,7 @@ impl SourceMDbot {
         Ok(author)
     }
 
-    fn process_author_metadata(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
+    pub fn process_author_metadata(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
         let author = self.get_author_item(&command.identifier)?;
 
         // Create paper object
