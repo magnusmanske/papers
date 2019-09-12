@@ -9,7 +9,8 @@ use std::sync::{Arc, RwLock};
 #[derive(Debug, Clone)]
 pub struct SourceMD {
     params: Value,
-    running_batch_ids: HashSet<i64>,
+    running_batch_ids: Arc<RwLock<HashSet<i64>>>,
+    failed_batch_ids: Arc<RwLock<HashSet<i64>>>,
     pool: Option<my::Pool>,
     mw_api: Arc<RwLock<mediawiki::api::Api>>,
 }
@@ -18,12 +19,17 @@ impl SourceMD {
     pub fn new(ini_file: &str) -> Self {
         let mut ret = Self {
             params: json!({}),
-            running_batch_ids: HashSet::new(),
+            running_batch_ids: Arc::new(RwLock::new(HashSet::new())),
+            failed_batch_ids: Arc::new(RwLock::new(HashSet::new())),
             pool: None,
             mw_api: Arc::new(RwLock::new(Self::create_mw_api(ini_file).unwrap())),
         };
         ret.init();
         ret
+    }
+
+    pub fn set_batch_failed(&self, batch_id: i64) {
+        self.failed_batch_ids.write().unwrap().insert(batch_id);
     }
 
     pub fn mw_api(&self) -> Arc<RwLock<mediawiki::api::Api>> {
@@ -48,14 +54,14 @@ impl SourceMD {
         Some(())
     }
 
-    pub fn set_batch_running(&mut self, batch_id: i64) {
+    pub fn set_batch_running(&self, batch_id: i64) {
         println!("set_batch_running: Starting batch #{}", batch_id);
-        self.running_batch_ids.insert(batch_id);
+        self.running_batch_ids.write().unwrap().insert(batch_id);
         println!("Currently {} bots running", self.number_of_bots_running());
     }
 
     pub fn number_of_bots_running(&self) -> usize {
-        self.running_batch_ids.len()
+        self.running_batch_ids.read().unwrap().len()
     }
 
     pub fn timestamp(&self) -> String {
@@ -77,7 +83,9 @@ impl SourceMD {
                 my::Value::Int(x) => *x as i64,
                 _ => continue,
             };
-            if self.running_batch_ids.contains(&id) {
+            if self.running_batch_ids.read().unwrap().contains(&id)
+                || self.failed_batch_ids.read().unwrap().contains(&id)
+            {
                 continue;
             }
             return Some(id);
@@ -85,20 +93,22 @@ impl SourceMD {
         None
     }
 
-    pub fn deactivate_batch_run(self: &mut Self, batch_id: i64) -> Option<()> {
+    pub fn deactivate_batch_run(&self, batch_id: i64) -> Option<()> {
         println!("Deactivating batch #{}", batch_id);
         self.set_batch_finished(batch_id)?;
-        self.running_batch_ids.remove(&batch_id);
+        {
+            self.running_batch_ids.write().unwrap().remove(&batch_id);
+        }
         println!("Currently {} bots running", self.number_of_bots_running());
         Some(())
     }
 
-    pub fn set_batch_finished(&mut self, batch_id: i64) -> Option<()> {
+    pub fn set_batch_finished(&self, batch_id: i64) -> Option<()> {
         println!("set_batch_finished: Batch #{}", batch_id);
         self.set_batch_status("DONE", batch_id)
     }
 
-    pub fn check_batch_not_stopped(self: &mut Self, batch_id: i64) -> Result<(), String> {
+    pub fn check_batch_not_stopped(&self, batch_id: i64) -> Result<(), String> {
         let pool = match &self.pool {
             Some(pool) => pool,
             None => {
@@ -124,7 +134,7 @@ impl SourceMD {
         Ok(())
     }
 
-    fn set_batch_status(&mut self, status: &str, batch_id: i64) -> Option<()> {
+    fn set_batch_status(&self, status: &str, batch_id: i64) -> Option<()> {
         let pool = match &self.pool {
             Some(pool) => pool,
             None => return None,
@@ -143,7 +153,7 @@ impl SourceMD {
         //self.deactivate_batch_run(batch_id)
     }
 
-    pub fn get_next_command(&mut self, batch_id: i64) -> Option<SourceMDcommand> {
+    pub fn get_next_command(&self, batch_id: i64) -> Option<SourceMDcommand> {
         let pool = match &self.pool {
             Some(pool) => pool,
             None => return None,
@@ -158,7 +168,7 @@ impl SourceMD {
     }
 
     pub fn set_command_status(
-        self: &mut Self,
+        &self,
         command: &mut SourceMDcommand,
         new_status: &str,
         new_message: Option<String>,

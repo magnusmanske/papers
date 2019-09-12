@@ -139,34 +139,30 @@ fn usage(command_name: &String) {
     println!("USAGE: {} [papers]", command_name);
 }
 
-fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) {
+/// Returns true if a new batch was started, false otherwise
+fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> bool {
     //println!("BOT!");
-    let batch_id: i64;
-    {
-        batch_id = match config.read().unwrap().get_next_batch() {
-            Some(n) => n,
-            None => return, // Nothing to do
-        };
-    }
-    thread::spawn(move || {
-        println!("SPAWN: Starting batch {}", &batch_id);
-        match config.write() {
-            Ok(mut config) => config.set_batch_running(batch_id),
-            _ => return,
+    let batch_id = match config.read().unwrap().get_next_batch() {
+        Some(n) => n,
+        None => return false, // Nothing to do
+    };
+
+    println!("SPAWN: Starting batch #{}", batch_id);
+    let mut bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id) {
+        Ok(bot) => bot,
+        Err(error) => {
+            println!(
+                "Error when starting bot for batch #{}: '{}'",
+                &batch_id, &error
+            );
+            config.read().unwrap().set_batch_failed(batch_id);
+            return false;
         }
-        let mut bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id) {
-            Ok(bot) => bot,
-            Err(error) => {
-                println!(
-                    "Error when starting bot for batch #{}: '{}'",
-                    &batch_id, &error
-                );
-                // TODO mark this as problematic so it doesn't get run again next time?
-                return;
-            }
-        };
-        while bot.run().unwrap_or(false) {}
-    });
+    };
+
+    println!("Batch #{} spawned", batch_id);
+    thread::spawn(move || while bot.run().unwrap_or(false) {});
+    true
 }
 fn command_bot(ini_file: &str) {
     let smd = Arc::new(RwLock::new(SourceMD::new(ini_file)));
@@ -175,8 +171,11 @@ fn command_bot(ini_file: &str) {
     let cache = Arc::new(WikidataStringCache::new(&api));
     loop {
         //println!("BOT!");
-        run_bot(smd.clone(), cache.clone());
-        thread::sleep(Duration::from_millis(5000));
+        if run_bot(smd.clone(), cache.clone()) {
+            thread::sleep(Duration::from_millis(1000));
+        } else {
+            thread::sleep(Duration::from_millis(5000));
+        }
     }
 }
 

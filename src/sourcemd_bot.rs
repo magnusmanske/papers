@@ -30,20 +30,15 @@ impl SourceMDbot {
             batch_id: batch_id,
             cache: cache,
         };
-        println!("Batch #{}: starting", batch_id);
         ret.start()?;
-        println!("Batch #{}: started", batch_id);
         Ok(ret)
     }
 
     pub fn start(&self) -> Result<(), String> {
-        println!("Batch #{}: starting, getting write lock", self.batch_id);
-        let mut config = self.config.write().map_err(|e| format!("{:?}", e))?;
-        println!("Batch #{}: starting, initiating restart", self.batch_id);
+        let config = self.config.read().map_err(|e| format!("{:?}", e))?;
         config
             .restart_batch(self.batch_id)
             .ok_or("Can't (re)start batch".to_string())?;
-        println!("Batch #{}: starting, setting batch running", self.batch_id);
         config.set_batch_running(self.batch_id);
         Ok(())
     }
@@ -54,7 +49,7 @@ impl SourceMDbot {
         let command = match self.get_next_command() {
             Ok(c) => c,
             Err(_) => {
-                let mut config = self.config.write().map_err(|e| format!("{:?}", e))?;
+                let config = self.config.read().map_err(|e| format!("{:?}", e))?;
                 config
                     .deactivate_batch_run(self.batch_id)
                     .ok_or("Can't set batch as stopped".to_string())?;
@@ -64,7 +59,7 @@ impl SourceMDbot {
         let mut command = match command {
             Some(c) => c,
             None => {
-                let mut config = self.config.write().map_err(|e| format!("{:?}", e))?;
+                let config = self.config.read().map_err(|e| format!("{:?}", e))?;
                 config
                     .deactivate_batch_run(self.batch_id)
                     .ok_or("Can't set batch as stopped".to_string())?;
@@ -271,7 +266,7 @@ impl SourceMDbot {
         command: &mut SourceMDcommand,
     ) -> Result<(), String> {
         //println!("Setting {} to {}", &command.id, &status);
-        let mut config = self.config.write().map_err(|e| format!("{:?}", e))?;
+        let config = self.config.read().map_err(|e| format!("{:?}", e))?;
         config
             .set_command_status(command, status, message.map(|s| s.to_string()))
             .ok_or(format!(
@@ -282,7 +277,7 @@ impl SourceMDbot {
     }
 
     fn get_next_command(&self) -> Result<Option<SourceMDcommand>, String> {
-        let mut config = self.config.write().map_err(|e| format!("{:?}", e))?;
+        let config = self.config.read().map_err(|e| format!("{:?}", e))?;
         Ok(config.get_next_command(self.batch_id))
     }
 
