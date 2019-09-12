@@ -314,15 +314,13 @@ impl WikidataPapers {
         //println!("{}", ::serde_json::to_string_pretty(&json!(item)).unwrap());
 
         if diff.is_empty() {
-            match original_item.id().as_str() {
-                "" => return None,
-                id => {
-                    return Some(EditResult {
-                        q: id.to_string(),
-                        edited: false,
-                    })
-                }
-            }
+            return match original_item.id().as_str() {
+                "" => None,
+                id => Some(EditResult {
+                    q: id.to_string(),
+                    edited: false,
+                }),
+            };
         }
 
         if self.testing {
