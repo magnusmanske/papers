@@ -107,6 +107,11 @@ pub trait ScientificPublicationAdapter {
         vec![]
     }
 
+    /// Returns the sanitized (if required) publication ID to put in a statement
+    fn publication_id_for_statement(&self, id: &String) -> Option<String> {
+        Some(id.to_string())
+    }
+
     fn sanitize_author_name(&self, author_name: &String) -> String {
         author_name
             .replace("†", "")
@@ -285,11 +290,14 @@ pub trait ScientificPublicationAdapter {
         match self.publication_property() {
             Some(prop) => {
                 if !item.has_claims_with_property(prop.to_owned()) {
-                    item.add_claim(Statement::new_normal(
-                        Snak::new_external_id(prop.to_string(), publication_id.to_string()),
-                        vec![],
-                        self.reference(),
-                    ));
+                    match self.publication_id_for_statement(publication_id) {
+                        Some(pub_id) => item.add_claim(Statement::new_normal(
+                            Snak::new_external_id(prop.to_string(), pub_id),
+                            vec![],
+                            self.reference(),
+                        )),
+                        None => {}
+                    }
                 }
             }
             _ => {}

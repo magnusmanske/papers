@@ -52,7 +52,7 @@ fn paper_from_id(id: &String, mut mw_api: &mut Api) {
         static ref RE_PMID: Regex =
             Regex::new(r#"^(\d+)$"#).expect("main.rs::paper_from_id: RE_PMID does not compile");
         static ref RE_PMCID: Regex =
-            Regex::new(r#"^PMC(\d+)$"#).expect("main.rs::paper_from_id: RE_PMCID does not compile");
+            Regex::new(r#"^(PMC\d+)$"#).expect("main.rs::paper_from_id: RE_PMCID does not compile");
     }
 
     let api = Api::new("https://www.wikidata.org/w/api.php")

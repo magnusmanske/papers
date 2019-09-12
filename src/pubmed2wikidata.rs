@@ -4,6 +4,7 @@ use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
 use pubmed::*;
+use regex::Regex;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -46,7 +47,18 @@ impl Pubmed2Wikidata {
         Some(self.sanitize_author_name(&ret))
     }
 
+    fn is_pubmed_id(&self, id: &String) -> bool {
+        lazy_static! {
+            static ref RE_PMID: Regex =
+                Regex::new(r#"^(\d+)$"#).expect("main.rs::paper_from_id: RE_PMID does not compile");
+        }
+        RE_PMID.is_match(id)
+    }
+
     fn publication_id_from_pubmed(&mut self, publication_id: &String) -> Option<String> {
+        if !self.is_pubmed_id(publication_id) {
+            return None;
+        }
         if !self.work_cache.contains_key(publication_id) {
             let pub_id_u64 = publication_id.parse::<u64>().ok()?;
             let work = self.client.article(pub_id_u64).ok()?;
@@ -222,7 +234,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                         }
                         None => {}
                     },
-                    PROP_PMCID => {
+                    PROP_DOI => {
                         for publication_id in self.publication_ids_from_doi(&id.id) {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }

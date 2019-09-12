@@ -3,6 +3,7 @@ extern crate lazy_static;
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
+use regex::Regex;
 use reqwest;
 use std::collections::HashMap;
 //use mediawiki::api::Api;
@@ -29,19 +30,17 @@ impl PMC2Wikidata {
     }
 
     fn publication_id_from_pubmed(&mut self, pubmed_id: &String) -> Option<String> {
-        let pub_id_u64 = pubmed_id.parse::<u64>().ok()?;
-        let pubmed_id = format!("PMID_{}", pubmed_id);
+        // TODO check numeric
         let mut publication_id = pubmed_id.to_string(); // Fallback
-        if !self.work_cache.contains_key(&pubmed_id) {
-            // TODO same IDs as pubmed?
-            let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:{}%20AND%20SRC:MED&resulttype=core&format=json",pub_id_u64) ;
+        if !self.work_cache.contains_key(pubmed_id) {
+            let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:{}%20AND%20SRC:MED&resulttype=core&format=json",pubmed_id) ;
             let json: serde_json::Value = reqwest::get(url.as_str()).ok()?.json().ok()?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
                 match results.get(0) {
                     Some(json) => {
-                        match json["pmcid"].as_str() {
-                            Some(pmc_id) => publication_id = pmc_id.to_string()[3..].to_string(),
+                        match self.get_pmcid_from_work(json) {
+                            Some(pmc_id) => publication_id = pmc_id.to_string(),
                             None => {}
                         }
                         self.work_cache.insert(publication_id.clone(), json.clone());
@@ -53,13 +52,20 @@ impl PMC2Wikidata {
         Some(publication_id)
     }
 
+    fn is_pmcid(&self, id: &String) -> bool {
+        lazy_static! {
+            static ref RE_PMCID: Regex = Regex::new(r#"^(PMC\d+)$"#)
+                .expect("main.rs::paper_from_id: RE_PMCID does not compile");
+        }
+        RE_PMCID.is_match(id)
+    }
+
     fn publication_id_from_pmcid(&mut self, pmc_id: &String) -> Option<String> {
-        if pmc_id[0..2].to_string() != "PMC" {
+        if !self.is_pmcid(pmc_id) {
             return None;
         }
-        let pmc_id = pmc_id.replace("PMC", "");
-        if !self.work_cache.contains_key(&pmc_id) {
-            let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=PMC{}&resulttype=core&format=json",&pmc_id) ;
+        if !self.work_cache.contains_key(pmc_id) {
+            let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={}&resulttype=core&format=json",pmc_id) ;
             let json: serde_json::Value = reqwest::get(url.as_str()).ok()?.json().ok()?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
@@ -71,7 +77,7 @@ impl PMC2Wikidata {
                 }
             }
         }
-        Some(pmc_id)
+        Some(pmc_id.to_string())
     }
 
     pub fn get_cached_publication_from_id(
@@ -82,9 +88,7 @@ impl PMC2Wikidata {
     }
 
     fn get_pmcid_from_work(&self, json: &serde_json::Value) -> Option<String> {
-        json["pmcid"]
-            .as_str()
-            .map(|pmcid| pmcid.to_string()[3..].to_string())
+        json["pmcid"].as_str().map(|pmcid| pmcid.to_string())
     }
 
     fn get_pmid_from_work(&self, json: &serde_json::Value) -> Option<String> {
@@ -106,12 +110,13 @@ impl PMC2Wikidata {
             Some(p) => {
                 let my_prop = GenericWorkType::Property(p);
                 match self.get_pmcid_from_work(work) {
-                    Some(pmcid) => {
-                        ret.push(GenericWorkIdentifier {
+                    Some(pmc_id) => match self.publication_id_for_statement(&pmc_id) {
+                        Some(id) => ret.push(GenericWorkIdentifier {
                             work_type: my_prop,
-                            id: pmcid + " [3]", // TODO
-                        });
-                    }
+                            id: id,
+                        }),
+                        None => {}
+                    },
                     None => {}
                 }
             }
@@ -148,9 +153,16 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         Some("P932".to_string())
     }
 
+    fn publication_id_for_statement(&self, id: &String) -> Option<String> {
+        if self.is_pmcid(id) {
+            Some(id.replace("PMC", "").to_string())
+        } else {
+            None
+        }
+    }
+
     // Overriding default function
     fn update_work_item_with_property(&self, publication_id: &String, item: &mut Entity) {
-        println!("1:: {}", publication_id); // TODO
         if publication_id[0..4].to_string() == "PMID_" {
             return;
         }
@@ -172,11 +184,11 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         let pmcid = match self
             .get_external_identifier_from_item(item, &self.publication_property().unwrap())
         {
-            Some(s) => s,
+            Some(s) => "PMC".to_owned() + &s,
             None => {
                 // Attempt fallback to PubMed ID
                 return match self.get_external_identifier_from_item(item, "P698") {
-                    Some(pmid) => dbg!(self.publication_id_from_pubmed(&pmid)), // TODO
+                    Some(pmid) => self.publication_id_from_pubmed(&pmid),
                     None => None,
                 };
             }
@@ -272,67 +284,6 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
             Some(w) => w,
             None => return,
         };
-
-        // Work language
-        if !item.has_claims_with_property("P407") {
-            match &work.medline_citation {
-                Some(medline_citation) => match &medline_citation.article {
-                    Some(article) => match &article.language {
-                        Some(language) => match self.language2q(&language) {
-                            Some(q) => {
-                                let statement = Statement::new_normal(
-                                    Snak::new_item("P407", &q),
-                                    vec![],
-                                    vec![],
-                                );
-                                item.add_claim(statement);
-                            }
-                            None => {}
-                        },
-                        None => {}
-                    },
-                    None => {}
-                },
-                None => {}
-            }
-        }
-
-        // Publication date
-        if !item.has_claims_with_property("P577") {
-            match &work.medline_citation {
-                Some(medline_citation) => match &medline_citation.article {
-                    Some(article) => match &article.journal {
-                        Some(journal) => match &journal.journal_issue {
-                            Some(journal_issue) => match &journal_issue.pub_date {
-                                Some(pub_date) => {
-                                    let month = match pub_date.month {
-                                        0 => None,
-                                        x => Some(x),
-                                    };
-                                    let day = match pub_date.day {
-                                        0 => None,
-                                        x => Some(x),
-                                    };
-                                    let statement = self.get_wb_time_from_partial(
-                                        "P577".to_string(),
-                                        pub_date.year as u32,
-                                        month,
-                                        day,
-                                    );
-                                    item.add_claim(statement);
-                                }
-                                None => {}
-                            },
-                            None => {}
-                        },
-                        None => {}
-                    },
-                    None => {}
-                },
-                None => {}
-            };
-        }
-
         */
     }
 

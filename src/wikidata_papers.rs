@@ -218,14 +218,24 @@ impl WikidataPapers {
                 _ => continue,
             };
             if item.has_claims_with_property(prop.clone()) {
-                // TODO use claims_with_property to check the values
+                // TODO use claims_with_property to check the individual values
                 continue;
             }
-            item.add_claim(Statement::new_normal(
-                Snak::new_external_id(prop.clone(), id.id.clone()),
-                vec![],
-                vec![],
-            ));
+            let id2statement = self
+                .adapters
+                .iter()
+                .filter(|adapter| adapter.publication_property().is_some())
+                .filter(|adapter| prop == adapter.publication_property().unwrap())
+                .filter_map(|adapter| adapter.publication_id_for_statement(&id.id))
+                .nth(0);
+            match id2statement {
+                Some(id) => item.add_claim(Statement::new_normal(
+                    Snak::new_external_id(prop.clone(), id),
+                    vec![],
+                    vec![],
+                )),
+                None => {}
+            }
         }
     }
 

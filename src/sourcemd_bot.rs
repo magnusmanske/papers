@@ -108,7 +108,7 @@ impl SourceMDbot {
                 .expect("SourceMDbot::process_paper: RE_DOI does not compile");
             static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#)
                 .expect("SourceMDbot::process_paper: RE_PMID does not compile");
-            static ref RE_PMCID: Regex = Regex::new(r#"^PMCID(\d+)$"#)
+            static ref RE_PMCID: Regex = Regex::new(r#"^(PMC\d+)$"#)
                 .expect("SourceMDbot::process_paper: RE_PMCID does not compile");
         }
 
