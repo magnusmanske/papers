@@ -44,7 +44,8 @@ impl SourceMDbot {
     }
 
     pub fn run(self: &mut Self) -> Result<bool, String> {
-        println!("Running command from batch #{}", self.batch_id);
+        //println!("Running command from batch #{}", self.batch_id);
+
         //Check if batch is still valid (STOP etc)
         let command = match self.get_next_command() {
             Ok(c) => c,
