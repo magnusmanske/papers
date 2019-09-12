@@ -154,7 +154,7 @@ impl WikidataPapers {
         &mut self,
         mut item: &mut Entity,
         adapter2work_id: &mut HashMap<usize, String>,
-        mw_api: &mut Api,
+        mw_api: Arc<RwLock<Api>>,
     ) {
         let mut authors: Vec<GenericAuthorInfo> = vec![];
         for adapter_id in 0..self.adapters.len() {
@@ -179,7 +179,7 @@ impl WikidataPapers {
 
         let authors: Vec<GenericAuthorInfo> = authors
             .iter()
-            .map(|author| author.get_or_create_author_item(mw_api, self.cache.clone()))
+            .map(|author| author.get_or_create_author_item(mw_api.clone(), self.cache.clone()))
             .collect();
 
         self.update_author_items(&authors, mw_api);
@@ -187,7 +187,7 @@ impl WikidataPapers {
         self.create_or_update_author_statements(&mut item, &authors);
     }
 
-    fn update_author_items(&self, authors: &Vec<GenericAuthorInfo>, mw_api: &mut Api) {
+    fn update_author_items(&self, authors: &Vec<GenericAuthorInfo>, mw_api: Arc<RwLock<Api>>) {
         let mut qs: Vec<String> = vec![];
         for author in authors {
             let q = match &author.wikidata_item {
@@ -201,13 +201,13 @@ impl WikidataPapers {
         }
 
         let mut entities = entity_container::EntityContainer::new();
-        match entities.load_entities(mw_api, &qs) {
+        match entities.load_entities(&mw_api.read().unwrap(), &qs) {
             Ok(_) => {}
             _ => return,
         }
 
         for author in authors {
-            author.update_author_item(&mut entities, mw_api);
+            author.update_author_item(&mut entities, mw_api.clone());
         }
     }
 
@@ -241,7 +241,7 @@ impl WikidataPapers {
 
     pub fn create_or_update_item_from_ids(
         &mut self,
-        mw_api: &mut Api,
+        mw_api: Arc<RwLock<Api>>,
         ids: &Vec<GenericWorkIdentifier>,
     ) -> Option<EditResult> {
         if ids.is_empty() {
@@ -256,7 +256,7 @@ impl WikidataPapers {
 
     pub fn create_or_update_item_from_q(
         &mut self,
-        mw_api: &mut Api,
+        mw_api: Arc<RwLock<Api>>,
         q: &String,
     ) -> Option<EditResult> {
         let items = vec![q.to_owned()];
@@ -265,7 +265,7 @@ impl WikidataPapers {
 
     fn create_or_update_item_from_items(
         &mut self,
-        mw_api: &mut Api,
+        mw_api: Arc<RwLock<Api>>,
         ids: &Vec<GenericWorkIdentifier>,
         items: &Vec<String>,
     ) -> Option<EditResult> {
@@ -274,7 +274,10 @@ impl WikidataPapers {
         let original_item: wikibase::Entity;
         match items.get(0) {
             Some(q) => {
-                item = entities.load_entity(mw_api, q.clone()).ok()?.to_owned();
+                item = entities
+                    .load_entity(&mw_api.read().unwrap(), q.clone())
+                    .ok()?
+                    .to_owned();
                 original_item = item.clone();
             }
             None => {
@@ -291,7 +294,7 @@ impl WikidataPapers {
         self.update_item_with_ids(&mut item, &ids);
 
         let mut adapter2work_id = HashMap::new();
-        self.update_item_from_adapters(&mut item, &mut adapter2work_id, mw_api);
+        self.update_item_from_adapters(&mut item, &mut adapter2work_id, mw_api.clone());
 
         // Paranoia
         if item.claims().len() < 4 {
@@ -327,7 +330,10 @@ impl WikidataPapers {
             println!("{}", diff.to_string_pretty().unwrap());
             None
         } else {
-            let new_json = diff.apply_diff(mw_api, &diff).ok()?;
+            let new_json = match mw_api.write() {
+                Ok(mut mw_api) => diff.apply_diff(&mut mw_api, &diff).ok()?,
+                _ => return None,
+            };
             let q = EntityDiff::get_entity_id(&new_json)?;
             Some(EditResult {
                 q: q.to_string(),

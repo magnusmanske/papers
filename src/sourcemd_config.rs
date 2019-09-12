@@ -4,13 +4,14 @@ use config::{Config, File};
 use mysql as my;
 use serde_json::Value;
 use std::collections::HashSet;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone)]
 pub struct SourceMD {
     params: Value,
     running_batch_ids: HashSet<i64>,
     pool: Option<my::Pool>,
-    mw_api: mediawiki::api::Api,
+    mw_api: Arc<RwLock<mediawiki::api::Api>>,
 }
 
 impl SourceMD {
@@ -19,14 +20,14 @@ impl SourceMD {
             params: json!({}),
             running_batch_ids: HashSet::new(),
             pool: None,
-            mw_api: Self::create_mw_api(ini_file).unwrap(),
+            mw_api: Arc::new(RwLock::new(Self::create_mw_api(ini_file).unwrap())),
         };
         ret.init();
         ret
     }
 
-    pub fn mw_api(&mut self) -> &mut mediawiki::api::Api {
-        &mut self.mw_api
+    pub fn mw_api(&self) -> Arc<RwLock<mediawiki::api::Api>> {
+        self.mw_api.clone()
     }
 
     pub fn restart_batch(&self, batch_id: i64) -> Option<()> {

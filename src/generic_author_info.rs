@@ -238,7 +238,7 @@ impl GenericAuthorInfo {
 
     pub fn get_or_create_author_item(
         &self,
-        mw_api: &mut Api,
+        mw_api: Arc<RwLock<Api>>,
         cache: Arc<WikidataStringCache>,
     ) -> GenericAuthorInfo {
         let mut ret = self.clone();
@@ -391,7 +391,7 @@ impl GenericAuthorInfo {
     pub fn update_author_item(
         &self,
         entities: &mut wikibase::entity_container::EntityContainer,
-        mw_api: &mut Api,
+        mw_api: Arc<RwLock<Api>>,
     ) {
         let q = match &self.wikidata_item {
             Some(q) => q.to_string(),
@@ -413,7 +413,11 @@ impl GenericAuthorInfo {
             return;
         }
 
-        entities.apply_diff(mw_api, &diff);
+        match mw_api.write() {
+            Ok(mut mw_api) => entities.apply_diff(&mut mw_api, &diff),
+            _ => return,
+        };
+
         // TODO what?
     }
 }

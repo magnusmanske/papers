@@ -39,7 +39,7 @@ type WikidataStringHash = HashMap<String, WikidataStringValue>;
 #[derive(Debug, Clone)]
 pub struct WikidataStringCache {
     cache: Arc<RwLock<HashMap<String, WikidataStringHash>>>,
-    mw_api: Api,
+    mw_api: Arc<RwLock<Api>>,
     max_cache_size_per_property: usize,
 }
 
@@ -49,7 +49,7 @@ impl WikidataStringCache {
     pub fn new(mw_api: &Api) -> Self {
         Self {
             cache: Arc::new(RwLock::new(HashMap::new())),
-            mw_api: mw_api.clone(),
+            mw_api: Arc::new(RwLock::new(mw_api.clone())),
             max_cache_size_per_property: MAX_CACHE_SIZE_PER_PROPERTY,
         }
     }
@@ -163,7 +163,7 @@ impl WikidataStringCache {
     fn search(&self, property: &str, key: &String) -> Option<String> {
         let ret = match self.search_wikibase(
             &format!("haswbstatement:{}={}", property, key),
-            &self.mw_api,
+            self.mw_api.clone(),
         ) {
             Ok(items) => items.get(0).map(|s| s.to_string()), // Picking first one, if several
             Err(_) => None,

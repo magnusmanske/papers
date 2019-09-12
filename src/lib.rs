@@ -7,6 +7,7 @@ extern crate lazy_static;
 
 use mediawiki;
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use wikibase::entity_diff::*;
 use wikibase::*;
 
@@ -19,7 +20,7 @@ pub trait WikidataInteraction {
     fn search_wikibase(
         &self,
         query: &String,
-        mw_api: &mediawiki::api::Api,
+        mw_api: Arc<RwLock<mediawiki::api::Api>>,
     ) -> Result<Vec<String>, String> {
         let params: HashMap<_, _> = vec![
             ("action", "query"),
@@ -31,6 +32,8 @@ pub trait WikidataInteraction {
         .map(|(x, y)| (x.to_string(), y.to_string()))
         .collect();
         let res = mw_api
+            .read()
+            .unwrap()
             .get_query_api_json(&params)
             .map_err(|e| format!("{}", e))?;
         match res["query"]["search"].as_array() {
@@ -42,13 +45,20 @@ pub trait WikidataInteraction {
         }
     }
 
-    fn create_item(&self, item: &Entity, mw_api: &mut mediawiki::api::Api) -> Option<String> {
+    fn create_item(
+        &self,
+        item: &Entity,
+        mw_api: Arc<RwLock<mediawiki::api::Api>>,
+    ) -> Option<String> {
         let params = EntityDiffParams::all();
         let diff = EntityDiff::new(&Entity::new_empty_item(), item, &params);
         if diff.is_empty() {
             return None;
         }
-        let new_json = diff.apply_diff(mw_api, &diff).ok()?;
+        let new_json = match mw_api.write() {
+            Ok(mut mw_api) => diff.apply_diff(&mut mw_api, &diff).ok()?,
+            _ => return None,
+        };
         EntityDiff::get_entity_id(&new_json)
     }
 }

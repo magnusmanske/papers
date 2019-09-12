@@ -127,7 +127,7 @@ impl SourceMDbot {
                 .prop2id
                 .insert("P496".to_string(), command.identifier.to_owned());
             author = author.get_or_create_author_item(
-                &mut self.config.write().unwrap().mw_api(),
+                self.config.read().unwrap().mw_api(),
                 self.cache.clone(),
             );
         } else {
@@ -179,7 +179,7 @@ impl SourceMDbot {
         if RE_WD.is_match(&command.identifier) {
             return wdp
                 .create_or_update_item_from_q(
-                    &mut self.config.write().unwrap().mw_api(),
+                    self.config.read().unwrap().mw_api(),
                     &command.identifier,
                 )
                 .map(|_x| true)
@@ -248,7 +248,7 @@ impl SourceMDbot {
         }
 
         ids = wdp.update_from_paper_ids(&ids);
-        match wdp.create_or_update_item_from_ids(&mut self.config.write().unwrap().mw_api(), &ids) {
+        match wdp.create_or_update_item_from_ids(self.config.read().unwrap().mw_api(), &ids) {
             Some(er) => {
                 if command.q == "" {
                     command.q = er.q;

@@ -28,7 +28,7 @@ use std::time::Duration;
 const INI_FILE: &str = "bot.ini";
 
 fn command_papers(ini_file: &str) {
-    let mut mw_api = SourceMD::create_mw_api(ini_file).unwrap();
+    let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).unwrap()));
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         let line = match line {
@@ -39,11 +39,11 @@ fn command_papers(ini_file: &str) {
             continue;
         }
         //println!("Processing {}", &line);
-        paper_from_id(&line, &mut mw_api);
+        paper_from_id(&line, mw_api.clone());
     }
 }
 
-fn paper_from_id(id: &String, mut mw_api: &mut Api) {
+fn paper_from_id(id: &String, mw_api: Arc<RwLock<Api>>) {
     lazy_static! {
         static ref RE_WD: Regex =
             Regex::new(r#"^(Q\d+)$"#).expect("main.rs::paper_from_id: RE_WD does not compile");
@@ -70,7 +70,7 @@ fn paper_from_id(id: &String, mut mw_api: &mut Api) {
     match RE_WD.captures(&id) {
         Some(caps) => match caps.get(1) {
             Some(q) => {
-                match wdp.create_or_update_item_from_q(&mut mw_api, &q.as_str().to_string()) {
+                match wdp.create_or_update_item_from_q(mw_api, &q.as_str().to_string()) {
                     Some(er) => {
                         if er.edited {
                             println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
@@ -120,7 +120,7 @@ fn paper_from_id(id: &String, mut mw_api: &mut Api) {
     //println!("IDs: {:?}", &ids);
     ids = wdp.update_from_paper_ids(&ids);
 
-    match wdp.create_or_update_item_from_ids(&mut mw_api, &ids) {
+    match wdp.create_or_update_item_from_ids(mw_api, &ids) {
         Some(er) => {
             if er.edited {
                 println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
