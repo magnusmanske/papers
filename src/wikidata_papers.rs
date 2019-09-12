@@ -201,6 +201,7 @@ impl WikidataPapers {
         }
 
         let mut entities = entity_container::EntityContainer::new();
+        entities.allow_special_entity_data(false);
         match entities.load_entities(&mw_api.read().unwrap(), &qs) {
             Ok(_) => {}
             _ => return,
@@ -270,6 +271,7 @@ impl WikidataPapers {
         items: &Vec<String>,
     ) -> Option<EditResult> {
         let mut entities = entity_container::EntityContainer::new();
+        entities.allow_special_entity_data(false);
         let mut item: wikibase::Entity;
         let original_item: wikibase::Entity;
         match items.get(0) {
