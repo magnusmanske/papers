@@ -1,9 +1,7 @@
-extern crate smallstring;
-
 use crate::*;
 use mediawiki::api::Api;
-use smallstring::SmallString;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 const MAX_CACHE_SIZE_PER_PROPERTY: usize = 10000;
@@ -11,20 +9,20 @@ const MAX_CACHE_SIZE_PER_PROPERTY: usize = 10000;
 #[derive(Debug, Clone)]
 struct WikidataStringValue {
     timestamp: SystemTime,
-    key: Option<SmallString>, // "Qxxx", or none
+    key: Option<String>, // "Qxxx", or none
 }
 
 impl WikidataStringValue {
     pub fn new(key: Option<String>) -> Self {
         Self {
-            key: key.map(|v| v.into()),
+            key: key,
             timestamp: SystemTime::now(),
         }
     }
 
     pub fn key(&mut self) -> Option<String> {
         self.update_timestamp();
-        self.key.to_owned().map(|v| v.into())
+        self.key.to_owned()
     }
 
     pub fn timestamp(&self) -> SystemTime {
@@ -36,11 +34,11 @@ impl WikidataStringValue {
     }
 }
 
-type WikidataStringHash = HashMap<SmallString, WikidataStringValue>;
+type WikidataStringHash = HashMap<String, WikidataStringValue>;
 
 #[derive(Debug, Clone)]
 pub struct WikidataStringCache {
-    cache: HashMap<String, WikidataStringHash>,
+    cache: Arc<Mutex<HashMap<String, WikidataStringHash>>>,
     mw_api: Api,
     max_cache_size_per_property: usize,
 }
@@ -50,7 +48,7 @@ impl WikidataInteraction for WikidataStringCache {}
 impl WikidataStringCache {
     pub fn new(mw_api: &Api) -> Self {
         Self {
-            cache: HashMap::new(),
+            cache: Arc::new(Mutex::new(HashMap::new())),
             mw_api: mw_api.clone(),
             max_cache_size_per_property: MAX_CACHE_SIZE_PER_PROPERTY,
         }
@@ -60,19 +58,41 @@ impl WikidataStringCache {
     /// Uses search to find it if it's not in the cache
     pub fn get(&mut self, property: &str, key: &String) -> Option<String> {
         let key = self.fix_key(key);
-        match self.ensure_property(property).get_mut(&key) {
+        self.ensure_property(property);
+        let mut do_search = false;
+        let ret = match self
+            .cache
+            .lock()
+            .unwrap()
+            .get_mut(property)
+            .unwrap() // Safe
+            .get_mut(&key)
+        {
             Some(ret) => {
                 ret.update_timestamp();
                 ret.key()
             }
-            None => self.search(property, &key),
+            None => {
+                do_search = true;
+                None
+            }
+        };
+        if do_search {
+            self.search(property, &key)
+        } else {
+            ret
         }
     }
 
     /// Set the key/q tuple for a property
     pub fn set(&mut self, property: &str, key: &String, q: Option<String>) {
         let key = self.fix_key(key);
-        self.ensure_property(property)
+        self.ensure_property(property);
+        self.cache
+            .lock()
+            .unwrap()
+            .get_mut(property)
+            .unwrap() // Safe
             .insert(key, WikidataStringValue::new(q));
         self.prune_property(property);
     }
@@ -82,13 +102,14 @@ impl WikidataStringCache {
         self.get("P236", issn)
     }
 
-    fn fix_key(&self, key: &String) -> SmallString {
-        let ret: SmallString = key.to_string().trim().to_lowercase().into();
+    fn fix_key(&self, key: &String) -> String {
+        let ret: String = key.to_string().trim().to_lowercase().into();
         ret
     }
 
     fn prune_property(&mut self, property: &str) {
-        let data = match self.cache.get_mut(&property.to_string()) {
+        let mut cache = self.cache.lock().unwrap();
+        let data = match cache.get_mut(&property.to_string()) {
             Some(data) => data,
             None => return,
         };
@@ -105,20 +126,19 @@ impl WikidataStringCache {
     }
 
     /// Creates a new cache for a specific property
-    fn ensure_property(
-        &mut self,
-        property: &str,
-    ) -> &mut HashMap<SmallString, WikidataStringValue> {
+    fn ensure_property(&mut self, property: &str) {
         self.cache
+            .lock()
+            .unwrap()
             .entry(property.to_string())
-            .or_insert(HashMap::new())
+            .or_insert(HashMap::new());
     }
 
     /// Searches for items with a specific property/key
     /// Stores result in cache, and returns it
     /// Stores/returns None if no result found
     /// Stores/returns the first result, if multiple found
-    fn search(&mut self, property: &str, key: &SmallString) -> Option<String> {
+    fn search(&mut self, property: &str, key: &String) -> Option<String> {
         let ret = match self.search_wikibase(
             &format!("haswbstatement:{}={}", property, key),
             &self.mw_api,
@@ -129,7 +149,12 @@ impl WikidataStringCache {
             },
             Err(_) => None,
         };
-        self.ensure_property(property)
+        self.ensure_property(property);
+        self.cache
+            .lock()
+            .unwrap()
+            .get_mut(property)
+            .unwrap() // Safe
             .insert(key.to_owned(), WikidataStringValue::new(ret.to_owned()));
         self.prune_property(property);
         ret
@@ -168,18 +193,15 @@ mod tests {
     #[test]
     fn fix_key() {
         let wsc = WikidataStringCache::new(&api());
-        assert_eq!(
-            wsc.fix_key(&" fOoBAr  ".to_string()),
-            "foobar".to_string().into()
-        );
+        assert_eq!(wsc.fix_key(&" fOoBAr  ".to_string()), "foobar".to_string());
     }
 
     #[test]
     fn ensure_property() {
         let mut wsc = WikidataStringCache::new(&api());
-        assert!(!wsc.cache.contains_key("P123"));
+        assert!(!wsc.cache.lock().unwrap().contains_key("P123"));
         wsc.ensure_property("P123");
-        assert!(wsc.cache.contains_key("P123"));
+        assert!(wsc.cache.lock().unwrap().contains_key("P123"));
     }
 
     #[test]
@@ -235,6 +257,6 @@ mod tests {
         }
         wsc.max_cache_size_per_property = 5;
         wsc.prune_property("P123");
-        assert_eq!(wsc.ensure_property("P123").len(), 5);
+        assert_eq!(wsc.cache.lock().unwrap().get("P123").unwrap().len(), 5);
     }
 }
