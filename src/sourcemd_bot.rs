@@ -115,15 +115,15 @@ impl SourceMDbot {
         //println!("Processing command {:?}", &command);
         let mut wdp = self.new_wdp(&command);
         wdp.set_edit_summary(Some(format!(
-            "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}]",
-            self.batch_id, self.batch_id
+            "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{}",
+            self.batch_id, self.batch_id, command.serial_number
         )));
 
         // Wikidata ID
         if RE_WD.is_match(&command.identifier) {
             return wdp
                 .create_or_update_item_from_q(
-                    &mut self.config.lock().unwrap().mw_api,
+                    &mut self.config.lock().unwrap().mw_api(),
                     &command.identifier,
                 )
                 .map(|_x| true)
@@ -158,7 +158,8 @@ impl SourceMDbot {
                 let j: serde_json::Value = j;
                 match j["doi"].as_str() {
                     Some(id) => {
-                        ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, id));
+                        let id = id.replace("doi: ", "");
+                        ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, &id));
                     }
                     None => {}
                 }
@@ -168,9 +169,17 @@ impl SourceMDbot {
                     }
                     None => {}
                 }
+                match j["pmc"].as_str() {
+                    Some(id) => {
+                        let id = id.replace("PMCID: ", "");
+                        ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, &id));
+                    }
+                    None => {}
+                }
                 match j["pmcid"].as_str() {
                     Some(id) => {
-                        ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, id));
+                        let id = id.replace("PMCID: ", "");
+                        ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, &id));
                     }
                     None => {}
                 }
@@ -183,7 +192,7 @@ impl SourceMDbot {
         }
 
         ids = wdp.update_from_paper_ids(&ids);
-        match wdp.create_or_update_item_from_ids(&mut self.config.lock().unwrap().mw_api, &ids) {
+        match wdp.create_or_update_item_from_ids(&mut self.config.lock().unwrap().mw_api(), &ids) {
             Some(er) => {
                 if command.q == "" {
                     command.q = er.q;

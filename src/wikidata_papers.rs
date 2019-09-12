@@ -293,6 +293,12 @@ impl WikidataPapers {
         let mut adapter2work_id = HashMap::new();
         self.update_item_from_adapters(&mut item, &mut adapter2work_id, mw_api);
 
+        // Paranoia
+        if item.claims().len() < 4 {
+            println!("Skipping {:?}", &ids);
+            return None;
+        }
+
         let mut params = EntityDiffParams::none();
         params.labels.add = EntityDiffParamState::All;
         params.aliases.add = EntityDiffParamState::All;
@@ -303,11 +309,11 @@ impl WikidataPapers {
             EntityDiffParamState::except(&vec!["P813"]),
         )];
         let mut diff = EntityDiff::new(&original_item, &item, &params);
+        diff.set_edit_summary(self.edit_summary.to_owned());
 
         //println!("{}", ::serde_json::to_string_pretty(&json!(item)).unwrap());
 
         if diff.is_empty() {
-            diff.set_edit_summary(self.edit_summary.to_owned());
             match original_item.id().as_str() {
                 "" => return None,
                 id => {

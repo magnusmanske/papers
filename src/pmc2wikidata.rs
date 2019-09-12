@@ -29,8 +29,18 @@ impl PMC2Wikidata {
         }
     }
 
+    fn is_pubmed_id(&self, id: &String) -> bool {
+        lazy_static! {
+            static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#)
+                .expect("PMC2Wikidata::is_pubmed_id: RE_PMID does not compile");
+        }
+        RE_PMID.is_match(id)
+    }
+
     fn publication_id_from_pubmed(&mut self, pubmed_id: &String) -> Option<String> {
-        // TODO check numeric
+        if !self.is_pubmed_id(pubmed_id) {
+            return None;
+        }
         let mut publication_id = pubmed_id.to_string(); // Fallback
         if !self.work_cache.contains_key(pubmed_id) {
             let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:{}%20AND%20SRC:MED&resulttype=core&format=json",pubmed_id) ;

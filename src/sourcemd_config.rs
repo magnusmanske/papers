@@ -10,7 +10,7 @@ pub struct SourceMD {
     params: Value,
     running_batch_ids: HashSet<i64>,
     pool: Option<my::Pool>,
-    pub mw_api: mediawiki::api::Api,
+    mw_api: mediawiki::api::Api,
 }
 
 impl SourceMD {
@@ -23,6 +23,10 @@ impl SourceMD {
         };
         ret.init();
         ret
+    }
+
+    pub fn mw_api(&mut self) -> &mut mediawiki::api::Api {
+        &mut self.mw_api
     }
 
     pub fn restart_batch(&self, batch_id: i64) -> Option<()> {

@@ -49,8 +49,8 @@ impl Pubmed2Wikidata {
 
     fn is_pubmed_id(&self, id: &String) -> bool {
         lazy_static! {
-            static ref RE_PMID: Regex =
-                Regex::new(r#"^(\d+)$"#).expect("main.rs::paper_from_id: RE_PMID does not compile");
+            static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#)
+                .expect("Pubmed2Wikidata::is_pubmed_id: RE_PMID does not compile");
         }
         RE_PMID.is_match(id)
     }
@@ -263,7 +263,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                                 let statement = Statement::new_normal(
                                     Snak::new_item("P407", &q),
                                     vec![],
-                                    vec![],
+                                    self.reference(),
                                 );
                                 item.add_claim(statement);
                             }
