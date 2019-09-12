@@ -9,18 +9,18 @@ use crate::wikidata_papers::WikidataPapers;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
 use regex::Regex;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone)]
 pub struct SourceMDbot {
-    config: Arc<Mutex<SourceMD>>,
+    config: Arc<RwLock<SourceMD>>,
     cache: Arc<WikidataStringCache>,
     batch_id: i64,
 }
 
 impl SourceMDbot {
     pub fn new(
-        config: Arc<Mutex<SourceMD>>,
+        config: Arc<RwLock<SourceMD>>,
         cache: Arc<WikidataStringCache>,
         batch_id: i64,
     ) -> Result<Self, String> {
@@ -34,7 +34,7 @@ impl SourceMDbot {
     }
 
     pub fn start(&self) -> Result<(), String> {
-        let mut config = self.config.lock().map_err(|e| format!("{:?}", e))?;
+        let mut config = self.config.write().map_err(|e| format!("{:?}", e))?;
         config
             .restart_batch(self.batch_id)
             .ok_or("Can't (re)start batch".to_string())?;
@@ -48,7 +48,7 @@ impl SourceMDbot {
         let command = match self.get_next_command() {
             Ok(c) => c,
             Err(_) => {
-                let mut config = self.config.lock().map_err(|e| format!("{:?}", e))?;
+                let mut config = self.config.write().map_err(|e| format!("{:?}", e))?;
                 config
                     .deactivate_batch_run(self.batch_id)
                     .ok_or("Can't set batch as stopped".to_string())?;
@@ -58,7 +58,7 @@ impl SourceMDbot {
         let mut command = match command {
             Some(c) => c,
             None => {
-                let mut config = self.config.lock().map_err(|e| format!("{:?}", e))?;
+                let mut config = self.config.write().map_err(|e| format!("{:?}", e))?;
                 config
                     .deactivate_batch_run(self.batch_id)
                     .ok_or("Can't set batch as stopped".to_string())?;
@@ -123,7 +123,7 @@ impl SourceMDbot {
         if RE_WD.is_match(&command.identifier) {
             return wdp
                 .create_or_update_item_from_q(
-                    &mut self.config.lock().unwrap().mw_api(),
+                    &mut self.config.write().unwrap().mw_api(),
                     &command.identifier,
                 )
                 .map(|_x| true)
@@ -192,7 +192,7 @@ impl SourceMDbot {
         }
 
         ids = wdp.update_from_paper_ids(&ids);
-        match wdp.create_or_update_item_from_ids(&mut self.config.lock().unwrap().mw_api(), &ids) {
+        match wdp.create_or_update_item_from_ids(&mut self.config.write().unwrap().mw_api(), &ids) {
             Some(er) => {
                 if command.q == "" {
                     command.q = er.q;
@@ -210,7 +210,7 @@ impl SourceMDbot {
         command: &mut SourceMDcommand,
     ) -> Result<(), String> {
         //println!("Setting {} to {}", &command.id, &status);
-        let mut config = self.config.lock().map_err(|e| format!("{:?}", e))?;
+        let mut config = self.config.write().map_err(|e| format!("{:?}", e))?;
         config
             .set_command_status(command, status, message.map(|s| s.to_string()))
             .ok_or(format!(
@@ -221,7 +221,7 @@ impl SourceMDbot {
     }
 
     fn get_next_command(&self) -> Result<Option<SourceMDcommand>, String> {
-        let mut config = self.config.lock().map_err(|e| format!("{:?}", e))?;
+        let mut config = self.config.write().map_err(|e| format!("{:?}", e))?;
         Ok(config.get_next_command(self.batch_id))
     }
 

@@ -21,7 +21,7 @@ use regex::Regex;
 use std::env;
 use std::io;
 use std::io::prelude::*;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
@@ -139,19 +139,18 @@ fn usage(command_name: &String) {
     println!("USAGE: {} [papers]", command_name);
 }
 
-fn run_bot(config_arc: Arc<Mutex<SourceMD>>, cache: Arc<WikidataStringCache>) {
+fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) {
     //println!("BOT!");
     let batch_id: i64;
     {
-        let config = config_arc.lock().unwrap();
-        batch_id = match config.get_next_batch() {
+        batch_id = match config.read().unwrap().get_next_batch() {
             Some(n) => n,
             None => return, // Nothing to do
         };
     }
     thread::spawn(move || {
         println!("SPAWN: Starting batch {}", &batch_id);
-        let mut bot = match SourceMDbot::new(config_arc.clone(), cache.clone(), batch_id) {
+        let mut bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id) {
             Ok(bot) => bot,
             Err(error) => {
                 println!(
@@ -166,7 +165,7 @@ fn run_bot(config_arc: Arc<Mutex<SourceMD>>, cache: Arc<WikidataStringCache>) {
     });
 }
 fn command_bot(ini_file: &str) {
-    let smd = Arc::new(Mutex::new(SourceMD::new(ini_file)));
+    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file)));
     let api = Api::new("https://www.wikidata.org/w/api.php")
         .expect("main.rs::command_bot: cannot get Wikidata API");
     let cache = Arc::new(WikidataStringCache::new(&api));
