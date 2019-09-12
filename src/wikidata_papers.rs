@@ -5,7 +5,7 @@ use crate::*;
 use mediawiki::api::Api;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 pub struct EditResult {
     pub q: String,
@@ -371,7 +371,7 @@ impl WikidataPapers {
         let mut items: Vec<String> = ids
             .iter()
             .filter_map(|id| match &id.work_type {
-                GenericWorkType::Property(prop) => self.cache.lock().unwrap().get(prop, &id.id),
+                GenericWorkType::Property(prop) => self.cache.get(prop, &id.id),
                 GenericWorkType::Item => Some(id.id.to_owned()),
             })
             .collect();

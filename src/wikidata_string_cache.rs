@@ -56,7 +56,7 @@ impl WikidataStringCache {
 
     /// Gets an item ID for the property/key
     /// Uses search to find it if it's not in the cache
-    pub fn get(&mut self, property: &str, key: &String) -> Option<String> {
+    pub fn get(&self, property: &str, key: &String) -> Option<String> {
         let key = self.fix_key(key);
         self.ensure_property(property);
         let mut do_search = false;
@@ -85,7 +85,7 @@ impl WikidataStringCache {
     }
 
     /// Set the key/q tuple for a property
-    pub fn set(&mut self, property: &str, key: &String, q: Option<String>) {
+    pub fn set(&self, property: &str, key: &String, q: Option<String>) {
         let key = self.fix_key(key);
         self.ensure_property(property);
         self.cache
@@ -98,7 +98,7 @@ impl WikidataStringCache {
     }
 
     /// Convenience wrapper
-    pub fn issn2q(&mut self, issn: &String) -> Option<String> {
+    pub fn issn2q(&self, issn: &String) -> Option<String> {
         self.get("P236", issn)
     }
 
@@ -107,7 +107,7 @@ impl WikidataStringCache {
         ret
     }
 
-    fn prune_property(&mut self, property: &str) {
+    fn prune_property(&self, property: &str) {
         let mut cache = self.cache.lock().unwrap();
         let data = match cache.get_mut(&property.to_string()) {
             Some(data) => data,
@@ -126,7 +126,7 @@ impl WikidataStringCache {
     }
 
     /// Creates a new cache for a specific property
-    fn ensure_property(&mut self, property: &str) {
+    fn ensure_property(&self, property: &str) {
         self.cache
             .lock()
             .unwrap()
@@ -138,7 +138,7 @@ impl WikidataStringCache {
     /// Stores result in cache, and returns it
     /// Stores/returns None if no result found
     /// Stores/returns the first result, if multiple found
-    fn search(&mut self, property: &str, key: &String) -> Option<String> {
+    fn search(&self, property: &str, key: &String) -> Option<String> {
         let ret = match self.search_wikibase(
             &format!("haswbstatement:{}={}", property, key),
             &self.mw_api,
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn ensure_property() {
-        let mut wsc = WikidataStringCache::new(&api());
+        let wsc = WikidataStringCache::new(&api());
         assert!(!wsc.cache.lock().unwrap().contains_key("P123"));
         wsc.ensure_property("P123");
         assert!(wsc.cache.lock().unwrap().contains_key("P123"));
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn search() {
-        let mut wsc = WikidataStringCache::new(&api());
+        let wsc = WikidataStringCache::new(&api());
         assert_eq!(
             wsc.search("P698", &"16116339".to_string().into()),
             Some("Q46664291".to_string())
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn get_set() {
-        let mut wsc = WikidataStringCache::new(&api());
+        let wsc = WikidataStringCache::new(&api());
         assert_eq!(
             wsc.get("P698", &"16116339".to_string()),
             Some("Q46664291".to_string())
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn issn2q() {
-        let mut wsc = WikidataStringCache::new(&api());
+        let wsc = WikidataStringCache::new(&api());
         assert_eq!(
             wsc.issn2q(&"1351-5101".to_string()),
             Some("Q15757256".to_string())

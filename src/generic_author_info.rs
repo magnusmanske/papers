@@ -253,7 +253,7 @@ impl GenericAuthorInfo {
 
         // Use search
         for (prop, id) in &ret.prop2id {
-            match cache.lock().unwrap().get(prop, id) {
+            match cache.get(prop, id) {
                 Some(q) => {
                     ret.wikidata_item = Some(q);
                     return ret;

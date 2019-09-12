@@ -57,7 +57,7 @@ fn paper_from_id(id: &String, mut mw_api: &mut Api) {
 
     let api = Api::new("https://www.wikidata.org/w/api.php")
         .expect("main.rs::paper_from_id: cannot get Wikidata API");
-    let cache = Arc::new(Mutex::new(WikidataStringCache::new(&api)));
+    let cache = Arc::new(WikidataStringCache::new(&api));
 
     let mut wdp = WikidataPapers::new(cache.clone());
     wdp.testing = true;
@@ -169,7 +169,7 @@ fn command_bot(ini_file: &str) {
     let smd = Arc::new(Mutex::new(SourceMD::new(ini_file)));
     let api = Api::new("https://www.wikidata.org/w/api.php")
         .expect("main.rs::command_bot: cannot get Wikidata API");
-    let cache = Arc::new(Mutex::new(WikidataStringCache::new(&api)));
+    let cache = Arc::new(WikidataStringCache::new(&api));
     loop {
         //println!("BOT!");
         run_bot(smd.clone(), cache.clone());
