@@ -139,7 +139,7 @@ fn usage(command_name: &String) {
     println!("USAGE: {} [papers]", command_name);
 }
 
-fn run_bot(config_arc: Arc<Mutex<SourceMD>>, cache: Arc<Mutex<WikidataStringCache>>) {
+fn run_bot(config_arc: Arc<Mutex<SourceMD>>, cache: Arc<WikidataStringCache>) {
     //println!("BOT!");
     let batch_id: i64;
     {

@@ -14,14 +14,14 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Clone)]
 pub struct SourceMDbot {
     config: Arc<Mutex<SourceMD>>,
-    cache: Arc<Mutex<WikidataStringCache>>,
+    cache: Arc<WikidataStringCache>,
     batch_id: i64,
 }
 
 impl SourceMDbot {
     pub fn new(
         config: Arc<Mutex<SourceMD>>,
-        cache: Arc<Mutex<WikidataStringCache>>,
+        cache: Arc<WikidataStringCache>,
         batch_id: i64,
     ) -> Result<Self, String> {
         let ret = Self {

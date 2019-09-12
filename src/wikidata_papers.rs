@@ -14,7 +14,7 @@ pub struct EditResult {
 
 pub struct WikidataPapers {
     adapters: Vec<Box<dyn ScientificPublicationAdapter>>,
-    cache: Arc<Mutex<WikidataStringCache>>,
+    cache: Arc<WikidataStringCache>,
     edit_summary: Option<String>,
     pub testing: bool,
 }
@@ -22,7 +22,7 @@ pub struct WikidataPapers {
 impl WikidataInteraction for WikidataPapers {}
 
 impl WikidataPapers {
-    pub fn new(cache: Arc<Mutex<WikidataStringCache>>) -> WikidataPapers {
+    pub fn new(cache: Arc<WikidataStringCache>) -> WikidataPapers {
         WikidataPapers {
             adapters: vec![],
             cache: cache,
@@ -388,7 +388,7 @@ mod tests {
 
     /*
     TODO:
-    pub fn new(cache: Arc<Mutex<WikidataStringCache>>) -> WikidataPapers {
+    pub fn new(cache: Arc<WikidataStringCache>) -> WikidataPapers {
     pub fn adapters_mut(&mut self) -> &mut Vec<Box<dyn ScientificPublicationAdapter>> {
     pub fn add_adapter(&mut self, adapter_box: Box<dyn ScientificPublicationAdapter>) {
     pub fn edit_summary(&self) -> &Option<String> {

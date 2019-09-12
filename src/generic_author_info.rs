@@ -8,7 +8,7 @@ use crate::*;
 use mediawiki::api::Api;
 use regex::Regex;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 const SCORE_LIST_NUMBER: u16 = 30;
 const SCORE_NAME_MATCH: u16 = 50;
@@ -239,7 +239,7 @@ impl GenericAuthorInfo {
     pub fn get_or_create_author_item(
         &self,
         mw_api: &mut Api,
-        cache: Arc<Mutex<WikidataStringCache>>,
+        cache: Arc<WikidataStringCache>,
     ) -> GenericAuthorInfo {
         let mut ret = self.clone();
         // Already has item?
@@ -271,10 +271,7 @@ impl GenericAuthorInfo {
 
         // Update external IDs cache
         for (prop, id) in &ret.prop2id {
-            cache
-                .lock()
-                .unwrap()
-                .set(prop, id, ret.wikidata_item.clone());
+            cache.set(prop, id, ret.wikidata_item.clone());
         }
         ret
     }

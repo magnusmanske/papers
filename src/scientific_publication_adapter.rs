@@ -4,7 +4,6 @@ use crate::*;
 use mediawiki::api::Api;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 pub trait ScientificPublicationAdapter {
     // You will need to implement these yourself
@@ -124,7 +123,7 @@ pub trait ScientificPublicationAdapter {
         &self,
         publication_id: &String,
         item: &mut Entity,
-        cache: Arc<Mutex<WikidataStringCache>>,
+        cache: Arc<WikidataStringCache>,
     ) {
         self.update_work_item_with_title(publication_id, item);
         self.update_work_item_with_property(publication_id, item);
@@ -268,13 +267,13 @@ pub trait ScientificPublicationAdapter {
         &self,
         publication_id: &String,
         item: &mut Entity,
-        cache: Arc<Mutex<WikidataStringCache>>,
+        cache: Arc<WikidataStringCache>,
     ) {
         if item.has_claims_with_property("P1433") {
             return;
         }
         match self.get_work_issn(publication_id) {
-            Some(issn) => match cache.lock().unwrap().issn2q(&issn) {
+            Some(issn) => match cache.issn2q(&issn) {
                 Some(q) => item.add_claim(Statement::new_normal(
                     Snak::new_item("P1433", &q),
                     vec![],
