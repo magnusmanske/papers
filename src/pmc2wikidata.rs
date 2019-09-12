@@ -18,8 +18,6 @@ https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=PMC1201091&resultt
 pub struct PMC2Wikidata {
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, serde_json::Value>,
-    //query_cache: HashMap<String, Vec<u64>>,
-    //client: Client,
 }
 
 impl PMC2Wikidata {
@@ -43,7 +41,7 @@ impl PMC2Wikidata {
                 match results.get(0) {
                     Some(json) => {
                         match json["pmcid"].as_str() {
-                            Some(pmcid) => publication_id = pmcid.to_string()[3..].to_string(),
+                            Some(pmc_id) => publication_id = pmc_id.to_string()[3..].to_string(),
                             None => {}
                         }
                         self.work_cache.insert(publication_id.clone(), json.clone());
@@ -56,9 +54,11 @@ impl PMC2Wikidata {
     }
 
     fn publication_id_from_pmcid(&mut self, pmc_id: &String) -> Option<String> {
+        if pmc_id[0..2].to_string() != "PMC" {
+            return None;
+        }
         let pmc_id = pmc_id.replace("PMC", "");
         if !self.work_cache.contains_key(&pmc_id) {
-            // TODO same IDs as pubmed?
             let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=PMC{}&resulttype=core&format=json",&pmc_id) ;
             let json: serde_json::Value = reqwest::get(url.as_str()).ok()?.json().ok()?;
             let results = json["resultList"]["result"].as_array()?;
@@ -109,7 +109,7 @@ impl PMC2Wikidata {
                     Some(pmcid) => {
                         ret.push(GenericWorkIdentifier {
                             work_type: my_prop,
-                            id: pmcid,
+                            id: pmcid + " [3]", // TODO
                         });
                     }
                     None => {}
@@ -150,7 +150,7 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
 
     // Overriding default function
     fn update_work_item_with_property(&self, publication_id: &String, item: &mut Entity) {
-        println!(":: {}", publication_id);
+        println!("1:: {}", publication_id); // TODO
         if publication_id[0..4].to_string() == "PMID_" {
             return;
         }
@@ -176,7 +176,7 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
             None => {
                 // Attempt fallback to PubMed ID
                 return match self.get_external_identifier_from_item(item, "P698") {
-                    Some(pmid) => self.publication_id_from_pubmed(&pmid),
+                    Some(pmid) => dbg!(self.publication_id_from_pubmed(&pmid)), // TODO
                     None => None,
                 };
             }
