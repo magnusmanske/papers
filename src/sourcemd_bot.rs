@@ -124,10 +124,10 @@ impl SourceMDbot {
             author
                 .prop2id
                 .insert("P496".to_string(), identifier.to_owned());
-            author = author.get_or_create_author_item(
-                self.config.read().unwrap().mw_api(),
-                self.cache.clone(),
-            );
+            author = match self.config.read() {
+                Ok(config) => author.get_or_create_author_item(config.mw_api(), self.cache.clone()),
+                _ => return Err(format!("Can't read config")),
+            }
         } else {
             return Err(format!(
                 "Not a Wikidata item, nor an ORCID ID {}",
@@ -155,8 +155,10 @@ impl SourceMDbot {
             "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{}",
             self.batch_id, self.batch_id, command.serial_number
         )));
-        wdp.update_author_items(&vec![author], self.config.read().unwrap().mw_api());
-
+        match self.config.read() {
+            Ok(config) => wdp.update_author_items(&vec![author], config.mw_api()),
+            _ => return Err(format!("Can't get config")),
+        }
         return Ok(true);
     }
 
