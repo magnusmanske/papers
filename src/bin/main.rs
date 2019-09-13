@@ -82,14 +82,12 @@ fn paper_from_id(id: &String, mw_api: Arc<RwLock<Api>>) {
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
 
     let mut wdp = WikidataPapers::new(cache.clone());
-    wdp.testing = true;
+    //wdp.testing = true;
     wdp.add_adapter(Box::new(PMC2Wikidata::new()));
-    //if !wdp.testing {
     wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
     wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
     wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
-    //}
 
     match RE_WD.captures(&id) {
         Some(caps) => match caps.get(1) {

@@ -2,6 +2,7 @@ use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -56,7 +57,7 @@ impl WikidataPapers {
     fn update_author_statements(&self, authors: &Vec<GenericAuthorInfo>, item: &mut Entity) {
         let p50: Vec<String> = item
             .claims()
-            .iter()
+            .par_iter()
             .filter(|statement| statement.property() == "P50")
             .filter_map(|statement| match statement.main_snak().data_value() {
                 Some(dv) => match dv.value() {
@@ -70,7 +71,7 @@ impl WikidataPapers {
         // HACK used as "remove" tag
         let snak_remove_statement = Snak::new_no_value("P2093", SnakDataType::String);
 
-        item.claims_mut().iter_mut().for_each(|statement| {
+        item.claims_mut().par_iter_mut().for_each(|statement| {
             if statement.property() != "P2093" {
                 return;
             }
@@ -136,9 +137,7 @@ impl WikidataPapers {
     ) {
         // Shortcut
         if authors.is_empty() {
-            authors2
-                .iter()
-                .for_each(|author| authors.push(author.clone()));
+            *authors = authors2.par_iter().cloned().collect();
             return;
         }
 
@@ -364,7 +363,7 @@ impl WikidataPapers {
             let last_id_size = ids.len();
             for adapter_id in 0..self.adapters.len() {
                 let adapter = &mut self.adapters[adapter_id];
-                let vids: Vec<GenericWorkIdentifier> = ids.iter().map(|x| x.to_owned()).collect();
+                let vids: Vec<GenericWorkIdentifier> = ids.par_iter().cloned().collect();
                 //println!("Adapter {}", adapter.name());
                 adapter
                     .get_identifier_list(&vids)
@@ -378,10 +377,7 @@ impl WikidataPapers {
                 break;
             }
         }
-        ids.iter()
-            .filter(|id| id.is_legit())
-            .map(|x| x.to_owned())
-            .collect()
+        ids.par_iter().filter(|id| id.is_legit()).cloned().collect()
     }
 
     pub fn get_items_for_ids(&self, ids: &Vec<GenericWorkIdentifier>) -> Vec<String> {
