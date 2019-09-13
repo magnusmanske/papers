@@ -187,6 +187,7 @@ fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> bo
     true
 }
 fn command_bot(ini_file: &str) {
+    println!("== STARTING BOT MODE");
     let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).unwrap()));
     let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).unwrap()));
     let cache = Arc::new(WikidataStringCache::new(mw_api));
