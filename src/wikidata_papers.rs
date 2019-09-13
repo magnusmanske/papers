@@ -18,17 +18,21 @@ pub struct WikidataPapers {
     cache: Arc<WikidataStringCache>,
     edit_summary: Option<String>,
     pub testing: bool,
+    entities: entity_container::EntityContainer,
 }
 
 impl WikidataInteraction for WikidataPapers {}
 
 impl WikidataPapers {
     pub fn new(cache: Arc<WikidataStringCache>) -> WikidataPapers {
+        let mut entities = entity_container::EntityContainer::new();
+        entities.allow_special_entity_data(false);
         WikidataPapers {
             adapters: vec![],
             cache: cache,
             edit_summary: None,
             testing: false,
+            entities: entities,
         }
     }
 
@@ -184,7 +188,11 @@ impl WikidataPapers {
         self.create_or_update_author_statements(&mut item, &authors);
     }
 
-    pub fn update_author_items(&self, authors: &Vec<GenericAuthorInfo>, mw_api: Arc<RwLock<Api>>) {
+    pub fn update_author_items(
+        &mut self,
+        authors: &Vec<GenericAuthorInfo>,
+        mw_api: Arc<RwLock<Api>>,
+    ) {
         let mut qs: Vec<String> = vec![];
         for author in authors {
             let q = match &author.wikidata_item {
@@ -197,10 +205,8 @@ impl WikidataPapers {
             return;
         }
 
-        let mut entities = entity_container::EntityContainer::new();
-        entities.allow_special_entity_data(false);
         match mw_api.read() {
-            Ok(mw_api) => match entities.load_entities(&mw_api, &qs) {
+            Ok(mw_api) => match self.entities.load_entities(&mw_api, &qs) {
                 Ok(_) => {}
                 _ => return,
             },
@@ -208,7 +214,7 @@ impl WikidataPapers {
         }
 
         for author in authors {
-            author.update_author_item(&mut entities, mw_api.clone());
+            author.update_author_item(&mut self.entities, mw_api.clone());
         }
     }
 
@@ -284,14 +290,16 @@ impl WikidataPapers {
         ids: &Vec<GenericWorkIdentifier>,
         items: &Vec<String>,
     ) -> Option<EditResult> {
-        let mut entities = entity_container::EntityContainer::new();
-        entities.allow_special_entity_data(false);
         let mut item: wikibase::Entity;
         let mut original_item = Entity::new_empty_item();
         match items.get(0) {
             Some(q) => match mw_api.read() {
                 Ok(mw_api) => {
-                    item = entities.load_entity(&mw_api, q.clone()).ok()?.to_owned();
+                    item = self
+                        .entities
+                        .load_entity(&mw_api, q.clone())
+                        .ok()?
+                        .to_owned();
                     original_item = item.clone();
                 }
                 _ => item = self.new_publication_item(),
