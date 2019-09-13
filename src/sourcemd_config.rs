@@ -242,9 +242,11 @@ impl SourceMD {
         self.create_mysql_pool();
 
         // On PetScan
-        self.params["mysql"]["host"] = json!("tools.labsdb");
-        self.params["mysql"]["port"] = json!(3306);
-        self.create_mysql_pool();
+        if self.pool.is_none() {
+            self.params["mysql"]["host"] = json!("tools.labsdb");
+            self.params["mysql"]["port"] = json!(3306);
+            self.create_mysql_pool();
+        }
 
         // Local fallback
         if self.pool.is_none() {
