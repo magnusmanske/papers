@@ -5,6 +5,7 @@ use mysql as my;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
+use wikibase::mediawiki::api::Api;
 
 #[derive(Debug, Clone)]
 pub struct SourceMD {
@@ -12,7 +13,7 @@ pub struct SourceMD {
     running_batch_ids: Arc<RwLock<HashSet<i64>>>,
     failed_batch_ids: Arc<RwLock<HashSet<i64>>>,
     pool: Option<my::Pool>,
-    mw_api: Arc<RwLock<mediawiki::api::Api>>,
+    mw_api: Arc<RwLock<Api>>,
 }
 
 impl SourceMD {
@@ -32,7 +33,7 @@ impl SourceMD {
         self.failed_batch_ids.write().unwrap().insert(batch_id);
     }
 
-    pub fn mw_api(&self) -> Arc<RwLock<mediawiki::api::Api>> {
+    pub fn mw_api(&self) -> Arc<RwLock<Api>> {
         self.mw_api.clone()
     }
 
@@ -284,9 +285,9 @@ impl SourceMD {
         }
     }
 
-    pub fn create_mw_api(ini_file: &str) -> Result<mediawiki::api::Api, String> {
-        let mut mw_api = mediawiki::api::Api::new("https://www.wikidata.org/w/api.php")
-            .map_err(|e| format!("{:?}", e))?;
+    pub fn create_mw_api(ini_file: &str) -> Result<Api, String> {
+        let mut mw_api =
+            Api::new("https://www.wikidata.org/w/api.php").map_err(|e| format!("{:?}", e))?;
         let mut settings = Config::default();
         // File::with_name(..) is shorthand for File::from(Path::new(..))
         settings
@@ -304,7 +305,7 @@ impl SourceMD {
 #[cfg(test)]
 mod tests {
     //use super::*;
-    //use mediawiki::api::Api;
+    //use Api;
 
     /*
     TODO:

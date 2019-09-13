@@ -1,5 +1,4 @@
 extern crate config;
-extern crate mediawiki;
 extern crate papers;
 #[macro_use]
 extern crate lazy_static;
@@ -8,7 +7,6 @@ extern crate serde_json;
 
 use crate::sourcemd_command::SourceMDcommand;
 use crate::wikidata_string_cache::WikidataStringCache;
-use mediawiki::api::Api;
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::orcid2wikidata::Orcid2Wikidata;
 use papers::pmc2wikidata::PMC2Wikidata;
@@ -25,6 +23,7 @@ use std::io::prelude::*;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
+use wikibase::mediawiki::api::Api;
 
 const INI_FILE: &str = "bot.ini";
 

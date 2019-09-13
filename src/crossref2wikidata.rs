@@ -218,7 +218,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 #[cfg(test)]
 mod tests {
     //use super::*;
-    //use mediawiki::api::Api;
+    //use wikibase::mediawiki::api::Api;
 
     /*
     TODO:

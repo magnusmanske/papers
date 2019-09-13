@@ -6,7 +6,7 @@ use crate::*;
 use regex::Regex;
 use reqwest;
 use std::collections::HashMap;
-//use mediawiki::api::Api;
+//use wikibase::mediawiki::api::Api;
 
 /*
 Examples:
@@ -324,7 +324,7 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
 #[cfg(test)]
 mod tests {
     //use super::*;
-    //use mediawiki::api::Api;
+    //use wikibase::mediawiki::api::Api;
 
     /*
     TODO:

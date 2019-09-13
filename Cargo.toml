@@ -35,9 +35,6 @@ orcid = { git = "https://github.com/magnusmanske/orcid_rs" }
 pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
 #pubmed = { path='../pubmed' }
 
-mediawiki = "0.1.16"
-#mediawiki = { git = "https://github.com/magnusmanske/mediawiki_rust" }
-
 #wikibase = { path='../wikibase_rs' }
-wikibase = { git="https://gitlab.com/tobias47n9e/wikibase_rs"}
+wikibase = { git="https://gitlab.com/tobias47n9e/wikibase_rs",branch = "rayon"}
 #wikibase = "*"

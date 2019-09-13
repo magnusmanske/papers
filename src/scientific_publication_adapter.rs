@@ -1,9 +1,9 @@
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
-use mediawiki::api::Api;
 use std::collections::HashMap;
 use std::sync::Arc;
+use wikibase::mediawiki::api::Api;
 
 pub trait ScientificPublicationAdapter {
     // You will need to implement these yourself
@@ -427,7 +427,7 @@ pub trait ScientificPublicationAdapter {
 #[cfg(test)]
 mod tests {
     //use super::*;
-    //use mediawiki::api::Api;
+    //use wikibase::mediawiki::api::Api;
 
     /*
     TODO:

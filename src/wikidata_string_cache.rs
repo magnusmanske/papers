@@ -1,8 +1,8 @@
 use crate::*;
-use mediawiki::api::Api;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
+use wikibase::mediawiki::api::Api;
 
 const MAX_CACHE_SIZE_PER_PROPERTY: usize = 10000;
 
@@ -169,9 +169,9 @@ impl WikidataStringCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mediawiki::api::Api;
     use std::thread;
     use std::time::Duration;
+    use wikibase::mediawiki::api::Api;
 
     fn api() -> Arc<RwLock<Api>> {
         lazy_static! {

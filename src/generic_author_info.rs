@@ -5,10 +5,10 @@ extern crate serde_json;
 
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
-use mediawiki::api::Api;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
+use wikibase::mediawiki::api::Api;
 
 const SCORE_LIST_NUMBER: u16 = 30;
 const SCORE_NAME_MATCH: u16 = 50;
@@ -425,7 +425,7 @@ impl GenericAuthorInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use mediawiki::api::Api;
+    //use wikibase::mediawiki::api::Api;
 
     #[test]
     fn asciify_string() {

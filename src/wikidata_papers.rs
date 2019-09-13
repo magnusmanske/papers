@@ -2,10 +2,10 @@ use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
-use mediawiki::api::Api;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use wikibase::mediawiki::api::Api;
 
 pub struct EditResult {
     pub q: String,
@@ -403,7 +403,7 @@ impl WikidataPapers {
 #[cfg(test)]
 mod tests {
     //use super::*;
-    //use mediawiki::api::Api;
+    //use wikibase::mediawiki::api::Api;
 
     /*
     TODO:

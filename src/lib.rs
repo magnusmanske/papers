@@ -5,10 +5,10 @@ extern crate serde_json;
 #[macro_use]
 extern crate lazy_static;
 
-use mediawiki;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use wikibase::entity_diff::*;
+use wikibase::mediawiki::api::Api;
 use wikibase::*;
 
 pub const PROP_PMID: &str = "P698";
@@ -20,7 +20,7 @@ pub trait WikidataInteraction {
     fn search_wikibase(
         &self,
         query: &String,
-        mw_api: Arc<RwLock<mediawiki::api::Api>>,
+        mw_api: Arc<RwLock<Api>>,
     ) -> Result<Vec<String>, String> {
         let params: HashMap<_, _> = vec![
             ("action", "query"),
@@ -45,11 +45,7 @@ pub trait WikidataInteraction {
         }
     }
 
-    fn create_item(
-        &self,
-        item: &Entity,
-        mw_api: Arc<RwLock<mediawiki::api::Api>>,
-    ) -> Option<String> {
+    fn create_item(&self, item: &Entity, mw_api: Arc<RwLock<Api>>) -> Option<String> {
         let params = EntityDiffParams::all();
         let diff = EntityDiff::new(&Entity::new_empty_item(), item, &params);
         if diff.is_empty() {
@@ -104,12 +100,12 @@ pub mod wikidata_string_cache;
 #[cfg(test)]
 mod tests {
     //use super::*;
-    //use mediawiki::api::Api;
+    //use wikibase::mediawiki::api::Api;
 
     /*
     TODO:
     fn search_wikibase(
-    fn create_item(&self, item: &Entity, mw_api: &mut mediawiki::api::Api) -> Option<String> {
+    fn create_item(&self, item: &Entity, mw_api: &mut Api) -> Option<String> {
     pub fn new_prop(prop: &str, id: &str) -> Self {
     pub fn is_legit(&self) -> bool {
     */
