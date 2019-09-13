@@ -181,9 +181,7 @@ impl WikidataPapers {
             .iter()
             .map(|author| author.get_or_create_author_item(mw_api.clone(), self.cache.clone()))
             .collect();
-
         self.update_author_items(&authors, mw_api);
-
         self.create_or_update_author_statements(&mut item, &authors);
     }
 

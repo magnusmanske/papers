@@ -290,11 +290,13 @@ pub trait ScientificPublicationAdapter {
             Some(prop) => {
                 if !item.has_claims_with_property(prop.to_owned()) {
                     match self.publication_id_for_statement(publication_id) {
-                        Some(pub_id) => item.add_claim(Statement::new_normal(
-                            Snak::new_external_id(prop.to_string(), pub_id),
-                            vec![],
-                            self.reference(),
-                        )),
+                        Some(pub_id) => {
+                            item.add_claim(Statement::new_normal(
+                                Snak::new_external_id(prop.to_string(), pub_id),
+                                vec![],
+                                self.reference(),
+                            ));
+                        }
                         None => {}
                     }
                 }

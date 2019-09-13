@@ -179,11 +179,14 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         match self.publication_property() {
             Some(prop) => {
                 if !item.has_claims_with_property(prop.to_owned()) {
-                    item.add_claim(Statement::new_normal(
-                        Snak::new_external_id(prop.to_string(), publication_id.to_string()),
-                        vec![],
-                        self.reference(),
-                    ));
+                    match self.publication_id_for_statement(publication_id) {
+                        Some(id) => item.add_claim(Statement::new_normal(
+                            Snak::new_external_id(prop, id),
+                            vec![],
+                            self.reference(),
+                        )),
+                        None => {}
+                    }
                 }
             }
             _ => {}
