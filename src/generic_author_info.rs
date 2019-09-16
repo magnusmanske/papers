@@ -14,6 +14,7 @@ const SCORE_LIST_NUMBER: u16 = 30;
 const SCORE_NAME_MATCH: u16 = 50;
 const SCORE_PROP_MATCH: u16 = 90;
 const SCORE_ITEM_MATCH: u16 = 100;
+const SCORE_MATCH_MIN: u16 = 51;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GenericAuthorInfo {
@@ -114,6 +115,9 @@ impl GenericAuthorInfo {
             }
         }
         if multiple_best {
+            return None;
+        }
+        if best_points < SCORE_MATCH_MIN {
             return None;
         }
         match best_points {
@@ -557,10 +561,64 @@ mod tests {
         );
     }
 
+    #[test]
+    fn find_best_match() {
+        let mut ga_main = GenericAuthorInfo::new();
+        ga_main.name = Some("Magnus Manske".to_string());
+
+        let mut vector: Vec<GenericAuthorInfo> = vec![];
+        let mut ga = GenericAuthorInfo::new();
+        ga.name = Some("Manske M".to_string());
+        vector.push(ga);
+        let mut ga = GenericAuthorInfo::new();
+        ga.name = Some("Bar Fo".to_string());
+        vector.push(ga);
+
+        assert_eq!(ga_main.find_best_match(&vector), None);
+
+        // Again
+
+        let mut ga_main = GenericAuthorInfo::new();
+        ga_main.name = Some("Magnus Manske".to_string());
+        ga_main.list_number = Some(123.to_string());
+
+        let mut vector: Vec<GenericAuthorInfo> = vec![];
+        let mut ga = GenericAuthorInfo::new();
+        ga.name = Some("Manske M".to_string());
+        ga.list_number = Some(123.to_string());
+        vector.push(ga);
+        let mut ga = GenericAuthorInfo::new();
+        ga.name = Some("Bar Fo".to_string());
+        ga.list_number = Some(456.to_string());
+        vector.push(ga);
+
+        assert_eq!(
+            ga_main.find_best_match(&vector),
+            Some((0, SCORE_NAME_MATCH + SCORE_LIST_NUMBER))
+        );
+
+        // Again
+
+        let mut ga_main = GenericAuthorInfo::new();
+        ga_main.name = Some("Magnus Manske".to_string());
+        ga_main.list_number = Some(123.to_string());
+
+        let mut vector: Vec<GenericAuthorInfo> = vec![];
+        let mut ga = GenericAuthorInfo::new();
+        ga.name = Some("Manske M".to_string());
+        ga.list_number = Some(456.to_string());
+        vector.push(ga);
+        let mut ga = GenericAuthorInfo::new();
+        ga.name = Some("Bar Fo".to_string());
+        ga.list_number = Some(123.to_string());
+        vector.push(ga);
+
+        assert_eq!(ga_main.find_best_match(&vector), None);
+    }
+
     /*
     TODO:
     fn new_from_statement
-    fn find_best_match
     fn get_or_create_author_item(
     fn merge_from(&mut self, author2: &GenericAuthorInfo)
     fn update_author_item(
