@@ -280,24 +280,52 @@ impl GenericAuthorInfo {
         ret
     }
 
-    pub fn merge_from(&mut self, author2: &GenericAuthorInfo) {
+    pub fn merge_from(&mut self, author2: &GenericAuthorInfo) -> Result<(), String> {
         if self.name.is_none() {
             self.name = author2.name.clone();
+        } else if author2.name.is_some() {
+            self.alternative_names.push(author2.name.clone().unwrap()); // unwrap safe
+                                                                        // Sort/dedup at the end
         }
         if self.wikidata_item.is_none() {
             self.wikidata_item = author2.wikidata_item.clone();
+        } else if author2.wikidata_item.is_none() {
+        } else if self.wikidata_item != author2.wikidata_item {
+            return Err(format!(
+                "GenericAuthorInfo::merge_from: Different items {} and {}, skipping",
+                self.wikidata_item.clone().unwrap(),
+                author2.wikidata_item.clone().unwrap()
+            ));
         }
         if self.list_number.is_none() {
             self.list_number = author2.list_number.clone();
+        } else if author2.list_number.is_none() {
+        } else if self.list_number != author2.list_number {
+            return Err(format!(
+                "GenericAuthorInfo::merge_from: Different list numbers {} and {}, skipping",
+                self.list_number.clone().unwrap(),
+                author2.list_number.clone().unwrap()
+            ));
         }
         for (k, v) in &author2.prop2id {
-            self.prop2id.insert(k.to_string(), v.to_string());
+            match self.prop2id.get(k) {
+                Some(x) => {
+                    if x != v {
+                        return Err(format!("GenericAuthorInfo::merge_from: Different property {} values {} and {}, skipping",k,x,v));
+                    }
+                }
+                None => {
+                    self.prop2id.insert(k.to_string(), v.to_string());
+                }
+            }
         }
         for name in &author2.alternative_names {
             self.alternative_names.push(name.to_string());
         }
         self.alternative_names.sort();
         self.alternative_names.dedup();
+        //println!("{:?} =>\n{:?}\n",);
+        Ok(())
     }
 
     fn asciify_string(&self, s: &str) -> String {
@@ -324,8 +352,8 @@ impl GenericAuthorInfo {
             static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b")
                 .expect("GenericAuthorInfo::author_names_match: could not compile RE1");
         }
-        let name1_mod = self.asciify_string(name1);
-        let name2_mod = self.asciify_string(name2);
+        let name1_mod = self.asciify_string(name1).replace('.', " ");
+        let name2_mod = self.asciify_string(name2).replace('.', " ");
         if RE1.is_match(&name1_mod) && RE1.is_match(&name2_mod) {
             let mut parts1: Vec<String> = vec![];
             for cap in RE1.captures_iter(&name1_mod) {

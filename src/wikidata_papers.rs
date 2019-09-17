@@ -90,15 +90,35 @@ impl WikidataPapers {
                                         if author.list_number.is_some()
                                             && author.list_number == authors[candidate].list_number
                                         {
+                                            println!(
+                                                "REMOVING AUTHOR {:?}\nBECAUSE:\n{:?}\n{:?}",
+                                                &statement, &author, &authors[candidate]
+                                            );
                                             // Same list number, remove P2093
                                             // HACK change to "no value", then remove downstream
                                             statement.set_main_snak(snak_remove_statement.clone());
+                                        } else {
+                                            println!("NOT REMOVING AUTHOR {:?}", &statement);
                                         }
                                     } else {
                                         match &authors[candidate].generate_author_statement() {
                                             Some(s) => {
+                                                let mut s = s.to_owned();
+
+                                                // Preserve qualifiers
+                                                statement.qualifiers().iter().for_each(|q1| {
+                                                    if !s
+                                                        .qualifiers()
+                                                        .iter()
+                                                        .any(|q2| q1.property() == q2.property())
+                                                    {
+                                                        s.add_qualifier_snak(q1.clone())
+                                                    }
+                                                });
+
                                                 // Preserve references
                                                 let references = statement.references().clone();
+                                                //println!("{:?} => \n{:?}\n", statement, &s);
                                                 *statement = s.clone();
                                                 statement.set_references(references);
                                             }
@@ -147,7 +167,10 @@ impl WikidataPapers {
 
         for author in authors2.iter() {
             match author.find_best_match(authors) {
-                Some((candidate, _points)) => authors[candidate].merge_from(&author),
+                Some((candidate, _points)) => match authors[candidate].merge_from(&author) {
+                    Ok(_) => {}
+                    Err(e) => eprintln!("{:?}: {}", &author, e),
+                },
                 None => authors.push(author.clone()), // No match found, add the author
             }
         }
