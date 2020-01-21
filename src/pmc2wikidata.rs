@@ -44,7 +44,7 @@ impl PMC2Wikidata {
         let mut publication_id = pubmed_id.to_string(); // Fallback
         if !self.work_cache.contains_key(pubmed_id) {
             let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:{}%20AND%20SRC:MED&resulttype=core&format=json",pubmed_id) ;
-            let json: serde_json::Value = reqwest::get(url.as_str()).ok()?.json().ok()?;
+            let json: serde_json::Value = reqwest::blocking::get(url.as_str()).ok()?.json().ok()?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
                 match results.get(0) {
@@ -76,7 +76,7 @@ impl PMC2Wikidata {
         }
         if !self.work_cache.contains_key(pmc_id) {
             let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={}&resulttype=core&format=json",pmc_id) ;
-            let json: serde_json::Value = reqwest::get(url.as_str()).ok()?.json().ok()?;
+            let json: serde_json::Value = reqwest::blocking::get(url.as_str()).ok()?.json().ok()?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
                 match results.get(0) {
