@@ -1,6 +1,7 @@
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
+use async_trait::async_trait;
 use semanticscholar::*;
 use std::collections::HashMap;
 
@@ -8,6 +9,12 @@ pub struct Semanticscholar2Wikidata {
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, Work>,
     client: Client,
+}
+
+impl Default for Semanticscholar2Wikidata {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Semanticscholar2Wikidata {
@@ -19,11 +26,11 @@ impl Semanticscholar2Wikidata {
         }
     }
 
-    pub fn get_cached_publication_from_id(&self, publication_id: &String) -> Option<&Work> {
+    pub fn get_cached_publication_from_id(&self, publication_id: &str) -> Option<&Work> {
         self.work_cache.get(publication_id)
     }
 
-    fn publication_ids_from_doi(&mut self, doi: &String) -> Vec<String> {
+    fn publication_ids_from_doi(&mut self, doi: &str) -> Vec<String> {
         let work = match self.client.work(&doi) {
             Ok(w) => w,
             _ => return vec![], // No such work
@@ -40,7 +47,7 @@ impl Semanticscholar2Wikidata {
 
     fn add_identifiers_from_cached_publication(
         &mut self,
-        publication_id: &String,
+        publication_id: &str,
         ret: &mut Vec<GenericWorkIdentifier>,
     ) {
         let my_prop = match self.publication_property() {
@@ -48,14 +55,14 @@ impl Semanticscholar2Wikidata {
             None => return,
         };
 
-        let work = match self.get_cached_publication_from_id(&publication_id) {
+        let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
         };
 
         ret.push(GenericWorkIdentifier {
             work_type: my_prop.clone(),
-            id: publication_id.clone(),
+            id: publication_id.to_string(),
         });
 
         match &work.doi {
@@ -83,17 +90,18 @@ impl Semanticscholar2Wikidata {
     }
 }
 
+#[async_trait]
 impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     fn name(&self) -> &str {
         "Semanticscholar2Wikidata"
     }
 
     fn author_property(&self) -> Option<String> {
-        return Some("P4012".to_string());
+        Some("P4012".to_string())
     }
 
     fn publication_property(&self) -> Option<String> {
-        return Some("P4011".to_string());
+        Some("P4011".to_string())
     }
 
     /*
@@ -110,7 +118,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     */
 
     fn topic_property(&self) -> Option<String> {
-        return Some("P6611".to_string());
+        Some("P6611".to_string())
     }
 
     fn author_cache(&self) -> &HashMap<String, String> {
@@ -121,29 +129,22 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         &mut self.author_cache
     }
 
-    fn get_identifier_list(
-        &mut self,
-        ids: &Vec<GenericWorkIdentifier>,
-    ) -> Vec<GenericWorkIdentifier> {
+    fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
-            match &id.work_type {
-                GenericWorkType::Property(prop) => match prop.as_str() {
-                    PROP_DOI => {
-                        for publication_id in self.publication_ids_from_doi(&id.id) {
-                            self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
-                        }
+            if let GenericWorkType::Property(prop) = &id.work_type {
+                if let PROP_DOI = prop.as_str() {
+                    for publication_id in self.publication_ids_from_doi(&id.id) {
+                        self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                     }
-                    _ => {}
-                },
-                _ => {}
+                }
             }
         }
         ret
     }
 
-    fn do_cache_work(&mut self, publication_id: &String) -> Option<String> {
-        let work = match self.client.work(&publication_id) {
+    fn do_cache_work(&mut self, publication_id: &str) -> Option<String> {
+        let work = match self.client.work(publication_id) {
             Ok(w) => w,
             _ => return None, // No such work
         };
@@ -157,7 +158,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         Some(publication_id)
     }
 
-    fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
+    fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(work) => match &work.title {
                 Some(title) => vec![LocaleString::new("en", &title)],
@@ -167,25 +168,22 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         }
     }
 
-    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
+    async fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity) {
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
         };
 
         if !item.has_claims_with_property("P577") {
-            match work.year {
-                Some(year) => {
-                    let statement =
-                        self.get_wb_time_from_partial("P577".to_string(), year as u32, None, None);
-                    item.add_claim(statement);
-                }
-                None => {}
+            if let Some(year) = work.year {
+                let statement =
+                    self.get_wb_time_from_partial("P577".to_string(), year as u32, None, None);
+                item.add_claim(statement);
             }
         }
     }
 
-    fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {
+    fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
         let mut ret: Vec<GenericAuthorInfo> = vec![];
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w.clone(),

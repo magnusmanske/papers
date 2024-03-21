@@ -14,13 +14,13 @@ pub struct SourceMDcommand {
 }
 
 impl SourceMDcommand {
-    pub fn new_dummy(mode: &str, identifier: &String) -> Self {
+    pub fn new_dummy(mode: &str, identifier: &str) -> Self {
         Self {
             id: 0,
             batch_id: 0,
             serial_number: 0,
             mode: mode.to_string(),
-            identifier: identifier.clone(),
+            identifier: identifier.to_string(),
             status: "TODO".to_string(),
             note: "".to_string(),
             q: "".to_string(),

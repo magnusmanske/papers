@@ -10,7 +10,8 @@ use crate::wikidata_papers::WikidataPapers;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
 use regex::Regex;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct SourceMDbot {
@@ -20,96 +21,89 @@ pub struct SourceMDbot {
 }
 
 impl SourceMDbot {
-    pub fn new(
+    pub async fn new(
         config: Arc<RwLock<SourceMD>>,
         cache: Arc<WikidataStringCache>,
         batch_id: i64,
     ) -> Result<Self, String> {
         let ret = Self {
-            config: config,
-            batch_id: batch_id,
-            cache: cache,
+            config,
+            batch_id,
+            cache,
         };
-        ret.start()?;
+        ret.start().await?;
         Ok(ret)
     }
 
-    pub fn start(&self) -> Result<(), String> {
-        let config = self.config.read().map_err(|e| format!("{:?}", e))?;
+    pub async fn start(&self) -> Result<(), String> {
+        let config = self.config.read().await;
         config
             .restart_batch(self.batch_id)
             .ok_or("Can't (re)start batch".to_string())?;
-        config.set_batch_running(self.batch_id);
+        config.set_batch_running(self.batch_id).await;
         Ok(())
     }
 
-    pub fn run(&self) -> Result<bool, String> {
+    pub async fn run(&self) -> Result<bool, String> {
         //println!("Running command from batch #{}", self.batch_id);
 
         //Check if batch is still valid (STOP etc)
-        let command = match self.get_next_command() {
-            Ok(c) => c,
-            Err(_) => {
-                let config = self.config.read().map_err(|e| format!("{:?}", e))?;
-                config
-                    .deactivate_batch_run(self.batch_id)
-                    .ok_or("Can't set batch as stopped".to_string())?;
-                return Ok(false);
-            }
-        };
+        let command = self.get_next_command().await;
         let mut command = match command {
             Some(c) => c,
             None => {
-                let config = self.config.read().map_err(|e| format!("{:?}", e))?;
-                config
+                self.config
+                    .read()
+                    .await
                     .deactivate_batch_run(self.batch_id)
+                    .await
                     .ok_or("Can't set batch as stopped".to_string())?;
                 return Ok(false);
             }
         };
 
-        self.set_command_status("RUNNING", None, &mut command)?;
-        match self.execute_command(&mut command) {
+        self.set_command_status("RUNNING", None, &mut command)
+            .await?;
+        match self.execute_command(&mut command).await {
             Ok(b) => {
                 if b {
-                    self.set_command_status("DONE", None, &mut command)?;
+                    self.set_command_status("DONE", None, &mut command).await?;
                     Ok(true)
                 } else {
-                    self.set_command_status("DUNNO", None, &mut command)?;
+                    self.set_command_status("DUNNO", None, &mut command).await?;
                     Ok(false)
                 }
             }
             Err(e) => {
-                self.set_command_status("FAILED", Some(&e.clone()), &mut command)?;
+                self.set_command_status("FAILED", Some(&e.clone()), &mut command)
+                    .await?;
                 Err(e)
             }
         }
     }
 
-    fn execute_command(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
+    async fn execute_command(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
         match command.mode.as_str() {
-            "CREATE_PAPER_BY_ID" => self.process_paper(command),
-            "ADD_AUTHOR_TO_PUBLICATION" => self.process_paper(command),
+            "CREATE_PAPER_BY_ID" => self.process_paper(command).await,
+            "ADD_AUTHOR_TO_PUBLICATION" => self.process_paper(command).await,
             "ADD_METADATA_FROM_ORCID_TO_AUTHOR" => {
                 // TODO
                 if true {
                     Ok(false)
                 } else {
-                    self.process_author_metadata(command)
+                    self.process_author_metadata(command).await
                 }
             }
             "EDIT_PAPER_FOR_ORCID_AUTHOR" => Ok(false), // TODO
             "CREATE_BOOK_FROM_ISBN" => Ok(false),       // TODO
-            other => {
-                return Err(format!(
-                    "Unrecognized command '{}' on command #{}",
-                    &other, &command.id
-                ))
-            }
+            other => Err(format!(
+                "Unrecognized command '{}' on command #{}",
+                &other, &command.id
+            )),
         }
     }
 
-    fn get_author_item(&self, identifier: &String) -> Result<GenericAuthorInfo, String> {
+    async fn get_author_item(&self, identifier: &String) -> Result<GenericAuthorInfo, String> {
         lazy_static! {
             static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
                 .expect("SourceMDbot::process_author: RE_WD does not compile");
@@ -124,10 +118,9 @@ impl SourceMDbot {
             author
                 .prop2id
                 .insert("P496".to_string(), identifier.to_owned());
-            author = match self.config.read() {
-                Ok(config) => author.get_or_create_author_item(config.mw_api(), self.cache.clone()),
-                _ => return Err(format!("Can't read config")),
-            }
+            author = author
+                .get_or_create_author_item(self.config.read().await.mw_api(), self.cache.clone())
+                .await
         } else {
             return Err(format!(
                 "Not a Wikidata item, nor an ORCID ID {}",
@@ -146,23 +139,25 @@ impl SourceMDbot {
         Ok(author)
     }
 
-    pub fn process_author_metadata(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
-        let author = self.get_author_item(&command.identifier)?;
+    pub async fn process_author_metadata(
+        &self,
+        command: &mut SourceMDcommand,
+    ) -> Result<bool, String> {
+        let author = self.get_author_item(&command.identifier).await?;
 
         // Create paper object
-        let mut wdp = self.new_wdp(&command);
+        let mut wdp = self.new_wdp(command);
         wdp.set_edit_summary(Some(format!(
             "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{}",
             self.batch_id, self.batch_id, command.serial_number
         )));
-        match self.config.read() {
-            Ok(config) => wdp.update_author_items(&vec![author], config.mw_api()),
-            _ => return Err(format!("Can't get config")),
-        }
-        return Ok(true);
+        let config = self.config.read().await;
+        wdp.update_author_items(&vec![author], config.mw_api())
+            .await;
+        Ok(true)
     }
 
-    fn process_paper(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
+    async fn process_paper(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
         lazy_static! {
             static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
                 .expect("SourceMDbot::process_paper: RE_WD does not compile");
@@ -175,7 +170,7 @@ impl SourceMDbot {
         }
 
         //println!("Processing command {:?}", &command);
-        let mut wdp = self.new_wdp(&command);
+        let mut wdp = self.new_wdp(command);
         wdp.set_edit_summary(Some(format!(
             "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{}",
             self.batch_id, self.batch_id, command.serial_number
@@ -185,78 +180,61 @@ impl SourceMDbot {
         if RE_WD.is_match(&command.identifier) {
             return wdp
                 .create_or_update_item_from_q(
-                    self.config.read().unwrap().mw_api(),
+                    self.config.read().await.mw_api(),
                     &command.identifier,
                 )
+                .await
                 .map(|_x| true)
                 .ok_or(format!("Can't update {}", &command.identifier));
         }
 
         // Others
         let mut ids = vec![];
-        match RE_DOI.captures(&command.identifier) {
-            Some(caps) => match caps.get(1) {
-                Some(x) => ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, x.as_str())),
-                None => {}
-            },
-            None => {}
-        };
-        match RE_PMID.captures(&command.identifier) {
-            Some(caps) => match caps.get(1) {
-                Some(x) => ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, x.as_str())),
-                None => {}
-            },
-            None => {}
-        };
-        match RE_PMCID.captures(&command.identifier) {
-            Some(caps) => match caps.get(1) {
-                Some(x) => ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, x.as_str())),
-                None => {}
-            },
-            None => {}
-        };
-        match serde_json::from_str(&command.identifier) {
-            Ok(j) => {
-                let j: serde_json::Value = j;
-                match j["doi"].as_str() {
-                    Some(id) => {
-                        let id = id.replace("doi: ", "");
-                        ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, &id));
-                    }
-                    None => {}
-                }
-                match j["pmid"].as_str() {
-                    Some(id) => {
-                        ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, id));
-                    }
-                    None => {}
-                }
-                match j["pmc"].as_str() {
-                    Some(id) => {
-                        let id = id.replace("PMCID: ", "");
-                        ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, &id));
-                    }
-                    None => {}
-                }
-                match j["pmcid"].as_str() {
-                    Some(id) => {
-                        let id = id.replace("PMCID: ", "");
-                        ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, &id));
-                    }
-                    None => {}
-                }
+        if let Some(caps) = RE_DOI.captures(&command.identifier) {
+            if let Some(x) = caps.get(1) {
+                ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, x.as_str()))
             }
-            Err(_) => {}
+        };
+        if let Some(caps) = RE_PMID.captures(&command.identifier) {
+            if let Some(x) = caps.get(1) {
+                ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, x.as_str()))
+            }
+        };
+        if let Some(caps) = RE_PMCID.captures(&command.identifier) {
+            if let Some(x) = caps.get(1) {
+                ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, x.as_str()))
+            }
+        };
+        if let Ok(j) = serde_json::from_str(&command.identifier) {
+            let j: serde_json::Value = j;
+            if let Some(id) = j["doi"].as_str() {
+                let id = id.replace("doi: ", "");
+                ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, &id));
+            }
+            if let Some(id) = j["pmid"].as_str() {
+                ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, id));
+            }
+            if let Some(id) = j["pmc"].as_str() {
+                let id = id.replace("PMCID: ", "");
+                ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, &id));
+            }
+            if let Some(id) = j["pmcid"].as_str() {
+                let id = id.replace("PMCID: ", "");
+                ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, &id));
+            }
         }
 
-        if ids.len() == 0 {
+        if ids.is_empty() {
             return Ok(false);
         }
 
         ids = wdp.update_from_paper_ids(&ids);
-        match wdp.create_or_update_item_from_ids(self.config.read().unwrap().mw_api(), &ids) {
+        match wdp
+            .create_or_update_item_from_ids(self.config.read().await.mw_api(), &ids)
+            .await
+        {
             Some(er) => {
-                if command.q == "" {
+                if command.q.is_empty() {
                     command.q = er.q;
                 }
                 Ok(true)
@@ -265,15 +243,16 @@ impl SourceMDbot {
         }
     }
 
-    fn set_command_status(
+    async fn set_command_status(
         &self,
         status: &str,
         message: Option<&str>,
         command: &mut SourceMDcommand,
     ) -> Result<(), String> {
         //println!("Setting {} to {}", &command.id, &status);
-        let config = self.config.read().map_err(|e| format!("{:?}", e))?;
-        config
+        self.config
+            .read()
+            .await
             .set_command_status(command, status, message.map(|s| s.to_string()))
             .ok_or(format!(
                 "Can't config.set_command_status for batch #{}",
@@ -282,9 +261,8 @@ impl SourceMDbot {
         Ok(())
     }
 
-    fn get_next_command(&self) -> Result<Option<SourceMDcommand>, String> {
-        let config = self.config.read().map_err(|e| format!("{:?}", e))?;
-        Ok(config.get_next_command(self.batch_id))
+    async fn get_next_command(&self) -> Option<SourceMDcommand> {
+        self.config.read().await.get_next_command(self.batch_id)
     }
 
     fn new_wdp(&self, command: &SourceMDcommand) -> WikidataPapers {

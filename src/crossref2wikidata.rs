@@ -1,5 +1,6 @@
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
+use async_trait::async_trait;
 use chrono::prelude::*;
 use crossref::Crossref;
 use std::collections::HashMap;
@@ -7,7 +8,7 @@ use std::collections::HashMap;
 pub struct Crossref2Wikidata {
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, crossref::Work>,
-    client: crossref::Crossref,
+    // client: Arc<crossref::Crossref>,
 }
 
 impl Crossref2Wikidata {
@@ -15,22 +16,25 @@ impl Crossref2Wikidata {
         Crossref2Wikidata {
             author_cache: HashMap::new(),
             work_cache: HashMap::new(),
-            client: Crossref::builder()
-                .build()
-                .expect("Crossref2Wikidata::new: Could not build Crossref client"),
+            // client: Arc::new(Crossref::builder()
+            //     .build()
+            //     .expect("Crossref2Wikidata::new: Could not build Crossref client")),
         }
     }
 
-    pub fn get_cached_publication_from_id(
-        &self,
-        publication_id: &String,
-    ) -> Option<&crossref::Work> {
+    fn get_client(&self) -> crossref::Crossref {
+        Crossref::builder()
+            .build()
+            .expect("Crossref2Wikidata::new: Could not build Crossref client")
+    }
+
+    pub fn get_cached_publication_from_id(&self, publication_id: &str) -> Option<&crossref::Work> {
         self.work_cache.get(publication_id)
     }
 
     fn add_identifiers_from_cached_publication(
         &mut self,
-        publication_id: &String,
+        publication_id: &str,
         ret: &mut Vec<GenericWorkIdentifier>,
     ) {
         let work = match self.get_cached_publication_from_id(&publication_id) {
@@ -47,7 +51,7 @@ impl Crossref2Wikidata {
         }
     }
 
-    fn should_add_string(&self, s: &String) -> bool {
+    fn should_add_string(&self, s: &str) -> bool {
         if s == "n/a" || s == "n/a-n/a" {
             return false;
         }
@@ -55,12 +59,13 @@ impl Crossref2Wikidata {
     }
 }
 
+#[async_trait]
 impl ScientificPublicationAdapter for Crossref2Wikidata {
     fn name(&self) -> &str {
         "Crossref2Wikidata"
     }
 
-    fn get_work_issn(&self, publication_id: &String) -> Option<String> {
+    fn get_work_issn(&self, publication_id: &str) -> Option<String> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(work) => match &work.issn {
                 Some(array) => match array.len() {
@@ -81,16 +86,13 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         &mut self.author_cache
     }
 
-    fn get_identifier_list(
-        &mut self,
-        ids: &Vec<GenericWorkIdentifier>,
-    ) -> Vec<GenericWorkIdentifier> {
+    fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
             match &id.work_type {
                 GenericWorkType::Property(prop) => match prop.as_str() {
                     PROP_DOI => {
-                        let x = self.client.work(&id.id);
+                        let x = self.get_client().work(&id.id);
                         match x {
                             Ok(work) => {
                                 self.work_cache.insert(work.doi.clone(), work.clone());
@@ -112,7 +114,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
             Some(s) => s,
             None => return None,
         };
-        let work = match self.client.work(&doi) {
+        let work = match self.get_client().work(&doi) {
             Ok(w) => w,
             _ => return None, // No such work
         };
@@ -127,7 +129,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         vec![Reference::new(vec![Snak::new_time("P813", &now, 11)])]
     }
 
-    fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
+    fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(work) => work
                 .title
@@ -138,7 +140,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         }
     }
 
-    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
+    async fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity) {
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
@@ -147,32 +149,26 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         // Date
         if !item.has_claims_with_property("P577") {
             let j = json!(work.issued);
-            match j["date-parts"][0].as_array() {
-                Some(dp) => {
-                    if dp.len() > 0 {
-                        match dp[0].as_u64() {
-                            Some(year) => {
-                                let month: Option<u8> = match dp.len() {
-                                    1 => None,
-                                    _ => dp[1].as_u64().map(|x| x as u8),
-                                };
-                                let day: Option<u8> = match dp.len() {
-                                    3 => dp[2].as_u64().map(|x| x as u8),
-                                    _ => None,
-                                };
-                                let statement = self.get_wb_time_from_partial(
-                                    "P577".to_string(),
-                                    year as u32,
-                                    month,
-                                    day,
-                                );
-                                item.add_claim(statement);
-                            }
-                            None => {}
-                        }
+            if let Some(dp) = j["date-parts"][0].as_array() {
+                if !dp.is_empty() {
+                    if let Some(year) = dp[0].as_u64() {
+                        let month: Option<u8> = match dp.len() {
+                            1 => None,
+                            _ => dp[1].as_u64().map(|x| x as u8),
+                        };
+                        let day: Option<u8> = match dp.len() {
+                            3 => dp[2].as_u64().map(|x| x as u8),
+                            _ => None,
+                        };
+                        let statement = self.get_wb_time_from_partial(
+                            "P577".to_string(),
+                            year as u32,
+                            month,
+                            day,
+                        );
+                        item.add_claim(statement);
                     }
                 }
-                None => {}
             }
         }
 

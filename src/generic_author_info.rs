@@ -8,6 +8,7 @@ use crate::*;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 
 const SCORE_LIST_NUMBER: u16 = 30;
@@ -16,7 +17,7 @@ const SCORE_PROP_MATCH: u16 = 90;
 const SCORE_ITEM_MATCH: u16 = 100;
 const SCORE_MATCH_MIN: u16 = 51;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct GenericAuthorInfo {
     pub name: Option<String>,
     pub prop2id: HashMap<String, String>,
@@ -29,13 +30,7 @@ impl WikidataInteraction for GenericAuthorInfo {}
 
 impl GenericAuthorInfo {
     pub fn new() -> Self {
-        Self {
-            name: None,
-            prop2id: HashMap::new(),
-            wikidata_item: None,
-            list_number: None,
-            alternative_names: vec![],
-        }
+        Self::default()
     }
 
     pub fn new_from_name_num(name: &str, num: usize) -> Self {
@@ -80,18 +75,20 @@ impl GenericAuthorInfo {
             .for_each(|snak| match snak.property() {
                 // List number
                 "P1545" => match snak.data_value() {
-                    Some(dv) => match dv.value() {
-                        Value::StringValue(s) => ret.list_number = Some(s.to_string()),
-                        _ => {}
-                    },
+                    Some(dv) => {
+                        if let Value::StringValue(s) = dv.value() {
+                            ret.list_number = Some(s.to_string())
+                        }
+                    }
                     None => {}
                 },
                 // Named as
                 "P1932" => match snak.data_value() {
-                    Some(dv) => match dv.value() {
-                        Value::StringValue(s) => ret.name = Some(s.to_string()),
-                        _ => {}
-                    },
+                    Some(dv) => {
+                        if let Value::StringValue(s) = dv.value() {
+                            ret.name = Some(s.to_string())
+                        }
+                    }
                     None => {}
                 },
                 _ => {}
@@ -100,12 +97,12 @@ impl GenericAuthorInfo {
         Some(ret)
     }
 
-    pub fn find_best_match(&self, authors: &Vec<GenericAuthorInfo>) -> Option<(usize, u16)> {
+    pub fn find_best_match(&self, authors: &[GenericAuthorInfo]) -> Option<(usize, u16)> {
         let mut best_candidate: usize = 0;
         let mut best_points: u16 = 0;
         let mut multiple_best: bool = false;
-        for candidate_id in 0..authors.len() {
-            let points = self.compare(&authors[candidate_id]);
+        for (candidate_id, author) in authors.iter().enumerate() {
+            let points = self.compare(author);
             if points > best_points {
                 best_points = points;
                 best_candidate = candidate_id;
@@ -134,7 +131,7 @@ impl GenericAuthorInfo {
         let mut qualifiers: Vec<Snak> = vec![];
         match &self.list_number {
             Some(num) => {
-                qualifiers.push(Snak::new_string("P1545", &num));
+                qualifiers.push(Snak::new_string("P1545", num));
             }
             None => {}
         }
@@ -143,7 +140,7 @@ impl GenericAuthorInfo {
                 if !name.is_empty() {
                     qualifiers.push(Snak::new_string("P1932", &name));
                 }
-                Statement::new_normal(Snak::new_item("P50", &q), qualifiers, vec![])
+                Statement::new_normal(Snak::new_item("P50", q), qualifiers, vec![])
             }
             None => {
                 if name.is_empty() && qualifiers.is_empty() {
@@ -156,11 +153,8 @@ impl GenericAuthorInfo {
     }
 
     pub fn create_author_statement_in_paper_item(&self, item: &mut Entity) {
-        match self.generate_author_statement() {
-            Some(statement) => {
-                item.add_claim(statement);
-            }
-            None => {}
+        if let Some(statement) = self.generate_author_statement() {
+            item.add_claim(statement);
         }
     }
 
@@ -240,7 +234,7 @@ impl GenericAuthorInfo {
         }
     }
 
-    pub fn get_or_create_author_item(
+    pub async fn get_or_create_author_item(
         &self,
         mw_api: Arc<RwLock<Api>>,
         cache: Arc<WikidataStringCache>,
@@ -257,12 +251,9 @@ impl GenericAuthorInfo {
 
         // Use search
         for (prop, id) in &ret.prop2id {
-            match cache.get(prop, id) {
-                Some(q) => {
-                    ret.wikidata_item = Some(q);
-                    return ret;
-                }
-                None => {}
+            if let Some(q) = cache.get(prop, id).await {
+                ret.wikidata_item = Some(q);
+                return ret;
             }
         }
 
@@ -271,11 +262,11 @@ impl GenericAuthorInfo {
         ret.amend_author_item(&mut item);
 
         // Create new item and use its ID
-        ret.wikidata_item = self.create_item(&item, mw_api);
+        ret.wikidata_item = self.create_item(&item, mw_api).await;
 
         // Update external IDs cache
         for (prop, id) in &ret.prop2id {
-            cache.set(prop, id, ret.wikidata_item.clone());
+            cache.set(prop, id, ret.wikidata_item.clone()).await;
         }
         ret
     }
@@ -334,11 +325,8 @@ impl GenericAuthorInfo {
             .replace('ä', "a")
             .replace('ö', "o")
             .replace('ü', "u")
-            .replace('á', "a")
-            .replace('à', "a")
-            .replace('â', "a")
-            .replace('é', "e")
-            .replace('è', "e")
+            .replace(['á', 'à', 'â'], "a")
+            .replace(['é', 'è'], "e")
             .replace('ñ', "n")
             .replace('ï', "i")
             .replace('ç', "c")
@@ -375,52 +363,40 @@ impl GenericAuthorInfo {
     }
 
     pub fn compare(&self, author2: &GenericAuthorInfo) -> u16 {
-        match (&self.wikidata_item, &author2.wikidata_item) {
-            (Some(q1), Some(q2)) => {
-                if q1 == q2 {
-                    return SCORE_ITEM_MATCH; // This is it
-                } else {
-                    return 0; // Different items
-                }
+        if let (Some(q1), Some(q2)) = (&self.wikidata_item, &author2.wikidata_item) {
+            if q1 == q2 {
+                return SCORE_ITEM_MATCH; // This is it
+            } else {
+                return 0; // Different items
             }
-            _ => {}
         }
 
         let mut ret = 0;
 
         for (k, v) in &self.prop2id {
-            match author2.prop2id.get(k) {
-                Some(v2) => {
-                    if v == v2 {
-                        ret += SCORE_PROP_MATCH;
-                    }
+            if let Some(v2) = author2.prop2id.get(k) {
+                if v == v2 {
+                    ret += SCORE_PROP_MATCH;
                 }
-                None => {}
             }
         }
 
         // Name match
-        match (&self.name, &author2.name) {
-            (Some(n1), Some(n2)) => {
-                ret += SCORE_NAME_MATCH * self.author_names_match(&n1.as_str(), &n2.as_str());
-            }
-            _ => {}
+        if let (Some(n1), Some(n2)) = (&self.name, &author2.name) {
+            ret += SCORE_NAME_MATCH * self.author_names_match(n1.as_str(), n2.as_str());
         }
 
         // List number
-        match (&self.list_number, &author2.list_number) {
-            (Some(n1), Some(n2)) => {
-                if n1 == n2 {
-                    ret += SCORE_LIST_NUMBER;
-                }
+        if let (Some(n1), Some(n2)) = (&self.list_number, &author2.list_number) {
+            if n1 == n2 {
+                ret += SCORE_LIST_NUMBER;
             }
-            _ => {}
         }
 
         ret
     }
 
-    pub fn update_author_item(
+    pub async fn update_author_item(
         &self,
         entities: &mut wikibase::entity_container::EntityContainer,
         mw_api: Arc<RwLock<Api>>,
@@ -445,10 +421,8 @@ impl GenericAuthorInfo {
             return;
         }
 
-        match mw_api.write() {
-            Ok(mut mw_api) => entities.apply_diff(&mut mw_api, &diff),
-            _ => return,
-        };
+        let mut mw_api = mw_api.write().await;
+        entities.apply_diff(&mut mw_api, &diff).await;
 
         // TODO what?
     }
@@ -462,10 +436,7 @@ mod tests {
     #[test]
     fn asciify_string() {
         let ga = GenericAuthorInfo::new();
-        assert_eq!(
-            ga.asciify_string("äöüáàâéèñïçß"),
-            "aouaaaeenicss"
-        );
+        assert_eq!(ga.asciify_string("äöüáàâéèñïçß"), "aouaaaeenicss");
     }
 
     #[test]

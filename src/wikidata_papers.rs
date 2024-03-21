@@ -6,7 +6,10 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
+
+pub type Spas = Box<dyn ScientificPublicationAdapter + Sync>;
 
 pub struct EditResult {
     pub q: String,
@@ -14,7 +17,7 @@ pub struct EditResult {
 }
 
 pub struct WikidataPapers {
-    adapters: Vec<Box<dyn ScientificPublicationAdapter>>,
+    adapters: Vec<Spas>,
     cache: Arc<WikidataStringCache>,
     edit_summary: Option<String>,
     pub testing: bool,
@@ -29,18 +32,18 @@ impl WikidataPapers {
         entities.allow_special_entity_data(false);
         WikidataPapers {
             adapters: vec![],
-            cache: cache,
+            cache,
             edit_summary: None,
             testing: false,
-            entities: entities,
+            entities,
         }
     }
 
-    pub fn adapters_mut(&mut self) -> &mut Vec<Box<dyn ScientificPublicationAdapter>> {
+    pub fn adapters_mut(&mut self) -> &mut Vec<Spas> {
         &mut self.adapters
     }
 
-    pub fn add_adapter(&mut self, adapter_box: Box<dyn ScientificPublicationAdapter>) {
+    pub fn add_adapter(&mut self, adapter_box: Spas) {
         self.adapters.push(adapter_box);
     }
 
@@ -58,7 +61,7 @@ impl WikidataPapers {
         }
     }
 
-    fn update_author_statements(&self, authors: &Vec<GenericAuthorInfo>, item: &mut Entity) {
+    fn update_author_statements(&self, authors: &[GenericAuthorInfo], item: &mut Entity) {
         let p50: Vec<String> = item
             .claims()
             .par_iter()
@@ -79,60 +82,54 @@ impl WikidataPapers {
             if statement.property() != "P2093" {
                 return;
             }
-            match GenericAuthorInfo::new_from_statement(statement) {
-                Some(author) => {
-                    match author.find_best_match(authors) {
-                        Some((candidate, _points)) => {
-                            match &authors[candidate].wikidata_item {
-                                Some(q) => {
-                                    if p50.contains(&q) {
-                                        // Strange, we already have this one, remove
-                                        if author.list_number.is_some()
-                                            && author.list_number == authors[candidate].list_number
-                                        {
-                                            println!(
-                                                "REMOVING AUTHOR {:?}\nBECAUSE:\n{:?}\n{:?}",
-                                                &statement, &author, &authors[candidate]
-                                            );
-                                            // Same list number, remove P2093
-                                            // HACK change to "no value", then remove downstream
-                                            statement.set_main_snak(snak_remove_statement.clone());
-                                        } else {
-                                            println!("NOT REMOVING AUTHOR {:?}", &statement);
-                                        }
-                                    } else {
-                                        match &authors[candidate].generate_author_statement() {
-                                            Some(s) => {
-                                                let mut s = s.to_owned();
-
-                                                // Preserve qualifiers
-                                                statement.qualifiers().iter().for_each(|q1| {
-                                                    if !s
-                                                        .qualifiers()
-                                                        .iter()
-                                                        .any(|q2| q1.property() == q2.property())
-                                                    {
-                                                        s.add_qualifier_snak(q1.clone())
-                                                    }
-                                                });
-
-                                                // Preserve references
-                                                let references = statement.references().clone();
-                                                //println!("{:?} => \n{:?}\n", statement, &s);
-                                                *statement = s.clone();
-                                                statement.set_references(references);
-                                            }
-                                            None => {}
-                                        }
-                                    }
+            if let Some(author) = GenericAuthorInfo::new_from_statement(statement) {
+                if let Some((candidate, _points)) = author.find_best_match(authors) {
+                    match &authors[candidate].wikidata_item {
+                        Some(q) => {
+                            if p50.contains(q) {
+                                // Strange, we already have this one, remove
+                                if author.list_number.is_some()
+                                    && author.list_number == authors[candidate].list_number
+                                {
+                                    println!(
+                                        "REMOVING AUTHOR {:?}\nBECAUSE:\n{:?}\n{:?}",
+                                        &statement, &author, &authors[candidate]
+                                    );
+                                    // Same list number, remove P2093
+                                    // HACK change to "no value", then remove downstream
+                                    statement.set_main_snak(snak_remove_statement.clone());
+                                } else {
+                                    println!("NOT REMOVING AUTHOR {:?}", &statement);
                                 }
-                                None => {}
+                            } else {
+                                match &authors[candidate].generate_author_statement() {
+                                    Some(s) => {
+                                        let mut s = s.to_owned();
+
+                                        // Preserve qualifiers
+                                        statement.qualifiers().iter().for_each(|q1| {
+                                            if !s
+                                                .qualifiers()
+                                                .iter()
+                                                .any(|q2| q1.property() == q2.property())
+                                            {
+                                                s.add_qualifier_snak(q1.clone())
+                                            }
+                                        });
+
+                                        // Preserve references
+                                        let references = statement.references().clone();
+                                        //println!("{:?} => \n{:?}\n", statement, &s);
+                                        *statement = s.clone();
+                                        statement.set_references(references);
+                                    }
+                                    None => {}
+                                }
                             }
                         }
                         None => {}
                     }
                 }
-                None => {}
             }
         });
 
@@ -167,7 +164,7 @@ impl WikidataPapers {
 
         for author in authors2.iter() {
             match author.find_best_match(authors) {
-                Some((candidate, _points)) => match authors[candidate].merge_from(&author) {
+                Some((candidate, _points)) => match authors[candidate].merge_from(author) {
                     Ok(_) => {}
                     Err(e) => eprintln!("{:?}: {}", &author, e),
                 },
@@ -176,9 +173,9 @@ impl WikidataPapers {
         }
     }
 
-    pub fn update_item_from_adapters(
+    pub async fn update_item_from_adapters(
         &mut self,
-        mut item: &mut Entity,
+        item: &mut Entity,
         adapter2work_id: &mut HashMap<usize, String>,
         mw_api: Arc<RwLock<Api>>,
     ) {
@@ -191,27 +188,34 @@ impl WikidataPapers {
 
             let adapter = &mut self.adapters[adapter_id];
             adapter2work_id.insert(adapter_id, publication_id.clone());
-            adapter.update_statements_for_publication_id_default(
-                &publication_id,
-                &mut item,
-                self.cache.clone(),
-            );
-            adapter.update_statements_for_publication_id(&publication_id, &mut item);
+            adapter
+                .update_statements_for_publication_id_default(
+                    &publication_id,
+                    item,
+                    // self.cache.clone(),
+                )
+                .await;
+            adapter
+                .update_statements_for_publication_id(&publication_id, item)
+                .await;
 
             // Authors
             let authors2 = adapter.get_author_list(&publication_id);
             self.merge_authors(&mut authors, &authors2);
         }
 
-        let authors: Vec<GenericAuthorInfo> = authors
-            .iter()
-            .map(|author| author.get_or_create_author_item(mw_api.clone(), self.cache.clone()))
-            .collect();
-        self.update_author_items(&authors, mw_api);
-        self.create_or_update_author_statements(&mut item, &authors);
+        let mut new_authors: Vec<GenericAuthorInfo> = vec![];
+        for author in authors {
+            let r = author
+                .get_or_create_author_item(mw_api.clone(), self.cache.clone())
+                .await;
+            new_authors.push(r);
+        }
+        self.update_author_items(&new_authors, mw_api.clone()).await;
+        self.create_or_update_author_statements(item, &new_authors);
     }
 
-    pub fn update_author_items(
+    pub async fn update_author_items(
         &mut self,
         authors: &Vec<GenericAuthorInfo>,
         mw_api: Arc<RwLock<Api>>,
@@ -228,16 +232,16 @@ impl WikidataPapers {
             return;
         }
 
-        match mw_api.read() {
-            Ok(mw_api) => match self.entities.load_entities(&mw_api, &qs) {
-                Ok(_) => {}
-                _ => return,
-            },
-            _ => return,
+        let api = mw_api.read().await;
+        if self.entities.load_entities(&api, &qs).await.is_err() {
+            return;
         }
+        drop(api);
 
         for author in authors {
-            author.update_author_item(&mut self.entities, mw_api.clone());
+            author
+                .update_author_item(&mut self.entities, mw_api.clone())
+                .await;
         }
     }
 
@@ -262,18 +266,17 @@ impl WikidataPapers {
                 })
                 .filter_map(|adapter| adapter.publication_id_for_statement(&id.id))
                 .nth(0);
-            match id2statement {
-                Some(id) => item.add_claim(Statement::new_normal(
+            if let Some(id) = id2statement {
+                item.add_claim(Statement::new_normal(
                     Snak::new_external_id(prop.clone(), id),
                     vec![],
                     vec![],
-                )),
-                None => {}
+                ))
             }
         }
     }
 
-    pub fn create_or_update_item_from_ids(
+    pub async fn create_or_update_item_from_ids(
         &mut self,
         mw_api: Arc<RwLock<Api>>,
         ids: &Vec<GenericWorkIdentifier>,
@@ -283,18 +286,20 @@ impl WikidataPapers {
         }
         let items = match self.testing {
             true => vec![],
-            false => self.get_items_for_ids(&ids),
+            false => self.get_items_for_ids(ids).await,
         };
         self.create_or_update_item_from_items(mw_api, ids, &items)
+            .await
     }
 
-    pub fn create_or_update_item_from_q(
+    pub async fn create_or_update_item_from_q(
         &mut self,
         mw_api: Arc<RwLock<Api>>,
         q: &String,
     ) -> Option<EditResult> {
         let items = vec![q.to_owned()];
         self.create_or_update_item_from_items(mw_api, &vec![], &items)
+            .await
     }
 
     fn new_publication_item(&self) -> Entity {
@@ -307,33 +312,34 @@ impl WikidataPapers {
         item
     }
 
-    fn create_or_update_item_from_items(
+    async fn create_or_update_item_from_items(
         &mut self,
         mw_api: Arc<RwLock<Api>>,
         ids: &Vec<GenericWorkIdentifier>,
-        items: &Vec<String>,
+        items: &[String],
     ) -> Option<EditResult> {
         let mut item: wikibase::Entity;
         let mut original_item = Entity::new_empty_item();
-        match items.get(0) {
-            Some(q) => match mw_api.read() {
-                Ok(mw_api) => {
-                    item = self
-                        .entities
-                        .load_entity(&mw_api, q.clone())
-                        .ok()?
-                        .to_owned();
-                    original_item = item.clone();
-                }
-                _ => item = self.new_publication_item(),
-            },
+        match items.first() {
+            Some(q) => {
+                let api = mw_api.read().await;
+                item = self
+                    .entities
+                    .load_entity(&api, q.clone())
+                    .await
+                    .ok()?
+                    .to_owned();
+                drop(api);
+                original_item = item.clone();
+            }
             None => item = self.new_publication_item(),
         }
 
-        self.update_item_with_ids(&mut item, &ids);
+        self.update_item_with_ids(&mut item, ids);
 
         let mut adapter2work_id = HashMap::new();
-        self.update_item_from_adapters(&mut item, &mut adapter2work_id, mw_api.clone());
+        self.update_item_from_adapters(&mut item, &mut adapter2work_id, mw_api.clone())
+            .await;
 
         // Paranoia
         if item.claims().len() < 4 {
@@ -367,10 +373,8 @@ impl WikidataPapers {
             println!("{}", diff.to_string_pretty().unwrap());
             None
         } else {
-            let new_json = match mw_api.write() {
-                Ok(mut mw_api) => diff.apply_diff(&mut mw_api, &diff).ok()?,
-                _ => return None,
-            };
+            let mut api = mw_api.write().await;
+            let new_json = diff.apply_diff(&mut api, &diff).await.ok()?;
             let q = EntityDiff::get_entity_id(&new_json)?;
             Some(EditResult {
                 q: q.to_string(),
@@ -381,7 +385,7 @@ impl WikidataPapers {
 
     pub fn update_from_paper_ids(
         &mut self,
-        original_ids: &Vec<GenericWorkIdentifier>,
+        original_ids: &[GenericWorkIdentifier],
     ) -> Vec<GenericWorkIdentifier> {
         let mut ids: HashSet<GenericWorkIdentifier> = HashSet::new();
         original_ids
@@ -411,14 +415,17 @@ impl WikidataPapers {
         ids.par_iter().filter(|id| id.is_legit()).cloned().collect()
     }
 
-    pub fn get_items_for_ids(&self, ids: &Vec<GenericWorkIdentifier>) -> Vec<String> {
-        let mut items: Vec<String> = ids
-            .iter()
-            .filter_map(|id| match &id.work_type {
-                GenericWorkType::Property(prop) => self.cache.get(prop, &id.id),
+    pub async fn get_items_for_ids(&self, ids: &Vec<GenericWorkIdentifier>) -> Vec<String> {
+        let mut items: Vec<String> = vec![];
+        for id in ids {
+            let r = match &id.work_type {
+                GenericWorkType::Property(prop) => self.cache.get(prop, &id.id).await,
                 GenericWorkType::Item => Some(id.id.to_owned()),
-            })
-            .collect();
+            };
+            if let Some(q) = r {
+                items.push(q)
+            }
+        }
         items.sort();
         items.dedup();
         items

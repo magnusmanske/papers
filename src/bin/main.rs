@@ -20,16 +20,17 @@ use regex::Regex;
 use std::env;
 use std::io;
 use std::io::prelude::*;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 
 const INI_FILE: &str = "bot.ini";
 
-fn command_authors(ini_file: &str) {
-    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).unwrap()));
-    let mw_api = smd.read().unwrap().mw_api();
+async fn command_authors(ini_file: &str) {
+    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).await.unwrap()));
+    let mw_api = smd.read().await.mw_api();
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
@@ -41,18 +42,22 @@ fn command_authors(ini_file: &str) {
             continue;
         }
         println!("Processing {}", &line);
-        author_from_id(&line, cache.clone(), smd.clone());
+        author_from_id(&line, cache.clone(), smd.clone()).await;
     }
 }
 
-fn author_from_id(id: &String, cache: Arc<WikidataStringCache>, smd: Arc<RwLock<SourceMD>>) {
+async fn author_from_id(id: &String, cache: Arc<WikidataStringCache>, smd: Arc<RwLock<SourceMD>>) {
     let mut command = SourceMDcommand::new_dummy("DUMMY", id);
-    let bot = SourceMDbot::new(smd.clone(), cache.clone(), 0).unwrap();
-    bot.process_author_metadata(&mut command).unwrap();
+    let bot = SourceMDbot::new(smd.clone(), cache.clone(), 0)
+        .await
+        .unwrap();
+    bot.process_author_metadata(&mut command).await.unwrap();
 }
 
-fn command_papers(ini_file: &str) {
-    let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).unwrap()));
+async fn command_papers(ini_file: &str) {
+    let mw_api = Arc::new(RwLock::new(
+        SourceMD::create_mw_api(ini_file).await.unwrap(),
+    ));
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         let line = match line {
@@ -63,11 +68,11 @@ fn command_papers(ini_file: &str) {
             continue;
         }
         //println!("Processing {}", &line);
-        paper_from_id(&line, mw_api.clone());
+        paper_from_id(&line, mw_api.clone()).await;
     }
 }
 
-fn paper_from_id(id: &String, mw_api: Arc<RwLock<Api>>) {
+async fn paper_from_id(id: &String, mw_api: Arc<RwLock<Api>>) {
     lazy_static! {
         static ref RE_WD: Regex =
             Regex::new(r#"^(Q\d+)$"#).expect("main.rs::paper_from_id: RE_WD does not compile");
@@ -89,60 +94,53 @@ fn paper_from_id(id: &String, mw_api: Arc<RwLock<Api>>) {
     wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
 
-    match RE_WD.captures(&id) {
-        Some(caps) => match caps.get(1) {
-            Some(q) => {
-                match wdp.create_or_update_item_from_q(mw_api, &q.as_str().to_string()) {
-                    Some(er) => {
-                        if er.edited {
-                            println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
-                        } else {
-                            println!("https://www.wikidata.org/wiki/{}, no changes ", &er.q)
-                        }
+    if let Some(caps) = RE_WD.captures(id) {
+        if let Some(q) = caps.get(1) {
+            match wdp
+                .create_or_update_item_from_q(mw_api, &q.as_str().to_string())
+                .await
+            {
+                Some(er) => {
+                    if er.edited {
+                        println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
+                    } else {
+                        println!("https://www.wikidata.org/wiki/{}, no changes ", &er.q)
                     }
-                    None => println!("No item ID!"),
                 }
-                return;
+                None => println!("No item ID!"),
             }
-            None => {}
-        },
-        None => {}
+            return;
+        }
     }
 
     let mut ids = vec![];
-    match RE_DOI.captures(&id) {
-        Some(caps) => match caps.get(1) {
-            Some(id) => ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, id.as_str())),
-            None => {}
-        },
-        None => {}
+    if let Some(caps) = RE_DOI.captures(id) {
+        if let Some(id) = caps.get(1) {
+            ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, id.as_str()))
+        }
     };
-    match RE_PMID.captures(&id) {
-        Some(caps) => match caps.get(1) {
-            Some(id) => ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, id.as_str())),
-            None => {}
-        },
-        None => {}
+    if let Some(caps) = RE_PMID.captures(id) {
+        if let Some(id) = caps.get(1) {
+            ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, id.as_str()))
+        }
     };
-    match RE_PMCID.captures(&id) {
-        Some(caps) => match caps.get(1) {
-            Some(id) => ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, id.as_str())),
-            None => {}
-        },
-        None => {}
+    if let Some(caps) = RE_PMCID.captures(id) {
+        if let Some(id) = caps.get(1) {
+            ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, id.as_str()))
+        }
     };
 
     // Paranoia
     ids.retain(|id| !id.id.is_empty());
 
-    if ids.len() == 0 {
+    if ids.is_empty() {
         println!("Can't find a valid ID in '{}'", &id);
         return;
     }
     //println!("IDs: {:?}", &ids);
     ids = wdp.update_from_paper_ids(&ids);
 
-    match wdp.create_or_update_item_from_ids(mw_api, &ids) {
+    match wdp.create_or_update_item_from_ids(mw_api, &ids).await {
         Some(er) => {
             if er.edited {
                 println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
@@ -162,38 +160,42 @@ fn usage(command_name: &String) {
 }
 
 /// Returns true if a new batch was started, false otherwise
-fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> bool {
+async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> bool {
     //println!("BOT!");
-    let batch_id = match config.read().unwrap().get_next_batch() {
+    let batch_id = match config.read().await.get_next_batch().await {
         Some(n) => n,
         None => return false, // Nothing to do
     };
 
     println!("SPAWN: Starting batch #{}", batch_id);
-    let bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id) {
+    let bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id).await {
         Ok(bot) => bot,
         Err(error) => {
             println!(
                 "Error when starting bot for batch #{}: '{}'",
                 &batch_id, &error
             );
-            config.read().unwrap().set_batch_failed(batch_id);
+            config.read().await.set_batch_failed(batch_id).await;
             return false;
         }
     };
 
     println!("Batch #{} spawned", batch_id);
-    thread::spawn(move || while bot.run().unwrap_or(false) {});
+    // tokio::spawn(async move { while bot.run().await.unwrap_or(false) {} });
+    while bot.run().await.unwrap_or(false) {}
     true
 }
-fn command_bot(ini_file: &str) {
+
+async fn command_bot(ini_file: &str) {
     println!("== STARTING BOT MODE");
-    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).unwrap()));
-    let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).unwrap()));
+    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).await.unwrap()));
+    let mw_api = Arc::new(RwLock::new(
+        SourceMD::create_mw_api(ini_file).await.unwrap(),
+    ));
     let cache = Arc::new(WikidataStringCache::new(mw_api));
     loop {
         //println!("BOT!");
-        if run_bot(smd.clone(), cache.clone()) {
+        if run_bot(smd.clone(), cache.clone()).await {
             thread::sleep(Duration::from_millis(1000));
         } else {
             thread::sleep(Duration::from_millis(5000));
@@ -201,16 +203,17 @@ fn command_bot(ini_file: &str) {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         usage(&args[0]);
         return;
     }
     match args[1].as_str() {
-        "papers" => command_papers(INI_FILE),
-        "authors" => command_authors(INI_FILE),
-        "bot" => command_bot(INI_FILE),
+        "papers" => command_papers(INI_FILE).await,
+        "authors" => command_authors(INI_FILE).await,
+        "bot" => command_bot(INI_FILE).await,
         _ => usage(&args[0]),
     }
 }

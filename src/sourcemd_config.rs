@@ -4,7 +4,8 @@ use config::{Config, File};
 use mysql as my;
 use serde_json::Value;
 use std::collections::HashSet;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 
 #[derive(Debug, Clone)]
@@ -17,20 +18,20 @@ pub struct SourceMD {
 }
 
 impl SourceMD {
-    pub fn new(ini_file: &str) -> Result<Self, String> {
+    pub async fn new(ini_file: &str) -> Result<Self, String> {
         let mut ret = Self {
             params: json!({}),
             running_batch_ids: Arc::new(RwLock::new(HashSet::new())),
             failed_batch_ids: Arc::new(RwLock::new(HashSet::new())),
             pool: None,
-            mw_api: Arc::new(RwLock::new(Self::create_mw_api(ini_file)?)),
+            mw_api: Arc::new(RwLock::new(Self::create_mw_api(ini_file).await?)),
         };
         ret.init();
         Ok(ret)
     }
 
-    pub fn set_batch_failed(&self, batch_id: i64) {
-        self.failed_batch_ids.write().unwrap().insert(batch_id);
+    pub async fn set_batch_failed(&self, batch_id: i64) {
+        self.failed_batch_ids.write().await.insert(batch_id);
     }
 
     pub fn mw_api(&self) -> Arc<RwLock<Api>> {
@@ -55,14 +56,17 @@ impl SourceMD {
         Some(())
     }
 
-    pub fn set_batch_running(&self, batch_id: i64) {
+    pub async fn set_batch_running(&self, batch_id: i64) {
         println!("set_batch_running: Starting batch #{}", batch_id);
-        self.running_batch_ids.write().unwrap().insert(batch_id);
-        println!("Currently {} bots running", self.number_of_bots_running());
+        self.running_batch_ids.write().await.insert(batch_id);
+        println!(
+            "Currently {} bots running",
+            self.number_of_bots_running().await
+        );
     }
 
-    pub fn number_of_bots_running(&self) -> usize {
-        self.running_batch_ids.read().unwrap().len()
+    pub async fn number_of_bots_running(&self) -> usize {
+        self.running_batch_ids.read().await.len()
     }
 
     pub fn timestamp(&self) -> String {
@@ -70,7 +74,7 @@ impl SourceMD {
         now.format("%Y-%m-%d %H:%M:%S").to_string()
     }
 
-    pub fn get_next_batch(&self) -> Option<i64> {
+    pub async fn get_next_batch(&self) -> Option<i64> {
         let pool = match &self.pool {
             Some(pool) => pool,
             None => return None,
@@ -81,11 +85,11 @@ impl SourceMD {
         for row in pool.prep_exec(sql, ()).ok()? {
             let row = row.ok()?;
             let id = match &row["id"] {
-                my::Value::Int(x) => *x as i64,
+                my::Value::Int(x) => *x,
                 _ => continue,
             };
-            if self.running_batch_ids.read().unwrap().contains(&id)
-                || self.failed_batch_ids.read().unwrap().contains(&id)
+            if self.running_batch_ids.read().await.contains(&id)
+                || self.failed_batch_ids.read().await.contains(&id)
             {
                 continue;
             }
@@ -94,13 +98,16 @@ impl SourceMD {
         None
     }
 
-    pub fn deactivate_batch_run(&self, batch_id: i64) -> Option<()> {
+    pub async fn deactivate_batch_run(&self, batch_id: i64) -> Option<()> {
         println!("Deactivating batch #{}", batch_id);
         self.set_batch_finished(batch_id)?;
         {
-            self.running_batch_ids.write().unwrap().remove(&batch_id);
+            self.running_batch_ids.write().await.remove(&batch_id);
         }
-        println!("Currently {} bots running", self.number_of_bots_running());
+        println!(
+            "Currently {} bots running",
+            self.number_of_bots_running().await
+        );
         Some(())
     }
 
@@ -113,9 +120,10 @@ impl SourceMD {
         let pool = match &self.pool {
             Some(pool) => pool,
             None => {
-                return Err(format!(
+                return Err(
                     "QuickStatementsConfig::check_batch_not_stopped: Can't get DB handle"
-                ))
+                        .to_string(),
+                )
             }
         };
         let sql: String = format!(
@@ -126,6 +134,7 @@ impl SourceMD {
             Ok(r) => r,
             Err(e) => return Err(format!("Error: {}", e)),
         };
+        /* trunk-ignore(clippy/never_loop) */
         for _row in result {
             return Err(format!(
                 "QuickStatementsConfig::check_batch_not_stopped: batch #{} is not RUNNING or TODO",
@@ -159,8 +168,8 @@ impl SourceMD {
             Some(pool) => pool,
             None => return None,
         };
-        let sql =
-            r#"SELECT * FROM command FORCE INDEX (batch_id_4) WHERE `batch_id`=? AND `status`='TODO' ORDER BY `serial_number` LIMIT 1"#;
+        let sql = r#"SELECT * FROM command FORCE INDEX (batch_id_4) WHERE `batch_id`=? AND `status`='TODO' ORDER BY `serial_number` LIMIT 1"#;
+        /* trunk-ignore(clippy/never_loop) */
         for row in pool.prep_exec(sql, (my::Value::Int(batch_id),)).ok()? {
             let row = row.ok()?;
             return Some(SourceMDcommand::new_from_row(row));
@@ -202,7 +211,7 @@ impl SourceMD {
                 _ => continue,
             };
             let cnt = match &row["cnt"] {
-                my::Value::Int(x) => *x as i64,
+                my::Value::Int(x) => *x,
                 _ => continue,
             };
             j.as_object_mut()?.insert(status.to_string(), json!(cnt));
@@ -223,16 +232,16 @@ impl SourceMD {
     }
 
     fn init(&mut self) {
-        let mut settings = Config::default();
         // File::with_name(..) is shorthand for File::from(Path::new(..))
         let ini_file = "replica.my.ini";
-        settings
-            .merge(File::with_name(ini_file))
-            .expect(format!("Replica file '{}' can't be opened", ini_file).as_str());
+        let settings = Config::builder()
+            .add_source(File::with_name(ini_file))
+            .build()
+            .unwrap_or_else(|_| panic!("Replica file '{}' can't be opened", ini_file));
         self.params["mysql"]["user"] =
-            json!(settings.get_str("client.user").expect("No client.name"));
+            json!(settings.get_string("client.user").expect("No client.name"));
         self.params["mysql"]["pass"] = json!(settings
-            .get_str("client.password")
+            .get_string("client.password")
             .expect("No client.password"));
         self.params["mysql"]["schema"] = json!("s52680__sourcemd_batches_p");
 
@@ -278,11 +287,8 @@ impl SourceMD {
             .db_name(self.params["mysql"]["schema"].as_str())
             .user(self.params["mysql"]["user"].as_str())
             .pass(self.params["mysql"]["pass"].as_str());
-        match self.params["mysql"]["port"].as_u64() {
-            Some(port) => {
-                builder.tcp_port(port as u16);
-            }
-            None => {}
+        if let Some(port) = self.params["mysql"]["port"].as_u64() {
+            builder.tcp_port(port as u16);
         }
 
         // Min 2, max 7 connections
@@ -292,18 +298,20 @@ impl SourceMD {
         }
     }
 
-    pub fn create_mw_api(ini_file: &str) -> Result<Api, String> {
-        let mut mw_api =
-            Api::new("https://www.wikidata.org/w/api.php").map_err(|e| format!("{:?}", e))?;
-        let mut settings = Config::default();
+    pub async fn create_mw_api(ini_file: &str) -> Result<Api, String> {
+        let mut mw_api = Api::new("https://www.wikidata.org/w/api.php")
+            .await
+            .map_err(|e| format!("{:?}", e))?;
         // File::with_name(..) is shorthand for File::from(Path::new(..))
-        settings
-            .merge(File::with_name(ini_file))
-            .expect(format!("Config file '{}' can't be opened", ini_file).as_str());
-        let lgname = settings.get_str("user.user").expect("No user.name");
-        let lgpass = settings.get_str("user.pass").expect("No user.pass");
+        let settings = Config::builder()
+            .add_source(File::with_name(ini_file))
+            .build()
+            .unwrap_or_else(|_| panic!("Replica file '{}' can't be opened", ini_file));
+        let lgname = settings.get_string("user.user").expect("No user.name");
+        let lgpass = settings.get_string("user.pass").expect("No user.pass");
         mw_api
             .login(lgname, lgpass)
+            .await
             .map_err(|e| format!("{:?}", e))?;
         Ok(mw_api)
     }

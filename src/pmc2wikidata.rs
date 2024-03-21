@@ -3,6 +3,7 @@ extern crate lazy_static;
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
+use async_trait::async_trait;
 use regex::Regex;
 use reqwest;
 use std::collections::HashMap;
@@ -15,7 +16,7 @@ https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:17246615%20
 https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=PMC1201091&resulttype=core&format=json (same as line above)
 */
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PMC2Wikidata {
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, serde_json::Value>,
@@ -23,13 +24,10 @@ pub struct PMC2Wikidata {
 
 impl PMC2Wikidata {
     pub fn new() -> Self {
-        Self {
-            author_cache: HashMap::new(),
-            work_cache: HashMap::new(),
-        }
+        Self::default()
     }
 
-    fn is_pubmed_id(&self, id: &String) -> bool {
+    fn is_pubmed_id(&self, id: &str) -> bool {
         lazy_static! {
             static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#)
                 .expect("PMC2Wikidata::is_pubmed_id: RE_PMID does not compile");
@@ -47,11 +45,10 @@ impl PMC2Wikidata {
             let json: serde_json::Value = reqwest::blocking::get(url.as_str()).ok()?.json().ok()?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
-                match results.get(0) {
+                match results.first() {
                     Some(json) => {
-                        match self.get_pmcid_from_work(json) {
-                            Some(pmc_id) => publication_id = pmc_id.to_string(),
-                            None => {}
+                        if let Some(pmc_id) = self.get_pmcid_from_work(json) {
+                            publication_id = pmc_id.to_string()
                         }
                         self.work_cache.insert(publication_id.clone(), json.clone());
                     }
@@ -62,7 +59,7 @@ impl PMC2Wikidata {
         Some(publication_id)
     }
 
-    fn is_pmcid(&self, id: &String) -> bool {
+    fn is_pmcid(&self, id: &str) -> bool {
         lazy_static! {
             static ref RE_PMCID: Regex = Regex::new(r#"^(PMC\d+)$"#)
                 .expect("main.rs::paper_from_id: RE_PMCID does not compile");
@@ -79,7 +76,7 @@ impl PMC2Wikidata {
             let json: serde_json::Value = reqwest::blocking::get(url.as_str()).ok()?.json().ok()?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
-                match results.get(0) {
+                match results.first() {
                     Some(json) => {
                         self.work_cache.insert(pmc_id.clone(), json.clone());
                     }
@@ -92,7 +89,7 @@ impl PMC2Wikidata {
 
     pub fn get_cached_publication_from_id(
         &self,
-        publication_id: &String,
+        publication_id: &str,
     ) -> Option<&serde_json::Value> {
         self.work_cache.get(publication_id)
     }
@@ -107,45 +104,38 @@ impl PMC2Wikidata {
 
     fn add_identifiers_from_cached_publication(
         &mut self,
-        publication_id: &String,
+        publication_id: &str,
         ret: &mut Vec<GenericWorkIdentifier>,
     ) {
-        let work = match self.get_cached_publication_from_id(&publication_id) {
+        let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
         };
 
         // PMCID (self)
-        match self.publication_property() {
-            Some(p) => {
-                let my_prop = GenericWorkType::Property(p);
-                match self.get_pmcid_from_work(work) {
-                    Some(pmc_id) => match self.publication_id_for_statement(&pmc_id) {
-                        Some(id) => ret.push(GenericWorkIdentifier {
-                            work_type: my_prop,
-                            id: id,
-                        }),
-                        None => {}
-                    },
-                    None => {}
+        if let Some(p) = self.publication_property() {
+            let my_prop = GenericWorkType::Property(p);
+            if let Some(pmc_id) = self.get_pmcid_from_work(work) {
+                if let Some(id) = self.publication_id_for_statement(&pmc_id) {
+                    ret.push(GenericWorkIdentifier {
+                        work_type: my_prop,
+                        id,
+                    })
                 }
             }
-            None => {}
         };
 
         // PubMed
-        match self.get_pmid_from_work(work) {
-            Some(pmid) => {
-                ret.push(GenericWorkIdentifier {
-                    work_type: GenericWorkType::Property("P698".to_string()),
-                    id: pmid.clone(),
-                });
-            }
-            None => {}
+        if let Some(pmid) = self.get_pmid_from_work(work) {
+            ret.push(GenericWorkIdentifier {
+                work_type: GenericWorkType::Property("P698".to_string()),
+                id: pmid.clone(),
+            });
         }
     }
 }
 
+#[async_trait]
 impl ScientificPublicationAdapter for PMC2Wikidata {
     fn name(&self) -> &str {
         "PMC2Wikidata"
@@ -163,7 +153,7 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         Some("P932".to_string())
     }
 
-    fn publication_id_for_statement(&self, id: &String) -> Option<String> {
+    fn publication_id_for_statement(&self, id: &str) -> Option<String> {
         if self.is_pmcid(id) {
             Some(id.replace("PMC", "").to_string())
         } else {
@@ -172,24 +162,20 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
     }
 
     // Overriding default function
-    fn update_work_item_with_property(&self, publication_id: &String, item: &mut Entity) {
+    fn update_work_item_with_property(&self, publication_id: &str, item: &mut Entity) {
         if publication_id[0..4].to_string() == "PMID_" {
             return;
         }
-        match self.publication_property() {
-            Some(prop) => {
-                if !item.has_claims_with_property(prop.to_owned()) {
-                    match self.publication_id_for_statement(publication_id) {
-                        Some(id) => item.add_claim(Statement::new_normal(
-                            Snak::new_external_id(prop, id),
-                            vec![],
-                            self.reference(),
-                        )),
-                        None => {}
-                    }
+        if let Some(prop) = self.publication_property() {
+            if !item.has_claims_with_property(prop.to_owned()) {
+                if let Some(id) = self.publication_id_for_statement(publication_id) {
+                    item.add_claim(Statement::new_normal(
+                        Snak::new_external_id(prop, id),
+                        vec![],
+                        self.reference(),
+                    ))
                 }
             }
-            _ => {}
         }
     }
 
@@ -209,38 +195,35 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         self.publication_id_from_pmcid(&pmcid)
     }
 
-    fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
+    fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(json) => match json["title"].as_str() {
-                Some(title) => vec![LocaleString::new("en", &title.to_string())],
+                Some(title) => vec![LocaleString::new("en", title)],
                 None => vec![],
             },
             None => vec![],
         }
     }
 
-    fn get_volume(&self, publication_id: &String) -> Option<String> {
+    fn get_volume(&self, publication_id: &str) -> Option<String> {
         self.get_cached_publication_from_id(publication_id)?["journalInfo"]["volume"]
             .as_str()
             .map(|s| s.to_string())
     }
 
-    fn get_issue(&self, publication_id: &String) -> Option<String> {
+    fn get_issue(&self, publication_id: &str) -> Option<String> {
         self.get_cached_publication_from_id(publication_id)?["journalInfo"]["issue"]
             .as_str()
             .map(|s| s.to_string())
     }
 
-    fn get_work_issn(&self, publication_id: &String) -> Option<String> {
+    fn get_work_issn(&self, publication_id: &str) -> Option<String> {
         self.get_cached_publication_from_id(publication_id)?["journalInfo"]["journal"]["issn"]
             .as_str()
             .map(|s| s.to_string())
     }
 
-    fn get_publication_date(
-        &self,
-        publication_id: &String,
-    ) -> Option<(u32, Option<u8>, Option<u8>)> {
+    fn get_publication_date(&self, publication_id: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
         let year = match self.get_cached_publication_from_id(publication_id)?["journalInfo"]
             ["yearOfPublication"]
             .as_u64()
@@ -260,60 +243,55 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         ))
     }
 
-    fn get_language_item(&self, publication_id: &String) -> Option<String> {
+    async fn get_language_item(&self, publication_id: &str) -> Option<String> {
         self.language2q(self.get_cached_publication_from_id(publication_id)?["language"].as_str()?)
+            .await
     }
 
-    fn get_identifier_list(
-        &mut self,
-        ids: &Vec<GenericWorkIdentifier>,
-    ) -> Vec<GenericWorkIdentifier> {
+    fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
-            match &id.work_type {
-                GenericWorkType::Property(prop) => match prop.as_str() {
-                    PROP_PMID => match self.publication_id_from_pubmed(&id.id) {
-                        Some(publication_id) => {
+            if let GenericWorkType::Property(prop) = &id.work_type {
+                match prop.as_str() {
+                    PROP_PMID => {
+                        if let Some(publication_id) = self.publication_id_from_pubmed(&id.id) {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
-                        None => {}
-                    },
+                    }
                     PROP_PMCID => {
-                        for publication_id in self.publication_id_from_pmcid(&id.id) {
+                        if let Some(publication_id) = self.publication_id_from_pmcid(&id.id) {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }
                     _ => {}
-                },
-                _ => {}
+                }
             }
         }
         ret
     }
 
-    fn update_statements_for_publication_id(&self, _publication_id: &String, _item: &mut Entity) {
-        /*
-        let work = match self.get_cached_publication_from_id(publication_id) {
+    async fn update_statements_for_publication_id(
+        &self,
+        publication_id: &str,
+        _item: &mut Entity,
+    ) {
+        let _work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
         };
-        */
     }
 
     // Not sure what this does
-    fn do_cache_work(&mut self, _publication_id: &String) -> Option<String> {
+    fn do_cache_work(&mut self, _publication_id: &str) -> Option<String> {
         None
     }
 
-    fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {
+    fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(work) => match work["authorList"]["author"].as_array() {
                 Some(authors) => authors
                     .iter()
-                    .filter_map(|author| match author["fullName"].as_str() {
-                        Some(name) => Some(name),
-                        None => None,
-                    })
+                    .filter_map(|author| author["fullName"].as_str())
                     .enumerate()
                     .map(|(num, name)| GenericAuthorInfo::new_from_name_num(name, num + 1))
                     .collect(),

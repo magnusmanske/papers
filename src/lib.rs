@@ -6,7 +6,9 @@ extern crate serde_json;
 extern crate lazy_static;
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use async_trait::async_trait;
+use tokio::sync::RwLock;
 use wikibase::entity_diff::*;
 use wikibase::mediawiki::api::Api;
 use wikibase::*;
@@ -16,25 +18,27 @@ pub const PROP_PMCID: &str = "P932";
 pub const PROP_DOI: &str = "P356";
 pub const PROP_ARXIV: &str = "P818";
 
+#[async_trait]
 pub trait WikidataInteraction {
-    fn search_wikibase(
+    async fn search_wikibase(
         &self,
-        query: &String,
+        query: &str,
         mw_api: Arc<RwLock<Api>>,
     ) -> Result<Vec<String>, String> {
         let params: HashMap<_, _> = vec![
             ("action", "query"),
             ("list", "search"),
             ("srnamespace", "0"),
-            ("srsearch", &query.as_str()),
+            ("srsearch", query),
         ]
         .into_iter()
         .map(|(x, y)| (x.to_string(), y.to_string()))
         .collect();
         let res = mw_api
             .read()
-            .unwrap()
+            .await
             .get_query_api_json(&params)
+            .await
             .map_err(|e| format!("{}", e))?;
         match res["query"]["search"].as_array() {
             Some(items) => Ok(items
@@ -45,16 +49,15 @@ pub trait WikidataInteraction {
         }
     }
 
-    fn create_item(&self, item: &Entity, mw_api: Arc<RwLock<Api>>) -> Option<String> {
+    async fn create_item(&self, item: &Entity, mw_api: Arc<RwLock<Api>>) -> Option<String> {
         let params = EntityDiffParams::all();
         let diff = EntityDiff::new(&Entity::new_empty_item(), item, &params);
         if diff.is_empty() {
             return None;
         }
-        let new_json = match mw_api.write() {
-            Ok(mut mw_api) => diff.apply_diff(&mut mw_api, &diff).ok()?,
-            _ => return None,
-        };
+        let mut mw_api = mw_api.write().await;
+        let new_json = diff.apply_diff(&mut mw_api, &diff).await.ok()?;
+        drop(mw_api);
         EntityDiff::get_entity_id(&new_json)
     }
 }
@@ -73,10 +76,10 @@ pub struct GenericWorkIdentifier {
 
 impl GenericWorkIdentifier {
     pub fn new_prop(prop: &str, id: &str) -> Self {
-        return GenericWorkIdentifier {
+        Self {
             work_type: GenericWorkType::Property(prop.to_string()),
             id: id.to_string(),
-        };
+        }
     }
 
     pub fn is_legit(&self) -> bool {
