@@ -11,6 +11,7 @@ license = "MIT"
 include = ["**/*.rs", "Cargo.toml"]
 
 [dependencies]
+smallvec = "0.6.13"
 serde_json = "1"
 mysql = { version = "16", features = ["ssl"] }
 reqwest = { version = "*", features = ["json"] }
