@@ -60,7 +60,7 @@ impl Crossref2Wikidata {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl ScientificPublicationAdapter for Crossref2Wikidata {
     fn name(&self) -> &str {
         "Crossref2Wikidata"
@@ -87,7 +87,10 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         &mut self.author_cache
     }
 
-    fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
+    async fn get_identifier_list(
+        &mut self,
+        ids: &[GenericWorkIdentifier],
+    ) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
             if let GenericWorkType::Property(prop) = &id.work_type() {
@@ -102,7 +105,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         ret
     }
 
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+    async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         let doi = match self.get_external_identifier_from_item(item, IdProp::DOI.as_str()) {
             Some(s) => s,
             None => return None,

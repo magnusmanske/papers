@@ -6,7 +6,7 @@ use wikibase::mediawiki::api::Api;
 
 use self::identifiers::{GenericWorkIdentifier, IdProp};
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait ScientificPublicationAdapter {
     // You will need to implement these yourself
 
@@ -20,11 +20,11 @@ pub trait ScientificPublicationAdapter {
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String>;
 
     /// Tries to determine the publication ID of the resource, from a Wikidata item
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+    async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         match self.publication_property() {
             Some(self_prop) => {
                 match self.get_external_identifier_from_item(item, self_prop.as_str()) {
-                    Some(publication_id) => self.do_cache_work(&publication_id),
+                    Some(publication_id) => self.do_cache_work(&publication_id).await,
                     None => None,
                 }
             }
@@ -44,7 +44,7 @@ pub trait ScientificPublicationAdapter {
     }
 
     /// Returns a list of IDs for that paper (PMID, DOI etc.)
-    fn get_identifier_list(
+    async fn get_identifier_list(
         &mut self,
         _ids: &[GenericWorkIdentifier],
     ) -> Vec<GenericWorkIdentifier> {
@@ -98,7 +98,7 @@ pub trait ScientificPublicationAdapter {
 
     // Pre-filled methods; no need to implement them unless there is a need
 
-    fn do_cache_work(&mut self, _publication_id: &str) -> Option<String> {
+    async fn do_cache_work(&mut self, _publication_id: &str) -> Option<String> {
         None
     }
 

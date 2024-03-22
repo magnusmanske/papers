@@ -184,7 +184,10 @@ impl WikidataPapers {
     ) {
         let mut authors: Vec<GenericAuthorInfo> = vec![];
         for adapter_id in 0..self.adapters.len() {
-            let publication_id = match self.adapters[adapter_id].publication_id_from_item(item) {
+            let publication_id = match self.adapters[adapter_id]
+                .publication_id_from_item(item)
+                .await
+            {
                 Some(id) => id,
                 _ => continue,
             };
@@ -383,7 +386,7 @@ impl WikidataPapers {
         }
     }
 
-    pub fn update_from_paper_ids(
+    pub async fn update_from_paper_ids(
         &mut self,
         original_ids: &[GenericWorkIdentifier],
     ) -> Vec<GenericWorkIdentifier> {
@@ -402,6 +405,7 @@ impl WikidataPapers {
                 //println!("Adapter {}", adapter.name());
                 adapter
                     .get_identifier_list(&vids)
+                    .await
                     .iter()
                     .filter(|id| id.is_legit())
                     .for_each(|id| {

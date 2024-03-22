@@ -98,10 +98,7 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
 
     if let Some(caps) = RE_WD.captures(id) {
         if let Some(q) = caps.get(1) {
-            match wdp
-                .create_or_update_item_from_q(mw_api, &q.as_str().to_string())
-                .await
-            {
+            match wdp.create_or_update_item_from_q(mw_api, q.as_str()).await {
                 Some(er) => {
                     if er.edited {
                         println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
@@ -140,7 +137,7 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
         return;
     }
     //println!("IDs: {:?}", &ids);
-    ids = wdp.update_from_paper_ids(&ids);
+    ids = wdp.update_from_paper_ids(&ids).await;
 
     match wdp.create_or_update_item_from_ids(mw_api, &ids).await {
         Some(er) => {

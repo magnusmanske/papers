@@ -26,7 +26,8 @@ async-trait = "*"
 #crossref = { git = "https://github.com/MattsSe/crossref-rs" }
 crossref = { git = "https://github.com/magnusmanske/crossref-rs" }
 
-semanticscholar = "*"
+#semanticscholar = "*"
+semanticscholar = { git = "https://github.com/magnusmanske/semanticscholar" }
 
 #orcid="*"
 orcid = { git = "https://github.com/magnusmanske/orcid_rs" }

@@ -229,7 +229,7 @@ impl SourceMDbot {
             return Ok(false);
         }
 
-        ids = wdp.update_from_paper_ids(&ids);
+        ids = wdp.update_from_paper_ids(&ids).await;
         match wdp
             .create_or_update_item_from_ids(self.config.read().await.mw_api(), &ids)
             .await

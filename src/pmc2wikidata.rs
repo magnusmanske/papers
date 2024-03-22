@@ -130,7 +130,7 @@ impl PMC2Wikidata {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl ScientificPublicationAdapter for PMC2Wikidata {
     fn name(&self) -> &str {
         "PMC2Wikidata"
@@ -174,7 +174,7 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         }
     }
 
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+    async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         let pmcid = match self
             .get_external_identifier_from_item(item, self.publication_property()?.as_str())
         {
@@ -243,7 +243,10 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
             .await
     }
 
-    fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
+    async fn get_identifier_list(
+        &mut self,
+        ids: &[GenericWorkIdentifier],
+    ) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
             if let GenericWorkType::Property(prop) = id.work_type() {
@@ -273,7 +276,7 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
     }
 
     // Not sure what this does
-    fn do_cache_work(&mut self, _publication_id: &str) -> Option<String> {
+    async fn do_cache_work(&mut self, _publication_id: &str) -> Option<String> {
         None
     }
 

@@ -149,7 +149,7 @@ impl Pubmed2Wikidata {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl ScientificPublicationAdapter for Pubmed2Wikidata {
     fn name(&self) -> &str {
         "Pubmed2Wikidata"
@@ -167,7 +167,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         Some(IdProp::PMID)
     }
 
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+    async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         let publication_id = match self
             .get_external_identifier_from_item(item, self.publication_property()?.as_str())
         {
@@ -204,7 +204,10 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         Some(issn)
     }
 
-    fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
+    async fn get_identifier_list(
+        &mut self,
+        ids: &[GenericWorkIdentifier],
+    ) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
             if let GenericWorkType::Property(prop) = id.work_type() {
@@ -323,7 +326,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
             .map(|s| s.to_string())
     }
 
-    fn do_cache_work(&mut self, publication_id: &str) -> Option<String> {
+    async fn do_cache_work(&mut self, publication_id: &str) -> Option<String> {
         let pub_id_u64 = match publication_id.parse::<u64>() {
             Ok(x) => x,
             _ => return None,

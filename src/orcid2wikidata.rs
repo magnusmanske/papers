@@ -62,7 +62,7 @@ impl Orcid2Wikidata {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl ScientificPublicationAdapter for Orcid2Wikidata {
     fn name(&self) -> &str {
         "Orcid2Wikidata"
@@ -80,7 +80,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
         &mut self.author_cache
     }
 
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+    async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         // TODO other ID types than DOI?
         let doi = match self.get_external_identifier_from_item(item, IdProp::DOI.as_str()) {
             Some(s) => s,

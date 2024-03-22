@@ -32,8 +32,8 @@ impl Semanticscholar2Wikidata {
         self.work_cache.get(publication_id)
     }
 
-    fn publication_ids_from_doi(&mut self, doi: &str) -> Vec<String> {
-        let work = match self.client.work(doi) {
+    async fn publication_ids_from_doi(&mut self, doi: &str) -> Vec<String> {
+        let work = match self.client.work(doi).await {
             Ok(w) => w,
             _ => return vec![], // No such work
         };
@@ -86,7 +86,7 @@ impl Semanticscholar2Wikidata {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     fn name(&self) -> &str {
         "Semanticscholar2Wikidata"
@@ -125,12 +125,15 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         &mut self.author_cache
     }
 
-    fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
+    async fn get_identifier_list(
+        &mut self,
+        ids: &[GenericWorkIdentifier],
+    ) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
             if let GenericWorkType::Property(prop) = id.work_type() {
                 if *prop == IdProp::DOI {
-                    for publication_id in self.publication_ids_from_doi(id.id()) {
+                    for publication_id in self.publication_ids_from_doi(id.id()).await {
                         self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                     }
                 }
@@ -139,8 +142,8 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         ret
     }
 
-    fn do_cache_work(&mut self, publication_id: &str) -> Option<String> {
-        let work = match self.client.work(publication_id) {
+    async fn do_cache_work(&mut self, publication_id: &str) -> Option<String> {
+        let work = match self.client.work(publication_id).await {
             Ok(w) => w,
             _ => return None, // No such work
         };
