@@ -64,6 +64,19 @@ pub enum GenericWorkType {
     Item,
 }
 
+impl std::fmt::Display for GenericWorkType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                GenericWorkType::Property(prop) => prop.to_string(),
+                GenericWorkType::Item => "Item".to_string(),
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GenericWorkIdentifier {
     work_type: GenericWorkType,
@@ -93,5 +106,67 @@ impl GenericWorkIdentifier {
 
     pub fn work_type(&self) -> &GenericWorkType {
         &self.work_type
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_idprop_from_str() {
+        assert_eq!(IdProp::from_str(PROP_PMID).unwrap(), IdProp::PMID);
+        assert_eq!(IdProp::from_str(PROP_PMCID).unwrap(), IdProp::PMCID);
+        assert_eq!(IdProp::from_str(PROP_DOI).unwrap(), IdProp::DOI);
+        assert_eq!(IdProp::from_str(PROP_ARXIV).unwrap(), IdProp::ARXIV);
+        assert_eq!(
+            IdProp::from_str(PROP_SEMATIC_SCHOLAR).unwrap(),
+            IdProp::SematicScholar
+        );
+        assert!(IdProp::from_str("P123").is_err());
+    }
+
+    #[test]
+    fn test_idprop_display() {
+        assert_eq!(IdProp::PMID.to_string(), PROP_PMID);
+        assert_eq!(IdProp::PMCID.to_string(), PROP_PMCID);
+        assert_eq!(IdProp::DOI.to_string(), PROP_DOI);
+        assert_eq!(IdProp::ARXIV.to_string(), PROP_ARXIV);
+        assert_eq!(IdProp::SematicScholar.to_string(), PROP_SEMATIC_SCHOLAR);
+    }
+
+    #[test]
+    fn test_genericworkidentifier_new_prop() {
+        let prop = IdProp::DOI;
+        let id = "10.1234/foobar";
+        let gwi = GenericWorkIdentifier::new_prop(prop.to_owned(), id);
+        assert_eq!(gwi.id(), id.to_uppercase());
+        assert_eq!(gwi.work_type(), &GenericWorkType::Property(prop));
+    }
+
+    #[test]
+    fn test_genericworkidentifier_is_legit() {
+        let prop = IdProp::DOI;
+        let id = "10.1234/foobar";
+        let gwi = GenericWorkIdentifier::new_prop(prop.to_owned(), id);
+        assert!(gwi.is_legit());
+        let gwi = GenericWorkIdentifier::new_prop(prop.to_owned(), "");
+        assert!(!gwi.is_legit());
+        let gwi = GenericWorkIdentifier::new_prop(prop.to_owned(), "0");
+        assert!(!gwi.is_legit());
+    }
+
+    #[test]
+    fn test_genericworkidentifier_work_type() {
+        let prop = IdProp::DOI;
+        let id = "10.1234/foobar";
+        let gwi = GenericWorkIdentifier::new_prop(prop.to_owned(), id);
+        assert_eq!(gwi.work_type(), &GenericWorkType::Property(prop));
+    }
+
+    #[test]
+    fn test_genericworktype_display() {
+        assert_eq!(GenericWorkType::Item.to_string(), "Item");
+        assert_eq!(GenericWorkType::Property(IdProp::DOI).to_string(), PROP_DOI);
     }
 }

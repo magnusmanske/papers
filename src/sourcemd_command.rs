@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use mysql as my;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SourceMDcommandMode {
     Dummy,
     CreatePaperById,
@@ -107,13 +107,37 @@ impl SourceMDcommand {
 
 #[cfg(test)]
 mod tests {
-    //use super::*;
+    use super::*;
     //use wikibase::mediawiki::api::Api;
+
+    #[test]
+    fn test_new_dummy() {
+        let cmd = SourceMDcommand::new_dummy("123");
+        assert_eq!(cmd.id, 0);
+        assert_eq!(cmd.batch_id, 0);
+        assert_eq!(cmd.serial_number, 0);
+        assert_eq!(cmd.mode, SourceMDcommandMode::Dummy);
+        assert_eq!(cmd.identifier, "123");
+        assert_eq!(cmd.status, "TODO");
+        assert_eq!(cmd.note, "");
+        assert_eq!(cmd.q, "");
+        assert_eq!(cmd.auto_escalate, false);
+    }
+
+    #[test]
+    fn test_rowvalue_as_i64() {
+        let v = my::Value::Int(123);
+        assert_eq!(SourceMDcommand::rowvalue_as_i64(&v), 123);
+    }
+
+    #[test]
+    fn test_rowvalue_as_string() {
+        let v = my::Value::Bytes(b"abc".to_vec());
+        assert_eq!(SourceMDcommand::rowvalue_as_string(&v), "abc");
+    }
 
     /*
     TODO:
     pub fn new_from_row(row: my::Row) -> Self {
-    fn rowvalue_as_i64(v: &my::Value) -> i64 {
-    fn rowvalue_as_string(v: &my::Value) -> String {
     */
 }

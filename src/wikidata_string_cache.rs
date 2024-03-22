@@ -271,4 +271,46 @@ mod tests {
         wsc.prune_property("P123").await;
         assert_eq!(wsc.cache.read().await.get("P123").unwrap().len(), 5);
     }
+
+    #[tokio::test]
+    async fn property_needs_pruning() {
+        let mut wsc = WikidataStringCache::new(api().await);
+        assert!(!wsc.property_needs_pruning("P123").await);
+        for num in 1..10 {
+            wsc.set(
+                "P123",
+                &format!("Key #{}", num),
+                Some(format!("Value #{}", num)),
+            )
+            .await;
+        }
+        wsc.max_cache_size_per_property = 5;
+        assert!(wsc.property_needs_pruning("P123").await);
+    }
+
+    #[tokio::test]
+    async fn has_property() {
+        let wsc = WikidataStringCache::new(api().await);
+        assert!(!wsc.has_property("P123").await);
+        wsc.ensure_property("P123").await;
+        assert!(wsc.has_property("P123").await);
+    }
+
+    #[tokio::test]
+    async fn search_wikibase() {
+        let wsc = WikidataStringCache::new(api().await);
+        assert_eq!(
+            wsc.search_wikibase("haswbstatement:P698=16116339", api().await)
+                .await
+                .unwrap(),
+            vec!["Q46664291".to_string()]
+        );
+        assert_eq!(
+            wsc.search_wikibase("haswbstatement:P698=not_a_valid_id", api().await)
+                .await
+                .unwrap()
+                .len(),
+            0
+        );
+    }
 }

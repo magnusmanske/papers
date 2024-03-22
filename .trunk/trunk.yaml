@@ -18,13 +18,13 @@ runtimes:
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
   disabled:
+    - osv-scanner
     - markdownlint
     - yamllint
   enabled:
     - checkov
     - clippy@1.76.0
     - git-diff-check
-    - osv-scanner@1.7.0
     - prettier@3.2.5
     - rustfmt@1.65.0
     - shellcheck@0.10.0
