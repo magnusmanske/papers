@@ -5,6 +5,8 @@ use async_trait::async_trait;
 use orcid::*;
 use std::collections::HashMap;
 
+use self::identifiers::IdProp;
+
 #[derive(Debug, Clone, Default)]
 pub struct PseudoWork {
     pub author_ids: Vec<String>,

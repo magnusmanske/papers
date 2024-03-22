@@ -9,6 +9,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 
+use self::identifiers::GenericWorkIdentifier;
+use self::identifiers::GenericWorkType;
+
 pub type Spas = Box<dyn ScientificPublicationAdapter + Sync>;
 
 pub struct EditResult {
@@ -247,7 +250,7 @@ impl WikidataPapers {
 
     fn update_item_with_ids(&self, item: &mut wikibase::Entity, ids: &Vec<GenericWorkIdentifier>) {
         for id in ids {
-            let prop = match &id.work_type {
+            let prop = match id.work_type() {
                 GenericWorkType::Property(prop) => prop.to_owned(),
                 _ => continue,
             };
@@ -260,7 +263,7 @@ impl WikidataPapers {
                 .iter()
                 .filter(|adapter| adapter.publication_property().is_some())
                 .filter(|adapter| Some(prop.to_owned()) == adapter.publication_property())
-                .filter_map(|adapter| adapter.publication_id_for_statement(&id.id))
+                .filter_map(|adapter| adapter.publication_id_for_statement(&id.id()))
                 .nth(0);
             if let Some(id) = id2statement {
                 item.add_claim(Statement::new_normal(
@@ -415,9 +418,9 @@ impl WikidataPapers {
     pub async fn get_items_for_ids(&self, ids: &Vec<GenericWorkIdentifier>) -> Vec<String> {
         let mut items: Vec<String> = vec![];
         for id in ids {
-            let r = match &id.work_type {
-                GenericWorkType::Property(prop) => self.cache.get(prop.as_str(), &id.id).await,
-                GenericWorkType::Item => Some(id.id.to_owned()),
+            let r = match id.work_type() {
+                GenericWorkType::Property(prop) => self.cache.get(prop.as_str(), &id.id()).await,
+                GenericWorkType::Item => Some(id.id().to_owned()),
             };
             if let Some(q) = r {
                 items.push(q)

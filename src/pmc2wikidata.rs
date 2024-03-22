@@ -7,6 +7,8 @@ use async_trait::async_trait;
 use regex::Regex;
 use reqwest;
 use std::collections::HashMap;
+
+use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 //use wikibase::mediawiki::api::Api;
 
 /*
@@ -174,7 +176,7 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
 
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         let pmcid = match self
-            .get_external_identifier_from_item(item, &self.publication_property()?.as_str())
+            .get_external_identifier_from_item(item, self.publication_property()?.as_str())
         {
             Some(s) => "PMC".to_owned() + &s,
             None => {
@@ -244,15 +246,15 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
     fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
-            if let GenericWorkType::Property(prop) = &id.work_type {
-                match prop.as_str() {
-                    PROP_PMID => {
-                        if let Some(publication_id) = self.publication_id_from_pubmed(&id.id) {
+            if let GenericWorkType::Property(prop) = id.work_type() {
+                match prop {
+                    IdProp::PMID => {
+                        if let Some(publication_id) = self.publication_id_from_pubmed(&id.id()) {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }
-                    PROP_PMCID => {
-                        if let Some(publication_id) = self.publication_id_from_pmcid(&id.id) {
+                    IdProp::PMCID => {
+                        if let Some(publication_id) = self.publication_id_from_pmcid(&id.id()) {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }

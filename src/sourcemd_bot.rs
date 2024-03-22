@@ -1,5 +1,6 @@
 use crate::crossref2wikidata::Crossref2Wikidata;
 use crate::generic_author_info::GenericAuthorInfo;
+use crate::identifiers::{GenericWorkIdentifier, IdProp};
 use crate::orcid2wikidata::Orcid2Wikidata;
 use crate::pmc2wikidata::PMC2Wikidata;
 use crate::pubmed2wikidata::Pubmed2Wikidata;

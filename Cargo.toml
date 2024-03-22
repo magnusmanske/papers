@@ -2,7 +2,7 @@
 name = "papers"
 version = "0.1.0"
 authors = ["Magnus Manske <magnusmanske@googlemail.com>"]
-edition = "2018"
+edition = "2021"
 description = "A library to allow creation and updates of Wikidata items for scientific publications, authors, and related info"
 repository = "https://github.com/magnusmanske/papers"
 keywords = ["publications", "papers", "science", "wikidata"]

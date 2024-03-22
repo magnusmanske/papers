@@ -4,6 +4,8 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use wikibase::mediawiki::api::Api;
 
+use self::identifiers::{GenericWorkIdentifier, IdProp};
+
 #[async_trait]
 pub trait ScientificPublicationAdapter {
     // You will need to implement these yourself

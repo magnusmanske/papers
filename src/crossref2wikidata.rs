@@ -5,6 +5,8 @@ use chrono::prelude::*;
 use crossref::Crossref;
 use std::collections::HashMap;
 
+use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
+
 pub struct Crossref2Wikidata {
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, crossref::Work>,
@@ -88,9 +90,9 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
     fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
-            if let GenericWorkType::Property(prop) = &id.work_type {
-                if let PROP_DOI = prop.as_str() {
-                    if let Ok(work) = self.get_client().work(&id.id) {
+            if let GenericWorkType::Property(prop) = &id.work_type() {
+                if *prop == IdProp::DOI {
+                    if let Ok(work) = self.get_client().work(&id.id()) {
                         self.work_cache.insert(work.doi.clone(), work.clone());
                         self.add_identifiers_from_cached_publication(&work.doi, &mut ret);
                     }

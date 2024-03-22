@@ -8,6 +8,8 @@ extern crate serde_json;
 use crate::sourcemd_command::SourceMDcommand;
 use crate::wikidata_string_cache::WikidataStringCache;
 use papers::crossref2wikidata::Crossref2Wikidata;
+use papers::identifiers::GenericWorkIdentifier;
+use papers::identifiers::IdProp;
 use papers::orcid2wikidata::Orcid2Wikidata;
 use papers::pmc2wikidata::PMC2Wikidata;
 use papers::pubmed2wikidata::Pubmed2Wikidata;

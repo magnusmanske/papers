@@ -5,6 +5,8 @@ use async_trait::async_trait;
 use semanticscholar::*;
 use std::collections::HashMap;
 
+use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
+
 pub struct Semanticscholar2Wikidata {
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, Work>,
@@ -64,10 +66,7 @@ impl Semanticscholar2Wikidata {
 
         match &work.doi {
             Some(id) => {
-                ret.push(GenericWorkIdentifier {
-                    work_type: GenericWorkType::Property(IdProp::DOI),
-                    id: id.clone(),
-                });
+                ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id));
             }
             None => {}
         }
@@ -129,9 +128,9 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
-            if let GenericWorkType::Property(prop) = &id.work_type {
-                if let PROP_DOI = prop.as_str() {
-                    for publication_id in self.publication_ids_from_doi(&id.id) {
+            if let GenericWorkType::Property(prop) = id.work_type() {
+                if *prop == IdProp::DOI {
+                    for publication_id in self.publication_ids_from_doi(&id.id()) {
                         self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                     }
                 }

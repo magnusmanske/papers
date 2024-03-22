@@ -1,6 +1,7 @@
 extern crate lazy_static;
 
 use crate::generic_author_info::GenericAuthorInfo;
+use crate::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
 use async_trait::async_trait;
@@ -206,15 +207,15 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
     fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
-            if let GenericWorkType::Property(prop) = &id.work_type {
-                match prop.as_str() {
-                    PROP_PMID => {
-                        if let Some(publication_id) = self.publication_id_from_pubmed(&id.id) {
+            if let GenericWorkType::Property(prop) = id.work_type() {
+                match prop {
+                    IdProp::PMID => {
+                        if let Some(publication_id) = self.publication_id_from_pubmed(&id.id()) {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }
-                    PROP_DOI => {
-                        for publication_id in self.publication_ids_from_doi(&id.id) {
+                    IdProp::DOI => {
+                        for publication_id in self.publication_ids_from_doi(&id.id()) {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }
