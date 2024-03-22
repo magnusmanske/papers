@@ -23,7 +23,8 @@ tokio = { version = "^1", features = ["full", "rt-multi-thread"] }
 async-trait = "*"
 
 #crossref = "*"
-crossref = { git = "https://github.com/MattsSe/crossref-rs" }
+#crossref = { git = "https://github.com/MattsSe/crossref-rs" }
+crossref = { git = "https://github.com/magnusmanske/crossref-rs" }
 
 semanticscholar = "*"
 

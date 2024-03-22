@@ -595,14 +595,15 @@ checksum = "248e3bacc7dc6baa3b21e405ee045c3047101a49145e7e9eca583ab4c2ca5345"
 [[package]]
 name = "crossref"
 version = "0.2.2"
-source = "git+https://github.com/MattsSe/crossref-rs#97829e8bbe251567c42660be7655a4c6891fabad"
+source = "git+https://github.com/magnusmanske/crossref-rs#1809bb9a6059ade988d9aaf64d88a15915a913ed"
 dependencies = [
  "chrono",
  "failure",
- "reqwest 0.9.24",
+ "reqwest 0.12.0",
  "serde",
  "serde_json",
- "url 1.7.2",
+ "tokio 1.36.0",
+ "url 2.5.0",
 ]
 
 [[package]]
