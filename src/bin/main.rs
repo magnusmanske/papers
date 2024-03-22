@@ -49,7 +49,7 @@ async fn command_authors(ini_file: &str) {
 }
 
 async fn author_from_id(id: &str, cache: Arc<WikidataStringCache>, smd: Arc<RwLock<SourceMD>>) {
-    let mut command = SourceMDcommand::new_dummy("DUMMY", id);
+    let mut command = SourceMDcommand::new_dummy(id);
     let bot = SourceMDbot::new(smd.clone(), cache.clone(), 0)
         .await
         .unwrap();

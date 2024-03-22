@@ -172,7 +172,7 @@ impl SourceMD {
         /* trunk-ignore(clippy/never_loop) */
         for row in pool.prep_exec(sql, (my::Value::Int(batch_id),)).ok()? {
             let row = row.ok()?;
-            return Some(SourceMDcommand::new_from_row(row));
+            return SourceMDcommand::new_from_row(row);
         }
         None
     }

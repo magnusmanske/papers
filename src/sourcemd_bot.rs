@@ -14,6 +14,8 @@ use regex::Regex;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use self::sourcemd_command::SourceMDcommandMode;
+
 #[derive(Debug, Clone)]
 pub struct SourceMDbot {
     config: Arc<RwLock<SourceMD>>,
@@ -84,10 +86,10 @@ impl SourceMDbot {
     }
 
     async fn execute_command(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
-        match command.mode.as_str() {
-            "CREATE_PAPER_BY_ID" => self.process_paper(command).await,
-            "ADD_AUTHOR_TO_PUBLICATION" => self.process_paper(command).await,
-            "ADD_METADATA_FROM_ORCID_TO_AUTHOR" => {
+        match &command.mode {
+            SourceMDcommandMode::CreatePaperById => self.process_paper(command).await,
+            SourceMDcommandMode::AddAutthorToPublication => self.process_paper(command).await,
+            SourceMDcommandMode::AddOrcidMetadataToAuthor => {
                 // TODO
                 if true {
                     Ok(false)
@@ -95,8 +97,8 @@ impl SourceMDbot {
                     self.process_author_metadata(command).await
                 }
             }
-            "EDIT_PAPER_FOR_ORCID_AUTHOR" => Ok(false), // TODO
-            "CREATE_BOOK_FROM_ISBN" => Ok(false),       // TODO
+            SourceMDcommandMode::EditPaperForOrcidAuthor => Ok(false), // TODO
+            SourceMDcommandMode::CreateBookFromIsbn => Ok(false),      // TODO
             other => Err(format!(
                 "Unrecognized command '{}' on command #{}",
                 &other, &command.id
