@@ -11,15 +11,13 @@ license = "MIT"
 include = ["**/*.rs", "Cargo.toml"]
 
 [dependencies]
-smallvec = "0.6.13"
 serde_json = "1"
 mysql = { version = "16", features = ["ssl"] }
 reqwest = { version = "*", features = ["json"] }
-config = "*"                                                       #"0.9.2"
+config = "*"
 regex = "1"
 lazy_static = "1"
-chrono = "*"                                                       #0.4.7"
-smallstring = "*"                                                  # "0.1.2"
+chrono = "*"
 rayon = "*"
 tokio = { version = "^1", features = ["full", "rt-multi-thread"] }
 async-trait = "*"
