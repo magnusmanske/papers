@@ -104,7 +104,7 @@ impl SourceMDbot {
         }
     }
 
-    async fn get_author_item(&self, identifier: &String) -> Result<GenericAuthorInfo, String> {
+    async fn get_author_item(&self, identifier: &str) -> Result<GenericAuthorInfo, String> {
         lazy_static! {
             static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
                 .expect("SourceMDbot::process_author: RE_WD does not compile");

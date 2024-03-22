@@ -263,7 +263,7 @@ impl WikidataPapers {
                 .iter()
                 .filter(|adapter| adapter.publication_property().is_some())
                 .filter(|adapter| Some(prop.to_owned()) == adapter.publication_property())
-                .filter_map(|adapter| adapter.publication_id_for_statement(&id.id()))
+                .filter_map(|adapter| adapter.publication_id_for_statement(id.id()))
                 .nth(0);
             if let Some(id) = id2statement {
                 item.add_claim(Statement::new_normal(
@@ -295,7 +295,7 @@ impl WikidataPapers {
     pub async fn create_or_update_item_from_q(
         &mut self,
         mw_api: Arc<RwLock<Api>>,
-        q: &String,
+        q: &str,
     ) -> Option<EditResult> {
         let items = vec![q.to_owned()];
         self.create_or_update_item_from_items(mw_api, &vec![], &items)
@@ -419,7 +419,7 @@ impl WikidataPapers {
         let mut items: Vec<String> = vec![];
         for id in ids {
             let r = match id.work_type() {
-                GenericWorkType::Property(prop) => self.cache.get(prop.as_str(), &id.id()).await,
+                GenericWorkType::Property(prop) => self.cache.get(prop.as_str(), id.id()).await,
                 GenericWorkType::Item => Some(id.id().to_owned()),
             };
             if let Some(q) = r {

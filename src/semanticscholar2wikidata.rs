@@ -130,7 +130,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         for id in ids {
             if let GenericWorkType::Property(prop) = id.work_type() {
                 if *prop == IdProp::DOI {
-                    for publication_id in self.publication_ids_from_doi(&id.id()) {
+                    for publication_id in self.publication_ids_from_doi(id.id()) {
                         self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                     }
                 }
@@ -223,8 +223,8 @@ mod tests {
     /*
     TODO:
     pub fn new() -> Self {
-    pub fn get_cached_publication_from_id(&self, publication_id: &String) -> Option<&Work> {
-    fn publication_ids_from_doi(&mut self, doi: &String) -> Vec<String> {
+    pub fn get_cached_publication_from_id(&self, publication_id: &str) -> Option<&Work> {
+    fn publication_ids_from_doi(&mut self, doi: &str) -> Vec<String> {
     fn add_identifiers_from_cached_publication(
     fn name(&self) -> &str {
     fn author_property(&self) -> Option<String> {
@@ -233,9 +233,9 @@ mod tests {
     fn author_cache(&self) -> &HashMap<String, String> {
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
     fn get_identifier_list(
-    fn do_cache_work(&mut self, publication_id: &String) -> Option<String> {
-    fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
-    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
-    fn get_author_list(&mut self, publication_id: &String) -> Vec<GenericAuthorInfo> {
+    fn do_cache_work(&mut self, publication_id: &str) -> Option<String> {
+    fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
+    fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity) {
+    fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
     */
 }

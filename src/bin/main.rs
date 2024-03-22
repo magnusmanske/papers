@@ -74,7 +74,7 @@ async fn command_papers(ini_file: &str) {
     }
 }
 
-async fn paper_from_id(id: &String, mw_api: Arc<RwLock<Api>>) {
+async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
     lazy_static! {
         static ref RE_WD: Regex =
             Regex::new(r#"^(Q\d+)$"#).expect("main.rs::paper_from_id: RE_WD does not compile");
@@ -157,7 +157,7 @@ async fn paper_from_id(id: &String, mw_api: Arc<RwLock<Api>>) {
     }
 }
 
-fn usage(command_name: &String) {
+fn usage(command_name: &str) {
     println!("USAGE: {} [papers]", command_name);
 }
 

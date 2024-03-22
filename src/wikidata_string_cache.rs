@@ -56,7 +56,7 @@ impl WikidataStringCache {
 
     /// Gets an item ID for the property/key
     /// Uses search to find it if it's not in the cache
-    pub async fn get(&self, property: &str, key: &String) -> Option<String> {
+    pub async fn get(&self, property: &str, key: &str) -> Option<String> {
         let key = self.fix_key(key);
         self.ensure_property(property).await;
         let (ret, do_search) = match self
@@ -81,7 +81,7 @@ impl WikidataStringCache {
     }
 
     /// Set the key/q tuple for a property
-    pub async fn set(&self, property: &str, key: &String, q: Option<String>) {
+    pub async fn set(&self, property: &str, key: &str, q: Option<String>) {
         let key = self.fix_key(key);
         self.ensure_property(property).await;
         self.cache
@@ -94,11 +94,11 @@ impl WikidataStringCache {
     }
 
     /// Convenience wrapper
-    pub async fn issn2q(&self, issn: &String) -> Option<String> {
+    pub async fn issn2q(&self, issn: &str) -> Option<String> {
         self.get("P236", issn).await
     }
 
-    fn fix_key(&self, key: &String) -> String {
+    fn fix_key(&self, key: &str) -> String {
         let ret: String = key.to_string().trim().to_lowercase();
         ret
     }
@@ -149,7 +149,7 @@ impl WikidataStringCache {
     /// Stores result in cache, and returns it
     /// Stores/returns None if no result found
     /// Stores/returns the first result, if multiple found
-    async fn search(&self, property: &str, key: &String) -> Option<String> {
+    async fn search(&self, property: &str, key: &str) -> Option<String> {
         let ret = match self
             .search_wikibase(
                 &format!("haswbstatement:{}={}", property, key),
@@ -221,14 +221,10 @@ mod tests {
     async fn search() {
         let wsc = WikidataStringCache::new(api().await);
         assert_eq!(
-            wsc.search("P698", &"16116339".to_string().into()).await,
+            wsc.search("P698", "16116339").await,
             Some("Q46664291".to_string())
         );
-        assert_eq!(
-            wsc.search("P698", &"not_a_valid_id".to_string().into())
-                .await,
-            None
-        );
+        assert_eq!(wsc.search("P698", "not_a_valid_id").await, None);
     }
 
     #[tokio::test]

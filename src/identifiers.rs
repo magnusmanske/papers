@@ -74,6 +74,7 @@ impl GenericWorkIdentifier {
     pub fn new_prop(prop: IdProp, id: &str) -> Self {
         let id = match &prop {
             IdProp::DOI => id.to_uppercase(), // DOIs are always uppercase
+            IdProp::SematicScholar => id.to_lowercase(), // Sematic Scholar IDs are always lowercase
             _other => id.to_string(),
         };
         Self {
@@ -82,11 +83,8 @@ impl GenericWorkIdentifier {
         }
     }
 
-    pub fn id(&self) -> String {
-        match self.work_type {
-            GenericWorkType::Property(IdProp::DOI) => self.id.to_uppercase(),
-            _ => self.id.to_owned(),
-        }
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     pub fn is_legit(&self) -> bool {

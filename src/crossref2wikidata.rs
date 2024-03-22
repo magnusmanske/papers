@@ -92,7 +92,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         for id in ids {
             if let GenericWorkType::Property(prop) = &id.work_type() {
                 if *prop == IdProp::DOI {
-                    if let Ok(work) = self.get_client().work(&id.id()) {
+                    if let Ok(work) = self.get_client().work(id.id()) {
                         self.work_cache.insert(work.doi.clone(), work.clone());
                         self.add_identifiers_from_cached_publication(&work.doi, &mut ret);
                     }
@@ -214,15 +214,15 @@ mod tests {
     pub fn new() -> Self {
     pub fn get_cached_publication_from_id(
     fn add_identifiers_from_cached_publication(
-    fn should_add_string(&self, s: &String) -> bool {
+    fn should_add_string(&self, s: &str) -> bool {
     fn name(&self) -> &str {
-    fn get_work_issn(&self, publication_id: &String) -> Option<String> {
+    fn get_work_issn(&self, publication_id: &str) -> Option<String> {
     fn author_cache(&self) -> &HashMap<String, String> {
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
     fn get_identifier_list(
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
     fn reference(&self) -> Vec<Reference> {
-    fn get_work_titles(&self, publication_id: &String) -> Vec<LocaleString> {
-    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity) {
+    fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
+    fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity) {
     */
 }

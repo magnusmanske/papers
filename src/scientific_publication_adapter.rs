@@ -183,21 +183,19 @@ pub trait ScientificPublicationAdapter {
         }
     }
 
-    fn titles_are_equal(&self, t1: &String, t2: &String) -> bool {
+    fn titles_are_equal(&self, t1: &str, t2: &str) -> bool {
         // Maybe it's easy...
         if t1 == t2 {
             return true;
         }
         // Not so easy then...
         let t1 = t1
-            .clone()
             .to_lowercase()
             .trim_end_matches('.')
             .to_string()
             .trim()
             .to_string();
         let t2 = t2
-            .clone()
             .to_lowercase()
             .trim_end_matches('.')
             .to_string()
@@ -222,9 +220,7 @@ pub trait ScientificPublicationAdapter {
             let mut titles = titles.clone();
             // Add title
             match item.label_in_locale(language) {
-                Some(t) => {
-                    titles.retain(|x| !self.titles_are_equal(&x.to_string(), &t.to_string()))
-                } // Title exists, remove from title list
+                Some(t) => titles.retain(|x| !self.titles_are_equal(x, t)), // Title exists, remove from title list
                 None => item.set_label(LocaleString::new("en", &titles.swap_remove(0))), // No title, add and remove from title list
             }
             let main_title = item.label_in_locale("en").unwrap_or("").to_string();
@@ -338,12 +334,12 @@ pub trait ScientificPublicationAdapter {
         None
     }
 
-    fn set_author_cache_entry(&mut self, catalog_author_id: &String, q: &String) {
+    fn set_author_cache_entry(&mut self, catalog_author_id: &str, q: &str) {
         self.author_cache_mut()
             .insert(catalog_author_id.to_string(), q.to_string());
     }
 
-    fn get_author_item_from_cache(&self, catalog_author_id: &String) -> Option<&String> {
+    fn get_author_item_from_cache(&self, catalog_author_id: &str) -> Option<&String> {
         self.author_cache().get(catalog_author_id)
     }
 
@@ -353,9 +349,9 @@ pub trait ScientificPublicationAdapter {
 
     fn update_author_item(
         &mut self,
-        source_author_name: &String,
-        author_id: &String,
-        author_name: &String,
+        source_author_name: &str,
+        author_id: &str,
+        author_name: &str,
         item: &mut Entity,
     ) {
         item.set_label(LocaleString::new("en", source_author_name));
@@ -417,26 +413,25 @@ mod tests {
     fn author_cache(&self) -> &HashMap<String, String>;
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String>;
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-    fn update_statements_for_publication_id(&self, publication_id: &String, item: &mut Entity);
-    fn get_author_list(&mut self, _publication_id: &String) -> Vec<GenericAuthorInfo> {
+    fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity);
+    fn get_author_list(&mut self, _publication_id: &str) -> Vec<GenericAuthorInfo> {
     fn get_identifier_list(
     fn author_property(&self) -> Option<String> {
     fn publication_property(&self) -> Option<String> {
     fn topic_property(&self) -> Option<String> {
-    fn get_work_issn(&self, _publication_id: &String) -> Option<String> {
-    fn get_work_titles(&self, _publication_id: &String) -> Vec<LocaleString> {
-    fn do_cache_work(&mut self, _publication_id: &String) -> Option<String> {
+    fn get_work_issn(&self, _publication_id: &str) -> Option<String> {
+    fn get_work_titles(&self, _publication_id: &str) -> Vec<LocaleString> {
+    fn do_cache_work(&mut self, _publication_id: &str) -> Option<String> {
     fn reference(&self) -> Vec<Reference> {
-    fn sanitize_author_name(&self, author_name: &String) -> String {
+    fn sanitize_author_name(&self, author_name: &str) -> String {
     fn update_statements_for_publication_id_default(
-    fn titles_are_equal(&self, t1: &String, t2: &String) -> bool {
-    fn update_work_item_with_title(&self, publication_id: &String, item: &mut Entity) {
+    fn update_work_item_with_title(&self, publication_id: &str, item: &mut Entity) {
     fn update_work_item_with_journal(
-    fn update_work_item_with_property(&self, publication_id: &String, item: &mut Entity) {
+    fn update_work_item_with_property(&self, publication_id: &str, item: &mut Entity) {
     fn get_wb_time_from_partial(
     fn get_external_identifier_from_item(&self, item: &Entity, property: &str) -> Option<String> {
-    fn set_author_cache_entry(&mut self, catalog_author_id: &String, q: &String) {
-    fn get_author_item_from_cache(&self, catalog_author_id: &String) -> Option<&String> {
+    fn set_author_cache_entry(&mut self, catalog_author_id: &str, q: &str) {
+    fn get_author_item_from_cache(&self, catalog_author_id: &str) -> Option<&String> {
     fn author_cache_is_empty(&self) -> bool {
     fn update_author_item(
     fn language2q

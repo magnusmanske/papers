@@ -37,7 +37,7 @@ impl PMC2Wikidata {
         RE_PMID.is_match(id)
     }
 
-    fn publication_id_from_pubmed(&mut self, pubmed_id: &String) -> Option<String> {
+    fn publication_id_from_pubmed(&mut self, pubmed_id: &str) -> Option<String> {
         if !self.is_pubmed_id(pubmed_id) {
             return None;
         }
@@ -69,7 +69,7 @@ impl PMC2Wikidata {
         RE_PMCID.is_match(id)
     }
 
-    fn publication_id_from_pmcid(&mut self, pmc_id: &String) -> Option<String> {
+    fn publication_id_from_pmcid(&mut self, pmc_id: &str) -> Option<String> {
         if !self.is_pmcid(pmc_id) {
             return None;
         }
@@ -80,7 +80,7 @@ impl PMC2Wikidata {
             if results.len() == 1 {
                 match results.first() {
                     Some(json) => {
-                        self.work_cache.insert(pmc_id.clone(), json.clone());
+                        self.work_cache.insert(pmc_id.to_string(), json.clone());
                     }
                     None => return None,
                 }
@@ -249,12 +249,12 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
             if let GenericWorkType::Property(prop) = id.work_type() {
                 match prop {
                     IdProp::PMID => {
-                        if let Some(publication_id) = self.publication_id_from_pubmed(&id.id()) {
+                        if let Some(publication_id) = self.publication_id_from_pubmed(id.id()) {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }
                     IdProp::PMCID => {
-                        if let Some(publication_id) = self.publication_id_from_pmcid(&id.id()) {
+                        if let Some(publication_id) = self.publication_id_from_pmcid(id.id()) {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }
