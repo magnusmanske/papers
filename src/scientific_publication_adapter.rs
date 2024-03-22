@@ -2,6 +2,7 @@ use crate::generic_author_info::GenericAuthorInfo;
 use crate::*;
 use async_trait::async_trait;
 use std::collections::HashMap;
+use tokio::sync::OnceCell;
 use wikibase::mediawiki::api::Api;
 
 use self::identifiers::{GenericWorkIdentifier, IdProp};
@@ -379,26 +380,32 @@ pub trait ScientificPublicationAdapter {
 
     /// Caches language ISO codes and their mapping to Wikidata items
     async fn language2q(&self, language: &str) -> Option<String> {
-        // TODO make these static?
+        static L2Q: OnceCell<HashMap<String, String>> = OnceCell::const_new();
+        L2Q.get_or_init(|| self.generate_l2q())
+            .await
+            .get(language)
+            .map(|s| s.to_string())
+    }
+
+    async fn generate_l2q(&self) -> HashMap<String, String> {
         let mw_api: Api = Api::new("https://www.wikidata.org/w/api.php")
             .await
             .expect("ScientificPublicationAdapter::language2q: Could not get Wikidata API");
-        let l2q: HashMap<String, String> = mw_api
-                .sparql_query("SELECT DISTINCT ?l ?q { ?q wdt:P31/wdt:P279* wd:Q20162172; (wdt:P219|wdt:P220) ?l }")
-                .await
-                .unwrap()["results"]["bindings"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .filter_map(|j| {
-                    let l = j["l"]["value"].as_str()?;
-                    let q = mw_api
-                        .extract_entity_from_uri(j["q"]["value"].as_str()?)
-                        .ok()?;
-                    Some((l.to_string(), q.to_string()))
-                })
-                .collect();
-        l2q.get(language).map(|s| s.to_string())
+        mw_api
+            .sparql_query("SELECT DISTINCT ?l ?q { ?q wdt:P31/wdt:P279* wd:Q20162172; (wdt:P219|wdt:P220) ?l }")
+            .await
+            .unwrap()["results"]["bindings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|j| {
+                let l = j["l"]["value"].as_str()?;
+                let q = mw_api
+                    .extract_entity_from_uri(j["q"]["value"].as_str()?)
+                    .ok()?;
+                Some((l.to_string(), q.to_string()))
+            })
+            .collect()
     }
 }
 
