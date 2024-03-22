@@ -251,7 +251,7 @@ impl WikidataPapers {
                 GenericWorkType::Property(prop) => prop.to_owned(),
                 _ => continue,
             };
-            if item.has_claims_with_property(prop.clone()) {
+            if item.has_claims_with_property(prop.as_str()) {
                 // TODO use claims_with_property to check the individual values
                 continue;
             }
@@ -259,16 +259,12 @@ impl WikidataPapers {
                 .adapters
                 .iter()
                 .filter(|adapter| adapter.publication_property().is_some())
-                .filter(|adapter| {
-                    prop == adapter
-                        .publication_property()
-                        .unwrap_or("NOPENOPE".to_string())
-                })
+                .filter(|adapter| Some(prop.to_owned()) == adapter.publication_property())
                 .filter_map(|adapter| adapter.publication_id_for_statement(&id.id))
                 .nth(0);
             if let Some(id) = id2statement {
                 item.add_claim(Statement::new_normal(
-                    Snak::new_external_id(prop.clone(), id),
+                    Snak::new_external_id(prop.as_str(), &id),
                     vec![],
                     vec![],
                 ))
@@ -288,6 +284,7 @@ impl WikidataPapers {
             true => vec![],
             false => self.get_items_for_ids(ids).await,
         };
+        println!("{ids:?}");
         self.create_or_update_item_from_items(mw_api, ids, &items)
             .await
     }
@@ -419,7 +416,7 @@ impl WikidataPapers {
         let mut items: Vec<String> = vec![];
         for id in ids {
             let r = match &id.work_type {
-                GenericWorkType::Property(prop) => self.cache.get(prop, &id.id).await,
+                GenericWorkType::Property(prop) => self.cache.get(prop.as_str(), &id.id).await,
                 GenericWorkType::Item => Some(id.id.to_owned()),
             };
             if let Some(q) = r {

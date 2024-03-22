@@ -46,7 +46,7 @@ async fn command_authors(ini_file: &str) {
     }
 }
 
-async fn author_from_id(id: &String, cache: Arc<WikidataStringCache>, smd: Arc<RwLock<SourceMD>>) {
+async fn author_from_id(id: &str, cache: Arc<WikidataStringCache>, smd: Arc<RwLock<SourceMD>>) {
     let mut command = SourceMDcommand::new_dummy("DUMMY", id);
     let bot = SourceMDbot::new(smd.clone(), cache.clone(), 0)
         .await
@@ -116,22 +116,22 @@ async fn paper_from_id(id: &String, mw_api: Arc<RwLock<Api>>) {
     let mut ids = vec![];
     if let Some(caps) = RE_DOI.captures(id) {
         if let Some(id) = caps.get(1) {
-            ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, id.as_str()))
+            ids.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id.as_str()))
         }
     };
     if let Some(caps) = RE_PMID.captures(id) {
         if let Some(id) = caps.get(1) {
-            ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, id.as_str()))
+            ids.push(GenericWorkIdentifier::new_prop(IdProp::PMID, id.as_str()))
         }
     };
     if let Some(caps) = RE_PMCID.captures(id) {
         if let Some(id) = caps.get(1) {
-            ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, id.as_str()))
+            ids.push(GenericWorkIdentifier::new_prop(IdProp::PMCID, id.as_str()))
         }
     };
 
     // Paranoia
-    ids.retain(|id| !id.id.is_empty());
+    ids.retain(|id| !id.id().is_empty());
 
     if ids.is_empty() {
         println!("Can't find a valid ID in '{}'", &id);

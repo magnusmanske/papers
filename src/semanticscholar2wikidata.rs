@@ -31,7 +31,7 @@ impl Semanticscholar2Wikidata {
     }
 
     fn publication_ids_from_doi(&mut self, doi: &str) -> Vec<String> {
-        let work = match self.client.work(&doi) {
+        let work = match self.client.work(doi) {
             Ok(w) => w,
             _ => return vec![], // No such work
         };
@@ -51,7 +51,7 @@ impl Semanticscholar2Wikidata {
         ret: &mut Vec<GenericWorkIdentifier>,
     ) {
         let my_prop = match self.publication_property() {
-            Some(p) => GenericWorkType::Property(p),
+            Some(prop) => prop,
             None => return,
         };
 
@@ -60,15 +60,12 @@ impl Semanticscholar2Wikidata {
             None => return,
         };
 
-        ret.push(GenericWorkIdentifier {
-            work_type: my_prop.clone(),
-            id: publication_id.to_string(),
-        });
+        ret.push(GenericWorkIdentifier::new_prop(my_prop, publication_id));
 
         match &work.doi {
             Some(id) => {
                 ret.push(GenericWorkIdentifier {
-                    work_type: GenericWorkType::Property(PROP_DOI.to_string()),
+                    work_type: GenericWorkType::Property(IdProp::DOI),
                     id: id.clone(),
                 });
             }
@@ -100,8 +97,8 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         Some("P4012".to_string())
     }
 
-    fn publication_property(&self) -> Option<String> {
-        Some("P4011".to_string())
+    fn publication_property(&self) -> Option<IdProp> {
+        Some(IdProp::SematicScholar)
     }
 
     /*
@@ -161,7 +158,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(work) => match &work.title {
-                Some(title) => vec![LocaleString::new("en", &title)],
+                Some(title) => vec![LocaleString::new("en", title)],
                 None => vec![],
             },
             None => vec![],

@@ -80,7 +80,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
 
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         // TODO other ID types than DOI?
-        let doi = match self.get_external_identifier_from_item(item, "P356") {
+        let doi = match self.get_external_identifier_from_item(item, IdProp::DOI.as_str()) {
             Some(s) => s,
             None => return None,
         };

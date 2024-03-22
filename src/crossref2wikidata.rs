@@ -8,7 +8,12 @@ use std::collections::HashMap;
 pub struct Crossref2Wikidata {
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, crossref::Work>,
-    // client: Arc<crossref::Crossref>,
+}
+
+impl Default for Crossref2Wikidata {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Crossref2Wikidata {
@@ -16,9 +21,6 @@ impl Crossref2Wikidata {
         Crossref2Wikidata {
             author_cache: HashMap::new(),
             work_cache: HashMap::new(),
-            // client: Arc::new(Crossref::builder()
-            //     .build()
-            //     .expect("Crossref2Wikidata::new: Could not build Crossref client")),
         }
     }
 
@@ -37,17 +39,14 @@ impl Crossref2Wikidata {
         publication_id: &str,
         ret: &mut Vec<GenericWorkIdentifier>,
     ) {
-        let work = match self.get_cached_publication_from_id(&publication_id) {
+        let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,
         };
 
         if !work.doi.is_empty() {
             //println!("Added DOI {} from CrossRef", &work.doi);
-            ret.push(GenericWorkIdentifier {
-                work_type: GenericWorkType::Property(PROP_DOI.to_string()),
-                id: work.doi.clone(),
-            });
+            ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, &work.doi));
         }
     }
 
@@ -89,28 +88,20 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
     fn get_identifier_list(&mut self, ids: &[GenericWorkIdentifier]) -> Vec<GenericWorkIdentifier> {
         let mut ret: Vec<GenericWorkIdentifier> = vec![];
         for id in ids {
-            match &id.work_type {
-                GenericWorkType::Property(prop) => match prop.as_str() {
-                    PROP_DOI => {
-                        let x = self.get_client().work(&id.id);
-                        match x {
-                            Ok(work) => {
-                                self.work_cache.insert(work.doi.clone(), work.clone());
-                                self.add_identifiers_from_cached_publication(&work.doi, &mut ret);
-                            }
-                            _ => {}
-                        }
+            if let GenericWorkType::Property(prop) = &id.work_type {
+                if let PROP_DOI = prop.as_str() {
+                    if let Ok(work) = self.get_client().work(&id.id) {
+                        self.work_cache.insert(work.doi.clone(), work.clone());
+                        self.add_identifiers_from_cached_publication(&work.doi, &mut ret);
                     }
-                    _ => {}
-                },
-                _ => {}
+                }
             }
         }
         ret
     }
 
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        let doi = match self.get_external_identifier_from_item(item, "P356") {
+        let doi = match self.get_external_identifier_from_item(item, IdProp::DOI.as_str()) {
             Some(s) => s,
             None => return None,
         };

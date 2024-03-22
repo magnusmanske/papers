@@ -114,23 +114,16 @@ impl PMC2Wikidata {
 
         // PMCID (self)
         if let Some(p) = self.publication_property() {
-            let my_prop = GenericWorkType::Property(p);
             if let Some(pmc_id) = self.get_pmcid_from_work(work) {
                 if let Some(id) = self.publication_id_for_statement(&pmc_id) {
-                    ret.push(GenericWorkIdentifier {
-                        work_type: my_prop,
-                        id,
-                    })
+                    ret.push(GenericWorkIdentifier::new_prop(p, &id));
                 }
             }
         };
 
         // PubMed
         if let Some(pmid) = self.get_pmid_from_work(work) {
-            ret.push(GenericWorkIdentifier {
-                work_type: GenericWorkType::Property("P698".to_string()),
-                id: pmid.clone(),
-            });
+            ret.push(GenericWorkIdentifier::new_prop(IdProp::PMID, &pmid));
         }
     }
 }
@@ -149,8 +142,8 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         &mut self.author_cache
     }
 
-    fn publication_property(&self) -> Option<String> {
-        Some("P932".to_string())
+    fn publication_property(&self) -> Option<IdProp> {
+        Some(IdProp::PMCID)
     }
 
     fn publication_id_for_statement(&self, id: &str) -> Option<String> {
@@ -167,10 +160,10 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
             return;
         }
         if let Some(prop) = self.publication_property() {
-            if !item.has_claims_with_property(prop.to_owned()) {
+            if !item.has_claims_with_property(prop.as_str()) {
                 if let Some(id) = self.publication_id_for_statement(publication_id) {
                     item.add_claim(Statement::new_normal(
-                        Snak::new_external_id(prop, id),
+                        Snak::new_external_id(prop.as_str(), &id),
                         vec![],
                         self.reference(),
                     ))
@@ -181,12 +174,12 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
 
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         let pmcid = match self
-            .get_external_identifier_from_item(item, &self.publication_property().unwrap())
+            .get_external_identifier_from_item(item, &self.publication_property()?.as_str())
         {
             Some(s) => "PMC".to_owned() + &s,
             None => {
                 // Attempt fallback to PubMed ID
-                return match self.get_external_identifier_from_item(item, "P698") {
+                return match self.get_external_identifier_from_item(item, IdProp::PMID.as_str()) {
                     Some(pmid) => self.publication_id_from_pubmed(&pmid),
                     None => None,
                 };
@@ -270,11 +263,7 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
         ret
     }
 
-    async fn update_statements_for_publication_id(
-        &self,
-        publication_id: &str,
-        _item: &mut Entity,
-    ) {
+    async fn update_statements_for_publication_id(&self, publication_id: &str, _item: &mut Entity) {
         let _work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return,

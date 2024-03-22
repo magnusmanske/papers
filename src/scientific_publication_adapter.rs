@@ -20,10 +20,12 @@ pub trait ScientificPublicationAdapter {
     /// Tries to determine the publication ID of the resource, from a Wikidata item
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         match self.publication_property() {
-            Some(self_prop) => match self.get_external_identifier_from_item(item, &self_prop) {
-                Some(publication_id) => self.do_cache_work(&publication_id),
-                None => None,
-            },
+            Some(self_prop) => {
+                match self.get_external_identifier_from_item(item, self_prop.as_str()) {
+                    Some(publication_id) => self.do_cache_work(&publication_id),
+                    None => None,
+                }
+            }
             None => None,
         }
     }
@@ -73,7 +75,7 @@ pub trait ScientificPublicationAdapter {
     }
 
     /// Returns the property for a publication ID of the resource as a `String`, e.g. P4011 for Semantic Scholar
-    fn publication_property(&self) -> Option<String> {
+    fn publication_property(&self) -> Option<IdProp> {
         None
     }
 
@@ -270,7 +272,7 @@ pub trait ScientificPublicationAdapter {
 
     fn update_work_item_with_property(&self, publication_id: &str, item: &mut Entity) {
         if let Some(prop) = self.publication_property() {
-            if !item.has_claims_with_property(prop.to_owned()) {
+            if !item.has_claims_with_property(prop.as_str()) {
                 if let Some(pub_id) = self.publication_id_for_statement(publication_id) {
                     item.add_claim(Statement::new_normal(
                         Snak::new_external_id(prop.to_string(), pub_id),

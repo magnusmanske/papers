@@ -100,31 +100,15 @@ impl Pubmed2Wikidata {
         &mut self,
         publication_id: &str,
         ret: &mut Vec<GenericWorkIdentifier>,
-    ) {
-        let my_prop = match self.publication_property() {
-            Some(p) => p,
-            None => return,
-        };
-        let my_prop = GenericWorkType::Property(my_prop);
+    ) -> Option<()> {
+        let my_prop = self.publication_property()?;
 
-        let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w,
-            None => return,
-        };
+        let work = self.get_cached_publication_from_id(publication_id)?;
 
-        ret.push(GenericWorkIdentifier {
-            work_type: my_prop.clone(),
-            id: publication_id.to_string(),
-        });
+        ret.push(GenericWorkIdentifier::new_prop(my_prop, publication_id));
 
-        let medline_citation = match &work.medline_citation {
-            Some(x) => x,
-            None => return,
-        };
-        let article = match &medline_citation.article {
-            Some(x) => x,
-            None => return,
-        };
+        let medline_citation = work.medline_citation.to_owned()?;
+        let article = medline_citation.article?;
 
         match &work.pubmed_data {
             Some(pubmed_data) => match &pubmed_data.article_ids {
@@ -132,10 +116,7 @@ impl Pubmed2Wikidata {
                     article_ids.ids.iter().for_each(|id| {
                         if let (Some(key), Some(id)) = (&id.id_type, &id.id) {
                             if let "doi" = key.as_str() {
-                                ret.push(GenericWorkIdentifier {
-                                    work_type: GenericWorkType::Property("P356".to_string()),
-                                    id: id.clone(),
-                                })
+                                ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id));
                             }
                         }
                     });
@@ -152,10 +133,7 @@ impl Pubmed2Wikidata {
             }
             match (&elid.e_id_type, &elid.id) {
                 (Some(id_type), Some(id)) => match id_type.as_str() {
-                    "doi" => ret.push(GenericWorkIdentifier {
-                        work_type: GenericWorkType::Property("P356".to_string()),
-                        id: id.clone(),
-                    }),
+                    "doi" => ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id)),
                     other => {
                         println!(
                             "pubmed2wikidata::get_identifier_list unknown paper ID type '{}'",
@@ -166,6 +144,7 @@ impl Pubmed2Wikidata {
                 _ => continue,
             }
         }
+        Some(())
     }
 }
 
@@ -183,16 +162,17 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         &mut self.author_cache
     }
 
-    fn publication_property(&self) -> Option<String> {
-        Some("P698".to_string())
+    fn publication_property(&self) -> Option<IdProp> {
+        Some(IdProp::PMID)
     }
 
     fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        let publication_id =
-            match self.get_external_identifier_from_item(item, &self.publication_property()?) {
-                Some(s) => s,
-                None => return None,
-            };
+        let publication_id = match self
+            .get_external_identifier_from_item(item, self.publication_property()?.as_str())
+        {
+            Some(s) => s,
+            None => return None,
+        };
         self.publication_id_from_pubmed(&publication_id)
     }
 
@@ -256,14 +236,16 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
             match &work.medline_citation {
                 Some(medline_citation) => match &medline_citation.article {
                     Some(article) => match &article.language {
-                        Some(language) => if let Some(q) = self.language2q(language).await {
-                            let statement = Statement::new_normal(
-                                Snak::new_item("P407", &q),
-                                vec![],
-                                self.reference(),
-                            );
-                            item.add_claim(statement);
-                        },
+                        Some(language) => {
+                            if let Some(q) = self.language2q(language).await {
+                                let statement = Statement::new_normal(
+                                    Snak::new_item("P407", &q),
+                                    vec![],
+                                    self.reference(),
+                                );
+                                item.add_claim(statement);
+                            }
+                        }
                         None => {}
                     },
                     None => {}
@@ -383,14 +365,14 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
             for aid in &author.identifiers {
                 if let (Some(source), Some(id)) = (&aid.source, &aid.id) {
                     match source.as_str() {
-                    "ORCID" => {
-                        // URL => ID
-                        if let Some(id) = id.split('/').last() {
-                            prop2id.insert("P496".to_string(), id.to_string());
+                        "ORCID" => {
+                            // URL => ID
+                            if let Some(id) = id.split('/').last() {
+                                prop2id.insert("P496".to_string(), id.to_string());
+                            }
                         }
+                        other => println!("Unknown author source: {}:{}", &other, &id),
                     }
-                    other => println!("Unknown author source: {}:{}", &other, &id),
-                }
                 }
             }
             ret.push(GenericAuthorInfo {

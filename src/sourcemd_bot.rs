@@ -192,35 +192,35 @@ impl SourceMDbot {
         let mut ids = vec![];
         if let Some(caps) = RE_DOI.captures(&command.identifier) {
             if let Some(x) = caps.get(1) {
-                ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, x.as_str()))
+                ids.push(GenericWorkIdentifier::new_prop(IdProp::DOI, x.as_str()))
             }
         };
         if let Some(caps) = RE_PMID.captures(&command.identifier) {
             if let Some(x) = caps.get(1) {
-                ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, x.as_str()))
+                ids.push(GenericWorkIdentifier::new_prop(IdProp::PMID, x.as_str()))
             }
         };
         if let Some(caps) = RE_PMCID.captures(&command.identifier) {
             if let Some(x) = caps.get(1) {
-                ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, x.as_str()))
+                ids.push(GenericWorkIdentifier::new_prop(IdProp::PMCID, x.as_str()))
             }
         };
         if let Ok(j) = serde_json::from_str(&command.identifier) {
             let j: serde_json::Value = j;
             if let Some(id) = j["doi"].as_str() {
                 let id = id.replace("doi: ", "");
-                ids.push(GenericWorkIdentifier::new_prop(PROP_DOI, &id));
+                ids.push(GenericWorkIdentifier::new_prop(IdProp::DOI, &id));
             }
             if let Some(id) = j["pmid"].as_str() {
-                ids.push(GenericWorkIdentifier::new_prop(PROP_PMID, id));
+                ids.push(GenericWorkIdentifier::new_prop(IdProp::PMID, id));
             }
             if let Some(id) = j["pmc"].as_str() {
                 let id = id.replace("PMCID: ", "");
-                ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, &id));
+                ids.push(GenericWorkIdentifier::new_prop(IdProp::PMCID, &id));
             }
             if let Some(id) = j["pmcid"].as_str() {
                 let id = id.replace("PMCID: ", "");
-                ids.push(GenericWorkIdentifier::new_prop(PROP_PMCID, &id));
+                ids.push(GenericWorkIdentifier::new_prop(IdProp::PMCID, &id));
             }
         }
 
