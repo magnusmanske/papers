@@ -33,6 +33,16 @@ pub trait ScientificPublicationAdapter {
         }
     }
 
+    #[cfg(debug_assertions)]
+    fn warn(&self, msg: &str) {
+        println!("{}: {msg}", self.name())
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn warn(&self, _msg: &str) {
+        // Do nothing
+    }
+
     /// Adds/updates "special" statements of an item from the resource, given the publication ID.
     /// Many common statements, title, aliases etc are automatically handeled via `update_statements_for_publication_id_default`
     async fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity);

@@ -118,7 +118,6 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
         for num in 0..work.author_ids.len() {
             let orcid_author_id = &work.author_ids[num];
             if let Some(author) = self.get_or_load_author_data(orcid_author_id) {
-                //println!("\n{}\n\n", author.json());
                 let mut gai = GenericAuthorInfo {
                     name: None,
                     prop2id: HashMap::new(),
@@ -162,7 +161,10 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
                             gai.prop2id.insert("P2798".to_string(), id.1);
                         }
                         other => {
-                            println!("orcid2wikidata: Unknown ID '{}':'{}'", &other, &id.1);
+                            self.warn(&format!(
+                                "orcid2wikidata: Unknown ID '{}':'{}'",
+                                &other, &id.1
+                            ));
                         }
                     }
                 }

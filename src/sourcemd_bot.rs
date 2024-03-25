@@ -48,8 +48,6 @@ impl SourceMDbot {
     }
 
     pub async fn run(&self) -> Result<bool, String> {
-        //println!("Running command from batch #{}", self.batch_id);
-
         //Check if batch is still valid (STOP etc)
         let command = self.get_next_command().await;
         let mut command = match command {
@@ -172,7 +170,6 @@ impl SourceMDbot {
                 .expect("SourceMDbot::process_paper: RE_PMCID does not compile");
         }
 
-        //println!("Processing command {:?}", &command);
         let mut wdp = self.new_wdp(command);
         wdp.set_edit_summary(Some(format!(
             "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{}",
@@ -252,7 +249,6 @@ impl SourceMDbot {
         message: Option<&str>,
         command: &mut SourceMDcommand,
     ) -> Result<(), String> {
-        //println!("Setting {} to {}", &command.id, &status);
         self.config
             .read()
             .await

@@ -217,14 +217,6 @@ impl GenericAuthorInfo {
             if existing.contains(&to_check) {
                 continue;
             }
-            /*
-            println!(
-                "Adding author statement {}:'{}' to {}",
-                &prop,
-                &id,
-                item.id()
-            );
-            */
             let statement = Statement::new_normal(
                 Snak::new_external_id(prop.to_string(), id.to_string()),
                 vec![],
@@ -315,7 +307,6 @@ impl GenericAuthorInfo {
         }
         self.alternative_names.sort();
         self.alternative_names.dedup();
-        //println!("{:?} =>\n{:?}\n",);
         Ok(())
     }
 

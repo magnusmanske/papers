@@ -47,7 +47,6 @@ impl Crossref2Wikidata {
         };
 
         if !work.doi.is_empty() {
-            //println!("Added DOI {} from CrossRef", &work.doi);
             ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, &work.doi));
         }
     }
@@ -95,7 +94,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         for id in ids {
             if let GenericWorkType::Property(prop) = &id.work_type() {
                 if *prop == IdProp::DOI {
-                    if let Ok(work) = self.get_client().work(id.id()) {
+                    if let Ok(work) = self.get_client().work(id.id()).await {
                         self.work_cache.insert(work.doi.clone(), work.clone());
                         self.add_identifiers_from_cached_publication(&work.doi, &mut ret);
                     }
@@ -110,7 +109,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
             Some(s) => s,
             None => return None,
         };
-        let work = match self.get_client().work(&doi) {
+        let work = match self.get_client().work(&doi).await {
             Ok(w) => w,
             _ => return None, // No such work
         };

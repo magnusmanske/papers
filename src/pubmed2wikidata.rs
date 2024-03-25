@@ -60,37 +60,38 @@ impl Pubmed2Wikidata {
         RE_PMID.is_match(id)
     }
 
-    fn publication_id_from_pubmed(&mut self, publication_id: &str) -> Option<String> {
+    async fn publication_id_from_pubmed(&mut self, publication_id: &str) -> Option<String> {
         if !self.is_pubmed_id(publication_id) {
             return None;
         }
         if !self.work_cache.contains_key(publication_id) {
             let pub_id_u64 = publication_id.parse::<u64>().ok()?;
-            let work = self.client.article(pub_id_u64).ok()?;
+            let work = self.client.article(pub_id_u64).await.ok()?;
             self.work_cache.insert(publication_id.to_string(), work);
         }
         Some(publication_id.to_string())
     }
 
-    fn publication_ids_from_doi(&mut self, doi: &str) -> Vec<String> {
+    async fn publication_ids_from_doi(&mut self, doi: &str) -> Vec<String> {
         let query = doi.to_string();
         let work_ids: Vec<u64> = match self.query_cache.get(&query) {
             Some(work_ids) => work_ids.clone(),
-            None => match self.client.article_ids_from_query(&query, 10) {
-                Ok(work_ids) => work_ids,
-                _ => vec![],
-            },
+            None => self
+                .client
+                .article_ids_from_query(&query, 10)
+                .await
+                .unwrap_or_default(),
         };
         self.query_cache.insert(query, work_ids.clone());
         for publication_id in &work_ids {
             if let std::collections::hash_map::Entry::Vacant(e) =
                 self.work_cache.entry(publication_id.to_string())
             {
-                match self.client.article(*publication_id) {
+                match self.client.article(*publication_id).await {
                     Ok(work) => {
                         e.insert(work);
                     }
-                    Err(e) => println!("pubmed::publication_ids_from_doi: {:?}", &e),
+                    Err(e) => self.warn(&format!("pubmed::publication_ids_from_doi: {:?}", &e)),
                 }
             }
         }
@@ -133,15 +134,14 @@ impl Pubmed2Wikidata {
                 continue;
             }
             match (&elid.e_id_type, &elid.id) {
-                (Some(id_type), Some(id)) => match id_type.as_str() {
-                    "doi" => ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id)),
-                    other => {
-                        println!(
-                            "pubmed2wikidata::get_identifier_list unknown paper ID type '{}'",
-                            &other
-                        );
+                (Some(id_type), Some(id)) => {
+                    match id_type.as_str() {
+                        "doi" => ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id)),
+                        other => {
+                            self.warn(&format!("pubmed2wikidata::get_identifier_list unknown paper ID type '{other}'"));
+                        }
                     }
-                },
+                }
                 _ => continue,
             }
         }
@@ -174,7 +174,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
             Some(s) => s,
             None => return None,
         };
-        self.publication_id_from_pubmed(&publication_id)
+        self.publication_id_from_pubmed(&publication_id).await
     }
 
     fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
@@ -213,12 +213,13 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
             if let GenericWorkType::Property(prop) = id.work_type() {
                 match prop {
                     IdProp::PMID => {
-                        if let Some(publication_id) = self.publication_id_from_pubmed(id.id()) {
+                        if let Some(publication_id) = self.publication_id_from_pubmed(id.id()).await
+                        {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }
                     IdProp::DOI => {
-                        for publication_id in self.publication_ids_from_doi(id.id()) {
+                        for publication_id in self.publication_ids_from_doi(id.id()).await {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }
@@ -327,14 +328,8 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
     }
 
     async fn do_cache_work(&mut self, publication_id: &str) -> Option<String> {
-        let pub_id_u64 = match publication_id.parse::<u64>() {
-            Ok(x) => x,
-            _ => return None,
-        };
-        let work = match self.client.article(pub_id_u64) {
-            Ok(x) => x,
-            _ => return None,
-        };
+        let pub_id_u64 = publication_id.parse::<u64>().ok()?;
+        let work = self.client.article(pub_id_u64).await.ok()?;
         self.work_cache.insert(publication_id.to_string(), work);
         Some(publication_id.to_string())
     }
@@ -375,7 +370,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                                 prop2id.insert("P496".to_string(), id.to_string());
                             }
                         }
-                        other => println!("Unknown author source: {}:{}", &other, &id),
+                        other => self.warn(&format!("Unknown author source: {other}:{id}")),
                     }
                 }
             }
