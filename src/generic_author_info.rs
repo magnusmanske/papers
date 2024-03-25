@@ -3,6 +3,7 @@ extern crate lazy_static;
 extern crate reqwest;
 extern crate serde_json;
 
+use crate::wikidata_interaction::WikidataInteraction;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
 use regex::Regex;

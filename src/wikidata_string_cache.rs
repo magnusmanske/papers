@@ -1,8 +1,9 @@
-use crate::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 use wikibase::mediawiki::api::Api;
+
+use crate::wikidata_interaction::WikidataInteraction;
 
 const MAX_CACHE_SIZE_PER_PROPERTY: usize = 10000;
 

@@ -11,6 +11,7 @@ use wikibase::mediawiki::api::Api;
 
 use self::identifiers::GenericWorkIdentifier;
 use self::identifiers::GenericWorkType;
+use self::wikidata_interaction::WikidataInteraction;
 
 pub type Spas = Box<dyn ScientificPublicationAdapter + Sync>;
 
