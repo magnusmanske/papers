@@ -1564,6 +1564,7 @@ dependencies = [
  "chrono",
  "config 0.14.0",
  "crossref",
+ "futures",
  "lazy_static",
  "mysql",
  "orcid",

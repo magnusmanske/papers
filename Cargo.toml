@@ -20,6 +20,7 @@ lazy_static = "1"
 chrono = "*"
 rayon = "*"
 tokio = { version = "^1", features = ["full", "rt-multi-thread"] }
+futures = "*"
 async-trait = "*"
 
 #crossref = "*"

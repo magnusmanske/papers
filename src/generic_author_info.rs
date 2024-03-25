@@ -11,7 +11,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 
-const SCORE_LIST_NUMBER: u16 = 30;
+const SCORE_LIST_NUMBER: u16 = 5;
+const SCORE_LIST_NUMBER_AND_NAME: u16 = 30;
 const SCORE_NAME_MATCH: u16 = 50;
 const SCORE_PROP_MATCH: u16 = 90;
 const SCORE_ITEM_MATCH: u16 = 100;
@@ -380,11 +381,34 @@ impl GenericAuthorInfo {
         // List number
         if let (Some(n1), Some(n2)) = (&self.list_number, &author2.list_number) {
             if n1 == n2 {
-                ret += SCORE_LIST_NUMBER;
+                // Same list number
+                let l1 = self.get_longest_name_part();
+                let l2 = author2.get_longest_name_part();
+                if l1.is_some() && l2.is_some() && l1 == l2 {
+                    // Same longest name part
+                    ret += SCORE_LIST_NUMBER_AND_NAME;
+                } else {
+                    ret += SCORE_LIST_NUMBER;
+                }
             }
         }
 
         ret
+    }
+
+    fn get_longest_name_part(&self) -> Option<String> {
+        let name = self.name.as_ref()?;
+        let mut ret = "".to_string();
+        let parts = name.split([' ', '.'].as_ref());
+        parts.for_each(|part| {
+            if part.len() > ret.len() {
+                ret = part.to_string();
+            }
+        });
+        if ret.len() < 3 {
+            return None;
+        }
+        Some(ret)
     }
 
     pub async fn update_author_item(
@@ -494,6 +518,14 @@ mod tests {
         assert_eq!(ga1.compare(&ga2), 0);
         ga2.list_number = Some("123".to_string());
         assert_eq!(ga1.compare(&ga2), SCORE_LIST_NUMBER);
+        ga1.name = Some("Foobar Baz".to_string());
+        ga2.name = Some("Foobar B.".to_string());
+        assert_eq!(
+            ga1.compare(&ga2),
+            SCORE_LIST_NUMBER_AND_NAME + SCORE_NAME_MATCH
+        );
+        ga1.name = None;
+        ga2.name = None;
         ga1.list_number = Some("456".to_string());
         assert_eq!(ga1.compare(&ga2), 0);
     }

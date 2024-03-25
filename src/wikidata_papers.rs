@@ -290,7 +290,6 @@ impl WikidataPapers {
             true => vec![],
             false => self.get_items_for_ids(ids).await,
         };
-        println!("{ids:?}");
         self.create_or_update_item_from_items(mw_api, ids, &items)
             .await
     }
