@@ -168,12 +168,11 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
     }
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        let publication_id = match self
-            .get_external_identifier_from_item(item, self.publication_property()?.as_str())
-        {
-            Some(s) => s,
-            None => return None,
-        };
+        let publication_id =
+            match self.get_external_identifier_from_item(item, &self.publication_property()?) {
+                Some(s) => s,
+                None => return None,
+            };
         self.publication_id_from_pubmed(&publication_id).await
     }
 

@@ -175,18 +175,17 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
     }
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        let pmcid = match self
-            .get_external_identifier_from_item(item, self.publication_property()?.as_str())
-        {
-            Some(s) => "PMC".to_owned() + &s,
-            None => {
-                // Attempt fallback to PubMed ID
-                return match self.get_external_identifier_from_item(item, IdProp::PMID.as_str()) {
-                    Some(pmid) => self.publication_id_from_pubmed(&pmid),
-                    None => None,
-                };
-            }
-        };
+        let pmcid =
+            match self.get_external_identifier_from_item(item, &self.publication_property()?) {
+                Some(s) => "PMC".to_owned() + &s,
+                None => {
+                    // Attempt fallback to PubMed ID
+                    return match self.get_external_identifier_from_item(item, &IdProp::PMID) {
+                        Some(pmid) => self.publication_id_from_pubmed(&pmid),
+                        None => None,
+                    };
+                }
+            };
         self.publication_id_from_pmcid(&pmcid)
     }
 

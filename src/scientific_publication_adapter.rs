@@ -23,12 +23,10 @@ pub trait ScientificPublicationAdapter {
     /// Tries to determine the publication ID of the resource, from a Wikidata item
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         match self.publication_property() {
-            Some(self_prop) => {
-                match self.get_external_identifier_from_item(item, self_prop.as_str()) {
-                    Some(publication_id) => self.do_cache_work(&publication_id).await,
-                    None => None,
-                }
-            }
+            Some(self_prop) => match self.get_external_identifier_from_item(item, &self_prop) {
+                Some(publication_id) => self.do_cache_work(&publication_id).await,
+                None => None,
+            },
             None => None,
         }
     }
@@ -325,9 +323,13 @@ pub trait ScientificPublicationAdapter {
         )
     }
 
-    fn get_external_identifier_from_item(&self, item: &Entity, property: &str) -> Option<String> {
+    fn get_external_identifier_from_item(
+        &self,
+        item: &Entity,
+        property: &IdProp,
+    ) -> Option<String> {
         for claim in item.claims() {
-            if claim.main_snak().property() == property
+            if claim.main_snak().property() == property.as_str()
                 && *claim.main_snak().snak_type() == SnakType::Value
             {
                 match claim.main_snak().data_value() {
