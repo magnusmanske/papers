@@ -69,11 +69,10 @@ impl SourceMDbot {
             Ok(b) => {
                 if b {
                     self.set_command_status("DONE", None, &mut command).await?;
-                    Ok(true)
                 } else {
                     self.set_command_status("DUNNO", None, &mut command).await?;
-                    Ok(false)
                 }
+                Ok(b)
             }
             Err(e) => {
                 self.set_command_status("FAILED", Some(&e.clone()), &mut command)

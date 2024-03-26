@@ -214,7 +214,7 @@ impl GenericAuthorInfo {
 
         // External IDs
         for (prop, id) in &self.prop2id {
-            let existing = item.values_for_property(prop.to_string());
+            let existing = item.values_for_property(prop);
             let to_check = Value::StringValue(id.to_string());
             if existing.contains(&to_check) {
                 continue;
@@ -383,6 +383,7 @@ impl GenericAuthorInfo {
         if let (Some(n1), Some(n2)) = (&self.list_number, &author2.list_number) {
             if n1 == n2 {
                 // Same list number
+                // TODO: Check if this is a good idea
                 let l1 = self.get_longest_name_part();
                 let l2 = author2.get_longest_name_part();
                 if l1.is_some() && l2.is_some() && l1 == l2 {
