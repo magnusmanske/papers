@@ -22,6 +22,7 @@ rayon = "*"
 tokio = { version = "^1", features = ["full", "rt-multi-thread"] }
 futures = "*"
 async-trait = "*"
+anyhow = "*"
 
 #crossref = "*"
 #crossref = { git = "https://github.com/MattsSe/crossref-rs" }

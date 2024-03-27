@@ -1,6 +1,7 @@
 use crate::wikidata_interaction::WikidataInteraction;
 use crate::wikidata_papers::WikidataPapers;
 use crate::{generic_author_info::GenericAuthorInfo, wikidata_string_cache::WikidataStringCache};
+use anyhow::Result;
 use futures::prelude::*;
 use regex::Regex;
 use std::collections::HashMap;
@@ -37,41 +38,14 @@ impl AuthorNameString {
         paper_qs: &Vec<String>,
         name2author_qs: &HashMap<String, Vec<String>>,
     ) {
-        let simple_name = GenericAuthorInfo::simplify_name(ans);
-        let res = cache
-            .search_wikibase(
-                &format!("{simple_name} haswbstatement:P31=Q5"),
-                mw_api.clone(),
-            )
+        let author_q = match self
+            .get_or_create_author(ans, cache, mw_api, name2author_qs)
             .await
-            .unwrap();
-        let author_q = if res.is_empty() {
-            self.create_new_author(ans, mw_api, cache).await
-        } else if res.len() == 1 {
-            if let Some(author_qs) = name2author_qs.get(ans) {
-                if author_qs.len() == 1 {
-                    let author_q = &author_qs[0];
-                    println!("MATCHED AUTHOR {ans}: {simple_name} => {author_q}");
-                    Some(author_q.to_owned())
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            // self.log(
-            //     2,
-            //     &format!("MULTIPLE POSSIBLE MATCHES FOR {ans}: {simple_name} => {res:?}"),
-            // );
-            None
-        };
-
-        let author_q = match author_q {
+        {
             Some(q) => q,
             None => return,
         };
-        println!("AUTHOR {author_q}");
+        // println!("AUTHOR {author_q}");
 
         let mut author = GenericAuthorInfo::new();
         author.name = Some(ans.clone());
@@ -124,18 +98,57 @@ impl AuthorNameString {
         }
     }
 
+    async fn get_or_create_author(
+        &self,
+        ans: &String,
+        cache: &Arc<WikidataStringCache>,
+        mw_api: &Arc<RwLock<Api>>,
+        name2author_qs: &HashMap<String, Vec<String>>,
+    ) -> Option<String> {
+        let simple_name = GenericAuthorInfo::simplify_name(ans);
+        let res = cache
+            .search_wikibase(
+                &format!("{simple_name} haswbstatement:P31=Q5"),
+                mw_api.clone(),
+            )
+            .await
+            .ok()?;
+        let author_q = if res.is_empty() {
+            self.create_new_author(ans, mw_api, cache).await
+        } else if res.len() == 1 {
+            if let Some(author_qs) = name2author_qs.get(ans) {
+                if author_qs.len() == 1 {
+                    let author_q = &author_qs[0];
+                    println!("MATCHED AUTHOR {ans}: {simple_name} => {author_q}");
+                    Some(author_q.to_owned())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            // self.log(
+            //     2,
+            //     &format!("MULTIPLE POSSIBLE MATCHES FOR {ans}: {simple_name} => {res:?}"),
+            // );
+            None
+        };
+        author_q
+    }
+
     pub async fn process_author_q(
         &self,
         root_author_q: String,
         mw_api: &Arc<RwLock<Api>>,
         cache: &Arc<WikidataStringCache>,
-    ) {
+    ) -> Result<()> {
         self.log(1, &format!("Processing {}", &root_author_q));
         let mut author = GenericAuthorInfo::new();
         author.wikidata_item = Some(root_author_q.to_owned());
         let api = mw_api.read().await;
-        let ans2paper_qs = self.get_coauthor_ans(&root_author_q, &api).await;
-        let name2author_qs = self.get_coauthor_qs(&root_author_q, &api).await;
+        let ans2paper_qs = self.get_coauthor_ans(&root_author_q, &api).await?;
+        let name2author_qs = self.get_coauthor_qs(&root_author_q, &api).await?;
         drop(api);
 
         let mut futures = vec![];
@@ -148,6 +161,7 @@ impl AuthorNameString {
         let stream =
             futures::stream::iter(futures).buffer_unordered(MAX_PROCESS_PAPERS_CONCURRENCY);
         stream.collect::<Vec<_>>().await;
+        Ok(())
     }
 
     /// Get coauthors of a given author, author name string to paper Qids
@@ -155,16 +169,15 @@ impl AuthorNameString {
         &self,
         root_author_q: &str,
         api: &Api,
-    ) -> HashMap<String, Vec<String>> {
+    ) -> Result<HashMap<String, Vec<String>>> {
         // (paper Qid, author name string)
         let result_ans: Vec<(String, String)> = api
             .sparql_query(&format!(
                 "SELECT ?paper ?ans {{ ?paper wdt:P50 wd:{root_author_q} ; wdt:P2093 ?ans }}"
             ))
-            .await
-            .unwrap()["results"]["bindings"]
+            .await?["results"]["bindings"]
             .as_array()
-            .unwrap()
+            .ok_or(anyhow::anyhow!("get_coauthor_ans: Not an array"))?
             .iter()
             .filter_map(|j| {
                 let ans = j["ans"]["value"].as_str()?;
@@ -185,21 +198,20 @@ impl AuthorNameString {
         ans2paper_qs.retain(|_, v| v.len() >= MIN_PAPERS_PER_AUTHOR);
         ans2paper_qs
             .retain(|ans, _| ans.chars().filter(|c| *c == ' ').count() >= MIN_SPACES_FOR_NAME);
-        ans2paper_qs
+        Ok(ans2paper_qs)
     }
 
     async fn get_coauthor_qs(
         &self,
         root_author_q: &str,
         api: &Api,
-    ) -> HashMap<String, Vec<String>> {
+    ) -> Result<HashMap<String, Vec<String>>> {
         // (Qid, name)
         let result_coauthors: Vec<(String, String)> = api
         .sparql_query(&format!("select DISTINCT ?coauthor ?coauthorLabel {{ ?paper wdt:P50 wd:{root_author_q} ; wdt:P50 ?coauthor . SERVICE wikibase:label {{ bd:serviceParam wikibase:language \"[AUTO_LANGUAGE],en\" }} }}"))
-        .await
-        .unwrap()["results"]["bindings"]
+        .await?["results"]["bindings"]
         .as_array()
-        .unwrap()
+        .ok_or(anyhow::anyhow!("get_coauthor_qs: Not an array"))?
         .iter()
         .filter_map(|j| {
             let name = j["coauthorLabel"]["value"].as_str()?;
@@ -217,7 +229,7 @@ impl AuthorNameString {
                 author_qs.push(author_q);
             }
         }
-        name2qs
+        Ok(name2qs)
     }
 
     async fn create_new_author(

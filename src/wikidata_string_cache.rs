@@ -60,14 +60,7 @@ impl WikidataStringCache {
     pub async fn get(&self, property: &str, key: &str) -> Option<String> {
         let key = self.fix_key(key);
         self.ensure_property(property).await;
-        let (ret, do_search) = match self
-            .cache
-            .write()
-            .await
-            .get_mut(property)
-            .unwrap()
-            .get_mut(&key)
-        {
+        let (ret, do_search) = match self.cache.write().await.get_mut(property)?.get_mut(&key) {
             Some(ret) => {
                 ret.update_timestamp();
                 (ret.key(), false)
@@ -89,7 +82,7 @@ impl WikidataStringCache {
             .write()
             .await
             .get_mut(property)
-            .unwrap() // Safe
+            .expect("wikidata_string_cache::set: property not found")
             .insert(key, WikidataStringValue::new(q));
         self.prune_property(property).await;
     }

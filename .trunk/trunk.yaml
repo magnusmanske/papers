@@ -31,7 +31,7 @@ lint:
     - shfmt@3.6.0
     - taplo@0.8.1
     - trivy@0.50.0
-    - trufflehog@3.70.3
+    - trufflehog@3.71.0
 actions:
   disabled:
     - trunk-announce

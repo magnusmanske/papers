@@ -406,9 +406,9 @@ pub trait ScientificPublicationAdapter {
         mw_api
             .sparql_query("SELECT DISTINCT ?l ?q { ?q wdt:P31/wdt:P279* wd:Q20162172; (wdt:P219|wdt:P220) ?l }")
             .await
-            .unwrap()["results"]["bindings"]
+            .expect("generate_l2q: fail1")["results"]["bindings"]
             .as_array()
-            .unwrap()
+            .expect("generate_l2q: fail2")
             .iter()
             .filter_map(|j| {
                 let l = j["l"]["value"].as_str()?;

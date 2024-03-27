@@ -75,7 +75,10 @@ impl WikidataPapers {
         new_author: &GenericAuthorInfo,
         item: &mut Entity,
     ) {
-        let author_q = new_author.wikidata_item.as_ref().unwrap();
+        let author_q = match new_author.wikidata_item.as_ref() {
+            Some(q) => q,
+            None => return,
+        };
         if Self::get_p50s_from_item(item).contains(&format!("Q{}", author_q)) {
             return; // Had that author already
         }

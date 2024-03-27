@@ -269,18 +269,16 @@ impl GenericAuthorInfo {
     pub fn merge_from(&mut self, author2: &GenericAuthorInfo) -> Result<(), String> {
         if self.name.is_none() {
             self.name = author2.name.clone();
-        } else if author2.name.is_some() {
-            self.alternative_names.push(author2.name.clone().unwrap()); // unwrap safe
-                                                                        // Sort/dedup at the end
+        } else if let Some(name) = &author2.name {
+            self.alternative_names.push(name.to_owned()); // Sort/dedup at the end
         }
         if self.wikidata_item.is_none() {
             self.wikidata_item = author2.wikidata_item.clone();
         } else if author2.wikidata_item.is_none() {
         } else if self.wikidata_item != author2.wikidata_item {
             return Err(format!(
-                "GenericAuthorInfo::merge_from: Different items {} and {}, skipping",
-                self.wikidata_item.clone().unwrap(),
-                author2.wikidata_item.clone().unwrap()
+                "GenericAuthorInfo::merge_from: Different items {:?} and {:?}, skipping",
+                self.wikidata_item, author2.wikidata_item
             ));
         }
         if self.list_number.is_none() {
@@ -288,9 +286,8 @@ impl GenericAuthorInfo {
         } else if author2.list_number.is_none() {
         } else if self.list_number != author2.list_number {
             return Err(format!(
-                "GenericAuthorInfo::merge_from: Different list numbers {} and {}, skipping",
-                self.list_number.clone().unwrap(),
-                author2.list_number.clone().unwrap()
+                "GenericAuthorInfo::merge_from: Different list numbers {:?} and {:?}, skipping",
+                self.list_number, author2.list_number
             ));
         }
         for (k, v) in &author2.prop2id {
