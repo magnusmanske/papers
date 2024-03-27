@@ -60,11 +60,7 @@ async fn author_from_id(id: &str, cache: Arc<WikidataStringCache>, smd: Arc<RwLo
 
 async fn command_ans(ini_file: &str) {
     const MAX_AUTHORS_IN_PARALLEL: usize = 5;
-
-    let mut smd = SourceMD::new(ini_file).await.unwrap();
-    smd.init();
-
-    let smd = Arc::new(RwLock::new(smd));
+    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).await.unwrap()));
     let mw_api = smd.read().await.mw_api();
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
     let mut ans = AuthorNameString::default();
@@ -225,7 +221,9 @@ async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>)
 
 async fn command_bot(ini_file: &str) {
     println!("== STARTING BOT MODE");
-    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).await.unwrap()));
+    let mut smd = SourceMD::new(ini_file).await.unwrap();
+    smd.init();
+    let smd = Arc::new(RwLock::new(smd));
     let mw_api = Arc::new(RwLock::new(
         SourceMD::create_mw_api(ini_file).await.unwrap(),
     ));
