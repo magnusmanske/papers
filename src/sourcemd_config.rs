@@ -265,6 +265,7 @@ impl SourceMD {
         }
 
         if self.pool.is_none() {
+            println!("{settings:?}");
             panic!("Can't establish DB connection!");
         }
 

@@ -131,11 +131,8 @@ impl GenericAuthorInfo {
             None => "".to_string(),
         };
         let mut qualifiers: Vec<Snak> = vec![];
-        match &self.list_number {
-            Some(num) => {
-                qualifiers.push(Snak::new_string("P1545", num));
-            }
-            None => {}
+        if let Some(num) = &self.list_number {
+            qualifiers.push(Snak::new_string("P1545", num));
         }
         let statement = match &self.wikidata_item {
             Some(q) => {
@@ -177,6 +174,9 @@ impl GenericAuthorInfo {
             }
             None => {}
         }
+
+        item.descriptions_mut()
+            .push(LocaleString::new("en", "researcher"));
 
         // Alternative names
         for n in &self.alternative_names {
@@ -232,6 +232,7 @@ impl GenericAuthorInfo {
         &self,
         mw_api: Arc<RwLock<Api>>,
         cache: Arc<WikidataStringCache>,
+        allow_no_external_ids: bool,
     ) -> GenericAuthorInfo {
         let mut ret = self.clone();
         // Already has item?
@@ -239,7 +240,7 @@ impl GenericAuthorInfo {
             return ret;
         }
         // No external IDs
-        if ret.prop2id.is_empty() {
+        if !allow_no_external_ids && ret.prop2id.is_empty() {
             return ret;
         }
 
@@ -324,6 +325,21 @@ impl GenericAuthorInfo {
             .replace('ï', "i")
             .replace('ç', "c")
             .replace('ß', "ss")
+    }
+
+    /// Simplifies a name by removing short words
+    pub fn simplify_name(s: &str) -> String {
+        lazy_static! {
+            static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b")
+                .expect("GenericAuthorInfo::simplify_name: could not compile RE1");
+        }
+        let mut ret = "".to_string();
+        let name_mod = s.replace('.', " ");
+        for cap in RE1.captures_iter(&name_mod) {
+            ret.push_str(&cap[1]);
+            ret.push(' ');
+        }
+        ret.trim().to_string()
     }
 
     /// Compares long (3+ characters) name parts

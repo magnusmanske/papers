@@ -7,6 +7,8 @@ extern crate serde_json;
 
 use crate::sourcemd_command::SourceMDcommand;
 use crate::wikidata_string_cache::WikidataStringCache;
+use futures::prelude::*;
+use papers::author_name_string::AuthorNameString;
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::identifiers::GenericWorkIdentifier;
 use papers::identifiers::IdProp;
@@ -56,6 +58,35 @@ async fn author_from_id(id: &str, cache: Arc<WikidataStringCache>, smd: Arc<RwLo
     bot.process_author_metadata(&mut command).await.unwrap();
 }
 
+async fn command_ans(ini_file: &str) {
+    const MAX_AUTHORS_IN_PARALLEL: usize = 5;
+
+    let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).await.unwrap()));
+    let mw_api = smd.read().await.mw_api();
+    let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
+    let mut ans = AuthorNameString::default();
+    /* trunk-ignore(clippy/field_reassign_with_default) */
+    ans.logging_level = 0;
+
+    let mut futures = vec![];
+
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(l) => l.trim().to_string(),
+            Err(_) => break,
+        };
+        if line.is_empty() {
+            continue;
+        }
+        let future = ans.process_author_q(line, &mw_api, &cache);
+        futures.push(future);
+    }
+
+    let stream = futures::stream::iter(futures).buffer_unordered(MAX_AUTHORS_IN_PARALLEL);
+    stream.collect::<Vec<_>>().await;
+}
+
 async fn command_papers(ini_file: &str) {
     let mw_api = Arc::new(RwLock::new(
         SourceMD::create_mw_api(ini_file).await.unwrap(),
@@ -98,16 +129,7 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
 
     if let Some(caps) = RE_WD.captures(id) {
         if let Some(q) = caps.get(1) {
-            match wdp.create_or_update_item_from_q(mw_api, q.as_str()).await {
-                Some(er) => {
-                    if er.edited {
-                        println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
-                    } else {
-                        println!("https://www.wikidata.org/wiki/{}, no changes ", &er.q)
-                    }
-                }
-                None => println!("No item ID!"),
-            }
+            save_item_changes(&mut wdp, mw_api.clone(), q.as_str()).await;
             return;
         }
     }
@@ -151,6 +173,19 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
             }
         }
         None => println!("No item ID for '{}'!", &id),
+    }
+}
+
+async fn save_item_changes(wdp: &mut WikidataPapers, mw_api: Arc<RwLock<Api>>, q: &str) {
+    match wdp.create_or_update_item_from_q(mw_api, q).await {
+        Some(er) => {
+            if er.edited {
+                println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
+            } else {
+                println!("https://www.wikidata.org/wiki/{}, no changes ", &er.q)
+            }
+        }
+        None => println!("No item ID!"),
     }
 }
 
@@ -202,6 +237,11 @@ async fn command_bot(ini_file: &str) {
     }
 }
 
+/*
+For local testing:
+ssh magnus@tools-login.wmflabs.org -L 3307:tools-db:3306 -N &
+*/
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
@@ -213,6 +253,7 @@ async fn main() {
         "papers" => command_papers(INI_FILE).await,
         "authors" => command_authors(INI_FILE).await,
         "bot" => command_bot(INI_FILE).await,
+        "ans" => command_ans(INI_FILE).await,
         _ => usage(&args[0]),
     }
 }

@@ -119,7 +119,11 @@ impl SourceMDbot {
                 .prop2id
                 .insert("P496".to_string(), identifier.to_owned());
             author = author
-                .get_or_create_author_item(self.config.read().await.mw_api(), self.cache.clone())
+                .get_or_create_author_item(
+                    self.config.read().await.mw_api(),
+                    self.cache.clone(),
+                    false,
+                )
                 .await
         } else {
             return Err(format!(

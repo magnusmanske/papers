@@ -15,6 +15,10 @@ use self::wikidata_interaction::WikidataInteraction;
 
 pub type Spas = Box<dyn ScientificPublicationAdapter + Sync>;
 
+lazy_static! {
+    static ref SNAK_REMOVE_STATEMENT: Snak = Snak::new_no_value("P2093", SnakDataType::String);
+}
+
 pub struct EditResult {
     pub q: String,
     pub edited: bool,
@@ -65,28 +69,45 @@ impl WikidataPapers {
         }
     }
 
-    fn update_author_statements(&self, authors: &[GenericAuthorInfo], item: &mut Entity) {
-        let p50: Vec<String> = item
-            .claims()
-            .par_iter()
-            .filter(|statement| statement.property() == "P50")
-            .filter_map(|statement| match statement.main_snak().data_value() {
-                Some(dv) => match dv.value() {
-                    Value::Entity(entity) => Some(entity.id().to_string()),
-                    _ => None,
-                },
-                _ => None,
+    pub fn update_author_name_statement(
+        &self,
+        asn: &str,
+        new_author: &GenericAuthorInfo,
+        item: &mut Entity,
+    ) {
+        let author_q = new_author.wikidata_item.as_ref().unwrap();
+        if Self::get_p50s_from_item(item).contains(&format!("Q{}", author_q)) {
+            return; // Had that author already
+        }
+        item.claims_mut()
+            .par_iter_mut()
+            .filter(|statement| statement.property() == "P2093")
+            .filter_map(|statement| {
+                let author = GenericAuthorInfo::new_from_statement(statement)?;
+                Some((author, statement))
             })
-            .collect();
+            .filter(|(author, _statement)| author.name == Some(asn.to_string()))
+            .for_each(|(_author, p2093_statement)| {
+                let p50_statement = match &new_author.generate_author_statement() {
+                    Some(p50_statement) => p50_statement.to_owned(),
+                    None => return,
+                };
+                Self::update_p2093_to_p50_statement(&p50_statement, p2093_statement);
+            });
+        Self::remove_statements_with_no_value(item);
+    }
 
-        // HACK used as "remove" tag
-        let snak_remove_statement = Snak::new_no_value("P2093", SnakDataType::String);
+    fn update_author_statements(&self, authors: &[GenericAuthorInfo], item: &mut Entity) {
+        let p50 = Self::get_p50s_from_item(item);
 
-        item.claims_mut().par_iter_mut().for_each(|statement| {
-            if statement.property() != "P2093" {
-                return;
-            }
-            if let Some(author) = GenericAuthorInfo::new_from_statement(statement) {
+        item.claims_mut()
+            .par_iter_mut()
+            .filter(|statement| statement.property() == "P2093")
+            .filter_map(|statement| {
+                let author = GenericAuthorInfo::new_from_statement(statement)?;
+                Some((author, statement))
+            })
+            .for_each(|(author, p2093_statement)| {
                 if let Some((candidate, _points)) = author.find_best_match(authors) {
                     match &authors[candidate].wikidata_item {
                         Some(q) => {
@@ -97,52 +118,28 @@ impl WikidataPapers {
                                 {
                                     println!(
                                         "REMOVING AUTHOR {:?}\nBECAUSE:\n{:?}\n{:?}",
-                                        &statement, &author, &authors[candidate]
+                                        &p2093_statement, &author, &authors[candidate]
                                     );
                                     // Same list number, remove P2093
-                                    // HACK change to "no value", then remove downstream
-                                    statement.set_main_snak(snak_remove_statement.clone());
+                                    Self::remove_p2093_statement(p2093_statement);
                                 } else {
-                                    println!("NOT REMOVING AUTHOR {:?}", &statement);
+                                    println!("NOT REMOVING AUTHOR {:?}", &p2093_statement);
                                 }
-                            } else {
-                                match &authors[candidate].generate_author_statement() {
-                                    Some(s) => {
-                                        let mut s = s.to_owned();
-
-                                        // Preserve qualifiers
-                                        statement.qualifiers().iter().for_each(|q1| {
-                                            if !s
-                                                .qualifiers()
-                                                .iter()
-                                                .any(|q2| q1.property() == q2.property())
-                                            {
-                                                s.add_qualifier_snak(q1.clone())
-                                            }
-                                        });
-
-                                        // Preserve references
-                                        let references = statement.references().clone();
-                                        //println!("{:?} => \n{:?}\n", statement, &s);
-                                        *statement = s.clone();
-                                        statement.set_references(references);
-                                    }
-                                    None => {}
-                                }
+                            } else if let Some(p50_statement) =
+                                &authors[candidate].generate_author_statement()
+                            {
+                                Self::update_p2093_to_p50_statement(p50_statement, p2093_statement);
                             }
                         }
                         None => {}
                     }
                 }
-            }
-        });
+            });
 
-        // Remove no-value P2093s
-        item.claims_mut()
-            .retain(|statement| *statement.main_snak() != snak_remove_statement);
+        Self::remove_statements_with_no_value(item);
     }
 
-    fn create_or_update_author_statements(
+    pub fn create_or_update_author_statements(
         &mut self,
         item: &mut Entity,
         authors: &Vec<GenericAuthorInfo>,
@@ -214,7 +211,7 @@ impl WikidataPapers {
         let mut new_authors: Vec<GenericAuthorInfo> = vec![];
         for author in authors {
             let r = author
-                .get_or_create_author_item(mw_api.clone(), self.cache.clone())
+                .get_or_create_author_item(mw_api.clone(), self.cache.clone(), false)
                 .await;
             new_authors.push(r);
         }
@@ -350,6 +347,15 @@ impl WikidataPapers {
             return None;
         }
 
+        self.apply_diff_for_item(original_item, item, mw_api).await
+    }
+
+    pub async fn apply_diff_for_item(
+        &mut self,
+        original_item: Entity,
+        item: Entity,
+        mw_api: Arc<RwLock<Api>>,
+    ) -> Option<EditResult> {
         let mut params = EntityDiffParams::none();
         params.labels.add = EntityDiffParamState::All;
         params.aliases.add = EntityDiffParamState::All;
@@ -433,6 +439,66 @@ impl WikidataPapers {
         items.sort();
         items.dedup();
         items
+    }
+
+    pub fn entities_mut(&mut self) -> &mut entity_container::EntityContainer {
+        &mut self.entities
+    }
+
+    fn get_p50s_from_item(item: &mut Entity) -> Vec<String> {
+        let p50: Vec<String> = item
+            .claims()
+            .par_iter()
+            .filter(|statement| statement.property() == "P50")
+            .filter_map(|statement| match statement.main_snak().data_value() {
+                Some(dv) => match dv.value() {
+                    Value::Entity(entity) => Some(entity.id().to_string()),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        p50
+    }
+
+    fn update_p2093_to_p50_statement(p50_statement: &Statement, p2093_statement: &mut Statement) {
+        let mut p50_statement = p50_statement.to_owned();
+
+        // Preserve qualifiers
+        p2093_statement.qualifiers().iter().for_each(|q1| {
+            if !p50_statement
+                .qualifiers()
+                .iter()
+                .any(|q2| q1.property() == q2.property())
+            {
+                p50_statement.add_qualifier_snak(q1.clone())
+            }
+        });
+
+        // P1932 "object named as"
+        if let Some(dv) = p2093_statement.main_snak().data_value() {
+            if let Value::StringValue(author_name_string) = dv.value() {
+                let p1932_qualifier = Snak::new_string("P1932", author_name_string);
+                p50_statement.add_qualifier_snak(p1932_qualifier);
+            }
+        }
+
+        // Preserve references
+        let references = p2093_statement.references().clone();
+        // println!("{p2093_statement:?} =>\n{p50_statement:?}\n");
+        *p2093_statement = p50_statement;
+        p2093_statement.set_references(references);
+    }
+
+    fn remove_p2093_statement(p2093_statement: &mut Statement) {
+        // HACK change to "no value", then remove downstream
+        p2093_statement.set_main_snak(SNAK_REMOVE_STATEMENT.to_owned());
+    }
+
+    fn remove_statements_with_no_value(item: &mut Entity) {
+        // Remove no-value P2093s
+        item.claims_mut()
+            .retain(|statement| *statement.main_snak() != *SNAK_REMOVE_STATEMENT);
     }
 }
 
