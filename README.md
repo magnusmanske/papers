@@ -40,7 +40,7 @@ For each P2093 co-author on at least 2 papers, it will
 - create a new author item if this name does not have a search hit, and change it to the new P50 author
 
 ```
-echo '0000-0001-5916-0947' | cargo run --release -- authors
+echo '0000-0001-5916-0947' | cargo run --release -- ans
 ```
 
 ### `authors`
