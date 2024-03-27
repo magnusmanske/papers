@@ -94,7 +94,7 @@ impl AuthorNameString {
             papers.update_author_name_statement(ans, &author, &mut item);
             println!("EDITING PAPER {paper_q}: {ans} => {author_q}");
             papers.set_edit_summary(Some(format!(
-                "Changing {ans} to {author_q} [#Papers (was: SourceMD)]"
+                "Changing {ans} to {author_q} [#Papers ANS (was: SourceMD)]"
             )));
             match papers
                 .apply_diff_for_item(original_item, item, mw_api.clone())
