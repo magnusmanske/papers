@@ -46,7 +46,7 @@ impl AuthorNameString {
             .await
             .unwrap();
         let author_q = if res.is_empty() {
-            Some(self.create_new_author(ans, mw_api, cache).await)
+            self.create_new_author(ans, mw_api, cache).await
         } else if res.len() == 1 {
             if let Some(author_qs) = name2author_qs.get(ans) {
                 if author_qs.len() == 1 {
@@ -225,7 +225,7 @@ impl AuthorNameString {
         ans: &String,
         mw_api: &Arc<RwLock<Api>>,
         cache: &Arc<WikidataStringCache>,
-    ) -> String {
+    ) -> Option<String> {
         self.log(1, &format!("CREATING AUTHOR {ans}"));
         let mut author = GenericAuthorInfo::new();
         author.name = Some(ans.clone());
@@ -233,6 +233,6 @@ impl AuthorNameString {
             .get_or_create_author_item(mw_api.clone(), cache.clone(), true)
             .await;
         self.log(1, &format!("CREATED AUTHOR {ans} => {author:?}"));
-        author.wikidata_item.as_ref().unwrap().to_owned()
+        Some(author.wikidata_item.as_ref()?.to_owned())
     }
 }
