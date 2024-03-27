@@ -19,15 +19,13 @@ pub struct SourceMD {
 
 impl SourceMD {
     pub async fn new(ini_file: &str) -> Result<Self, String> {
-        let mut ret = Self {
+        Ok(Self {
             params: json!({}),
             running_batch_ids: Arc::new(RwLock::new(HashSet::new())),
             failed_batch_ids: Arc::new(RwLock::new(HashSet::new())),
             pool: None,
             mw_api: Arc::new(RwLock::new(Self::create_mw_api(ini_file).await?)),
-        };
-        ret.init();
-        Ok(ret)
+        })
     }
 
     pub async fn set_batch_failed(&self, batch_id: i64) {
@@ -231,7 +229,7 @@ impl SourceMD {
         Some(())
     }
 
-    fn init(&mut self) {
+    pub fn init(&mut self) {
         // File::with_name(..) is shorthand for File::from(Path::new(..))
         let ini_file = "replica.my.ini";
         let settings = Config::builder()

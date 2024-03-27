@@ -43,8 +43,6 @@ For each P2093 co-author on at least 2 papers, it will
 echo '0000-0001-5916-0947' | cargo run --release -- authors
 ```
 
-**Note** This currently requires a Toolforge database connection and does not work outside that ecosystem.
-
 ### `authors`
 
 Processes `STDIN` as author IDs (eg ORCID), one per line. It will update or create the respective Wikidata items. Example:
@@ -52,8 +50,6 @@ Processes `STDIN` as author IDs (eg ORCID), one per line. It will update or crea
 ```
 echo '0000-0001-5916-0947' | cargo run --release -- authors
 ```
-
-**Note** This currently requires a Toolforge database connection and does not work outside that ecosystem.
 
 ### `bot`
 
