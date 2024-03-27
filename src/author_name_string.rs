@@ -60,10 +60,10 @@ impl AuthorNameString {
                 None
             }
         } else {
-            self.log(
-                2,
-                &format!("MULTIPLE POSSIBLE MATCHES FOR {ans}: {simple_name} => {res:?}"),
-            );
+            // self.log(
+            //     2,
+            //     &format!("MULTIPLE POSSIBLE MATCHES FOR {ans}: {simple_name} => {res:?}"),
+            // );
             None
         };
 
