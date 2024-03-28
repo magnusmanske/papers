@@ -20,6 +20,7 @@ use papers::sourcemd_bot::SourceMDbot;
 use papers::sourcemd_config::SourceMD;
 use papers::wikidata_papers::WikidataPapers;
 use papers::*;
+use rand::seq::SliceRandom;
 use regex::Regex;
 use std::env;
 use std::io;
@@ -65,22 +66,18 @@ async fn command_ans(ini_file: &str) {
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
     let mut ans = AuthorNameString::default();
     /* trunk-ignore(clippy/field_reassign_with_default) */
-    ans.logging_level = 1;
+    ans.logging_level = 2;
 
-    let mut futures = vec![];
-
-    let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(l) => l.trim().to_string(),
-            Err(_) => break,
-        };
-        if line.is_empty() {
-            continue;
-        }
-        let future = ans.process_author_q(line, &mw_api, &cache);
-        futures.push(future);
-    }
+    let mut futures: Vec<_> = io::stdin()
+        .lock()
+        .lines()
+        /* trunk-ignore(clippy/lines_filter_map_ok) */
+        .filter_map(|line| line.ok())
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .map(|line| ans.process_author_q(line, &mw_api, &cache))
+        .collect();
+    futures.shuffle(&mut rand::thread_rng());
 
     let stream = futures::stream::iter(futures).buffer_unordered(MAX_AUTHORS_IN_PARALLEL);
     stream.collect::<Vec<_>>().await;

@@ -67,7 +67,8 @@ impl AuthorNameString {
             papers.update_author_name_statement(ans, &author, &mut item);
             self.log(3, format!("EDITING PAPER {paper_q}: {ans} => {author_q}"));
             papers.set_edit_summary(Some(format!(
-                "Changing {ans} to {author_q} [#Papers ANS (was: SourceMD)]"
+                "Changing {ans} to {} [#Papers ANS (was: SourceMD)]",
+                "[[".to_string() + &author_q + "]]"
             )));
             match papers
                 .apply_diff_for_item(original_item, item, mw_api.clone())
@@ -82,7 +83,7 @@ impl AuthorNameString {
                         edited_qs.push(er.q.clone());
                     } else {
                         self.log(
-                            4,
+                            3,
                             format!("https://www.wikidata.org/wiki/{}, no changes ", &er.q),
                         );
                     }
@@ -136,10 +137,10 @@ impl AuthorNameString {
                 None
             }
         } else {
-            // self.log(
-            //     2,
-            //     &format!("MULTIPLE POSSIBLE MATCHES FOR {ans}: {simple_name} => {res:?}"),
-            // );
+            self.log(
+                2,
+                format!("MULTIPLE POSSIBLE MATCHES FOR {ans}: {simple_name} => {res:?}"),
+            );
             None
         };
         author_q
