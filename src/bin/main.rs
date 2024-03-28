@@ -65,7 +65,7 @@ async fn command_ans(ini_file: &str) {
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
     let mut ans = AuthorNameString::default();
     /* trunk-ignore(clippy/field_reassign_with_default) */
-    ans.logging_level = 0;
+    ans.logging_level = 1;
 
     let mut futures = vec![];
 

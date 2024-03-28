@@ -24,9 +24,9 @@ pub struct AuthorNameString {
 }
 
 impl AuthorNameString {
-    fn log(&self, level: u8, msg: &str) {
-        if self.logging_level <= level {
-            println!("{}", msg);
+    fn log<S: Into<String>>(&self, level: u8, msg: S) {
+        if level <= self.logging_level {
+            println!("{}", msg.into());
         }
     }
 
@@ -45,7 +45,6 @@ impl AuthorNameString {
             Some(q) => q,
             None => return,
         };
-        // println!("AUTHOR {author_q}");
 
         let mut author = GenericAuthorInfo::new();
         author.name = Some(ans.clone());
@@ -66,7 +65,7 @@ impl AuthorNameString {
             };
             let original_item = item.clone();
             papers.update_author_name_statement(ans, &author, &mut item);
-            println!("EDITING PAPER {paper_q}: {ans} => {author_q}");
+            self.log(3, format!("EDITING PAPER {paper_q}: {ans} => {author_q}"));
             papers.set_edit_summary(Some(format!(
                 "Changing {ans} to {author_q} [#Papers ANS (was: SourceMD)]"
             )));
@@ -76,13 +75,19 @@ impl AuthorNameString {
             {
                 Some(er) => {
                     if er.edited {
-                        println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q);
+                        self.log(
+                            1,
+                            format!("Created or updated https://www.wikidata.org/wiki/{}", &er.q),
+                        );
                         edited_qs.push(er.q.clone());
                     } else {
-                        println!("https://www.wikidata.org/wiki/{}, no changes ", &er.q);
+                        self.log(
+                            4,
+                            format!("https://www.wikidata.org/wiki/{}, no changes ", &er.q),
+                        );
                     }
                 }
-                None => println!("No item ID!"),
+                None => self.log(1, "No paper item ID!"),
             }
             // papers.set_edit_summary(None);
             // save_item_changes(&mut papers, mw_api.clone(), paper_q).await;
@@ -119,7 +124,10 @@ impl AuthorNameString {
             if let Some(author_qs) = name2author_qs.get(ans) {
                 if author_qs.len() == 1 {
                     let author_q = &author_qs[0];
-                    println!("MATCHED AUTHOR {ans}: {simple_name} => {author_q}");
+                    self.log(
+                        1,
+                        format!("MATCHED AUTHOR {ans}: {simple_name} => {author_q}"),
+                    );
                     Some(author_q.to_owned())
                 } else {
                     None
@@ -143,7 +151,7 @@ impl AuthorNameString {
         mw_api: &Arc<RwLock<Api>>,
         cache: &Arc<WikidataStringCache>,
     ) -> Result<()> {
-        self.log(1, &format!("Processing {}", &root_author_q));
+        self.log(1, format!("Processing {}", &root_author_q));
         let mut author = GenericAuthorInfo::new();
         author.wikidata_item = Some(root_author_q.to_owned());
         let api = mw_api.read().await;
@@ -238,13 +246,13 @@ impl AuthorNameString {
         mw_api: &Arc<RwLock<Api>>,
         cache: &Arc<WikidataStringCache>,
     ) -> Option<String> {
-        self.log(1, &format!("CREATING AUTHOR {ans}"));
+        self.log(1, format!("CREATING AUTHOR {ans}"));
         let mut author = GenericAuthorInfo::new();
         author.name = Some(ans.clone());
         let author = author
             .get_or_create_author_item(mw_api.clone(), cache.clone(), true)
             .await;
-        self.log(1, &format!("CREATED AUTHOR {ans} => {author:?}"));
+        self.log(1, format!("CREATED AUTHOR {ans} => {author:?}"));
         Some(author.wikidata_item.as_ref()?.to_owned())
     }
 }
