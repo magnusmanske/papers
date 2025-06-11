@@ -35,8 +35,8 @@ semanticscholar = { git = "https://github.com/magnusmanske/semanticscholar" }
 #orcid="*"
 orcid = { git = "https://github.com/magnusmanske/orcid_rs" }
 
-#pubmed="*"
-pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
+pubmed = "*"
+#pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
 #pubmed = { path='../pubmed' }
 
 #wikibase = { path='../wikibase_rs' }
