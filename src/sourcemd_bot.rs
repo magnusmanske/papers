@@ -2,6 +2,7 @@ use crate::arxiv2wikidata::Arxiv2Wikidata;
 use crate::crossref2wikidata::Crossref2Wikidata;
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::identifiers::{GenericWorkIdentifier, IdProp};
+use crate::openalex2wikidata::OpenAlex2Wikidata;
 use crate::orcid2wikidata::Orcid2Wikidata;
 use crate::pmc2wikidata::PMC2Wikidata;
 use crate::pubmed2wikidata::Pubmed2Wikidata;
@@ -256,6 +257,7 @@ impl SourceMDbot {
         wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
         wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
         wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
+        wdp.add_adapter(Box::new(OpenAlex2Wikidata::new()));
         wdp
     }
 }

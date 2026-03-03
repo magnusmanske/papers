@@ -8,6 +8,7 @@ use papers::author_name_string::AuthorNameString;
 use papers::arxiv2wikidata::Arxiv2Wikidata;
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::identifiers::GenericWorkIdentifier;
+use papers::openalex2wikidata::OpenAlex2Wikidata;
 use papers::orcid2wikidata::Orcid2Wikidata;
 use papers::pmc2wikidata::PMC2Wikidata;
 use papers::pubmed2wikidata::Pubmed2Wikidata;
@@ -110,6 +111,7 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
     wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
     wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
+    wdp.add_adapter(Box::new(OpenAlex2Wikidata::new()));
 
     if let Some(q) = RE_WD.captures(id).and_then(|c| c.get(1)) {
         save_item_changes(&mut wdp, mw_api.clone(), q.as_str()).await;
