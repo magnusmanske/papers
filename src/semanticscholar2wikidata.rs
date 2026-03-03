@@ -182,7 +182,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
         let mut ret: Vec<GenericAuthorInfo> = vec![];
         let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w.clone(),
+            Some(w) => w,
             None => return ret,
         };
 
