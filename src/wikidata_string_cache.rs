@@ -93,8 +93,7 @@ impl WikidataStringCache {
     }
 
     fn fix_key(&self, key: &str) -> String {
-        let ret: String = key.to_string().trim().to_lowercase();
-        ret
+        key.trim().to_lowercase()
     }
 
     async fn property_needs_pruning(&self, property: &str) -> bool {
