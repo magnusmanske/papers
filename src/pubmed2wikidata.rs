@@ -94,7 +94,50 @@ impl Pubmed2Wikidata {
                 }
             }
         }
-        work_ids.iter().map(|s| s.to_string()).collect()
+        // Filter to only include articles that actually contain the queried DOI.
+        // PubMed's text search can return unrelated articles that happen to match
+        // the query string but have a different DOI (or no DOI at all).
+        let doi_upper = doi.to_uppercase();
+        work_ids
+            .iter()
+            .map(|s| s.to_string())
+            .filter(|pub_id| self.get_dois_from_cached_publication(pub_id).contains(&doi_upper))
+            .collect()
+    }
+
+    fn get_dois_from_cached_publication(&self, publication_id: &str) -> Vec<String> {
+        let work = match self.get_cached_publication_from_id(publication_id) {
+            Some(w) => w,
+            None => return vec![],
+        };
+        let mut dois = vec![];
+        if let Some(pubmed_data) = &work.pubmed_data {
+            if let Some(article_ids) = &pubmed_data.article_ids {
+                for id in &article_ids.ids {
+                    if let (Some(key), Some(id)) = (&id.id_type, &id.id) {
+                        if key == "doi" {
+                            dois.push(id.to_uppercase());
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(medline_citation) = &work.medline_citation {
+            if let Some(article) = &medline_citation.article {
+                for elid in &article.e_location_ids {
+                    if elid.valid {
+                        if let (Some(id_type), Some(id)) = (&elid.e_id_type, &elid.id) {
+                            if id_type == "doi" {
+                                dois.push(id.to_uppercase());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        dois.sort();
+        dois.dedup();
+        dois
     }
 
     fn add_identifiers_from_cached_publication(
@@ -372,26 +415,118 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
 
 #[cfg(test)]
 mod tests {
-    //use super::*;
-    //use wikibase::mediawiki::api::Api;
+    use super::*;
 
-    /*
-    TODO:
-    pub fn new() -> Self {
-    pub fn get_cached_publication_from_id(
-    fn get_author_name_string(&self, author: &Author) -> Option<String> {
-    fn publication_id_from_pubmed(&mut self, publication_id: &str) -> Option<String> {
-    fn publication_ids_from_doi(&mut self, doi: &str) -> Vec<String> {
-    fn add_identifiers_from_cached_publication(
-    fn name(&self) -> &str {
-    fn author_cache(&self) -> &HashMap<String, String> {
-    fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
-    fn publication_property(&self) -> Option<String> {
-    fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
-    fn get_work_issn(&self, publication_id: &str) -> Option<String> {
-    fn get_identifier_list(
-    fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity) {
-    fn do_cache_work(&mut self, publication_id: &str) -> Option<String> {
-    fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
-    */
+    /// Helper: creates a PubmedArticle with the given PMID and DOI (in both
+    /// pubmed_data.article_ids and article.e_location_ids).
+    fn make_article(pmid: u64, doi: Option<&str>) -> PubmedArticle {
+        let article_ids = doi.map(|d| ArticleIdList {
+            ids: vec![ArticleId {
+                id_type: Some("doi".to_string()),
+                id: Some(d.to_string()),
+            }],
+        });
+        let e_location_ids = match doi {
+            Some(d) => vec![ELocationID {
+                e_id_type: Some("doi".to_string()),
+                valid: true,
+                id: Some(d.to_string()),
+            }],
+            None => vec![],
+        };
+        PubmedArticle {
+            medline_citation: Some(MedlineCitation {
+                pmid,
+                article: Some(Article {
+                    e_location_ids,
+                    ..Article::new()
+                }),
+                ..MedlineCitation::new()
+            }),
+            pubmed_data: Some(PubmedData {
+                article_ids,
+                history: vec![],
+                references: vec![],
+                publication_status: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn test_get_dois_from_cached_publication_with_doi() {
+        let mut pm = Pubmed2Wikidata::new();
+        pm.work_cache
+            .insert("12345".to_string(), make_article(12345, Some("10.1234/test")));
+        let dois = pm.get_dois_from_cached_publication("12345");
+        assert!(dois.contains(&"10.1234/TEST".to_string()));
+    }
+
+    #[test]
+    fn test_get_dois_from_cached_publication_no_doi() {
+        let mut pm = Pubmed2Wikidata::new();
+        pm.work_cache
+            .insert("99999".to_string(), make_article(99999, None));
+        let dois = pm.get_dois_from_cached_publication("99999");
+        assert!(dois.is_empty());
+    }
+
+    #[test]
+    fn test_get_dois_from_cached_publication_missing_article() {
+        let pm = Pubmed2Wikidata::new();
+        let dois = pm.get_dois_from_cached_publication("nonexistent");
+        assert!(dois.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_publication_ids_from_doi_filters_wrong_articles() {
+        // Simulate PubMed text search returning two articles for a DOI query,
+        // but only one of them actually has that DOI.
+        let target_doi = "10.3390/math10050822";
+        let wrong_doi = "10.9999/unrelated";
+
+        let mut pm = Pubmed2Wikidata::new();
+        // Pre-populate query_cache so no network call is made
+        pm.query_cache
+            .insert(target_doi.to_string(), vec![11111, 22222]);
+        // Pre-populate work_cache: article 11111 has the correct DOI,
+        // article 22222 has a different DOI
+        pm.work_cache
+            .insert("11111".to_string(), make_article(11111, Some(target_doi)));
+        pm.work_cache
+            .insert("22222".to_string(), make_article(22222, Some(wrong_doi)));
+
+        let result = pm.publication_ids_from_doi(target_doi).await;
+        assert_eq!(result, vec!["11111".to_string()]);
+        assert!(!result.contains(&"22222".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_publication_ids_from_doi_filters_all_when_none_match() {
+        let target_doi = "10.3390/math10050822";
+
+        let mut pm = Pubmed2Wikidata::new();
+        pm.query_cache.insert(target_doi.to_string(), vec![33333]);
+        pm.work_cache.insert(
+            "33333".to_string(),
+            make_article(33333, Some("10.9999/different")),
+        );
+
+        let result = pm.publication_ids_from_doi(target_doi).await;
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_publication_ids_from_doi_case_insensitive() {
+        // DOI comparison should be case-insensitive
+        let target_doi = "10.3390/Math10050822"; // mixed case input
+        let article_doi = "10.3390/math10050822"; // lowercase in article
+
+        let mut pm = Pubmed2Wikidata::new();
+        pm.query_cache.insert(target_doi.to_string(), vec![44444]);
+        pm.work_cache
+            .insert("44444".to_string(), make_article(44444, Some(article_doi)));
+
+        let result = pm.publication_ids_from_doi(target_doi).await;
+        assert_eq!(result, vec!["44444".to_string()]);
+    }
 }
