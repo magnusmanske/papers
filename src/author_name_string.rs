@@ -51,8 +51,9 @@ impl AuthorNameString {
         author.wikidata_item = Some(author_q.clone());
         let mut papers = WikidataPapers::new(cache.clone());
         let api = mw_api.read().await;
-        if let Err(_e) = papers.entities_mut().load_entities(&api, paper_qs).await {
-            panic!("Could not load paper items {paper_qs:?}");
+        if let Err(e) = papers.entities_mut().load_entities(&api, paper_qs).await {
+            eprintln!("Could not load paper items {paper_qs:?}: {e}");
+            return;
         }
         drop(api);
 
