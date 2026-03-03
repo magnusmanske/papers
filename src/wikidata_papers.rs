@@ -64,7 +64,24 @@ impl WikidataPapers {
     }
 
     fn create_author_statements(&mut self, authors: &Vec<GenericAuthorInfo>, item: &mut Entity) {
+        let mut seen_q_items: HashSet<String> = HashSet::new();
+        let mut seen_names: HashSet<String> = HashSet::new();
         for author in authors {
+            // Skip duplicate wikidata items (prevents duplicate P50 for same person)
+            if let Some(q) = &author.wikidata_item {
+                if !seen_q_items.insert(q.clone()) {
+                    continue;
+                }
+            }
+            // Skip duplicate author name strings for P2093
+            if author.wikidata_item.is_none() {
+                if let Some(name) = &author.name {
+                    let key = GenericAuthorInfo::simplify_name(&name.to_lowercase());
+                    if !key.is_empty() && !seen_names.insert(key) {
+                        continue;
+                    }
+                }
+            }
             author.create_author_statement_in_paper_item(item);
         }
     }
@@ -114,19 +131,8 @@ impl WikidataPapers {
                 if let Some((candidate, _points)) = author.find_best_match(authors) {
                     if let Some(q) = &authors[candidate].wikidata_item {
                         if p50.contains(q) {
-                            // Strange, we already have this one, remove
-                            if author.list_number.is_some()
-                                && author.list_number == authors[candidate].list_number
-                            {
-                                println!(
-                                    "REMOVING AUTHOR {:?}\nBECAUSE:\n{:?}\n{:?}",
-                                    &p2093_statement, &author, &authors[candidate]
-                                );
-                                // Same list number, remove P2093
-                                Self::remove_p2093_statement(p2093_statement);
-                            } else {
-                                println!("NOT REMOVING AUTHOR {:?}", &p2093_statement);
-                            }
+                            // Author already has P50, remove redundant P2093
+                            Self::remove_p2093_statement(p2093_statement);
                         } else if let Some(p50_statement) =
                             &authors[candidate].generate_author_statement()
                         {
@@ -169,7 +175,13 @@ impl WikidataPapers {
                     Ok(_) => {}
                     Err(e) => eprintln!("{:?}: {}", &author, e),
                 },
-                None => authors.push(author.clone()), // No match found, add the author
+                None => {
+                    // Only add if there's truly no overlap with any existing author.
+                    // If there's a partial match (ambiguous), skip to avoid duplicates.
+                    if !author.has_partial_match(authors) {
+                        authors.push(author.clone());
+                    }
+                }
             }
         }
     }
@@ -207,6 +219,9 @@ impl WikidataPapers {
             let authors2 = adapter.get_author_list(&publication_id);
             self.merge_authors(&mut authors, &authors2);
         }
+
+        // Final deduplication pass after all sources have been merged
+        GenericAuthorInfo::deduplicate(&mut authors);
 
         let mut new_authors: Vec<GenericAuthorInfo> = vec![];
         for author in authors {
