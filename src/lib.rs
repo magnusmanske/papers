@@ -9,6 +9,7 @@ use wikibase::*;
 pub mod arxiv2wikidata;
 pub mod author_name_string;
 pub mod crossref2wikidata;
+pub mod datacite2wikidata;
 pub mod generic_author_info;
 pub mod identifiers;
 pub mod openalex2wikidata;
