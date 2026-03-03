@@ -37,14 +37,14 @@ impl PMC2Wikidata {
         RE_PMID.is_match(id)
     }
 
-    fn publication_id_from_pubmed(&mut self, pubmed_id: &str) -> Option<String> {
+    async fn publication_id_from_pubmed(&mut self, pubmed_id: &str) -> Option<String> {
         if !self.is_pubmed_id(pubmed_id) {
             return None;
         }
         let mut publication_id = pubmed_id.to_string(); // Fallback
         if !self.work_cache.contains_key(pubmed_id) {
             let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:{}%20AND%20SRC:MED&resulttype=core&format=json",pubmed_id) ;
-            let json: serde_json::Value = reqwest::blocking::get(url.as_str()).ok()?.json().ok()?;
+            let json: serde_json::Value = reqwest::get(url.as_str()).await.ok()?.json().await.ok()?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
                 match results.first() {
@@ -69,13 +69,13 @@ impl PMC2Wikidata {
         RE_PMCID.is_match(id)
     }
 
-    fn publication_id_from_pmcid(&mut self, pmc_id: &str) -> Option<String> {
+    async fn publication_id_from_pmcid(&mut self, pmc_id: &str) -> Option<String> {
         if !self.is_pmcid(pmc_id) {
             return None;
         }
         if !self.work_cache.contains_key(pmc_id) {
             let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={}&resulttype=core&format=json",pmc_id) ;
-            let json: serde_json::Value = reqwest::blocking::get(url.as_str()).ok()?.json().ok()?;
+            let json: serde_json::Value = reqwest::get(url.as_str()).await.ok()?.json().await.ok()?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
                 match results.first() {
@@ -181,12 +181,12 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
                 None => {
                     // Attempt fallback to PubMed ID
                     return match self.get_external_identifier_from_item(item, &IdProp::PMID) {
-                        Some(pmid) => self.publication_id_from_pubmed(&pmid),
+                        Some(pmid) => self.publication_id_from_pubmed(&pmid).await,
                         None => None,
                     };
                 }
             };
-        self.publication_id_from_pmcid(&pmcid)
+        self.publication_id_from_pmcid(&pmcid).await
     }
 
     fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
@@ -251,12 +251,12 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
             if let GenericWorkType::Property(prop) = id.work_type() {
                 match prop {
                     IdProp::PMID => {
-                        if let Some(publication_id) = self.publication_id_from_pubmed(id.id()) {
+                        if let Some(publication_id) = self.publication_id_from_pubmed(id.id()).await {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }
                     IdProp::PMCID => {
-                        if let Some(publication_id) = self.publication_id_from_pmcid(id.id()) {
+                        if let Some(publication_id) = self.publication_id_from_pmcid(id.id()).await {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
                     }
