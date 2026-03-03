@@ -1,6 +1,7 @@
 use crate::arxiv2wikidata::Arxiv2Wikidata;
 use crate::crossref2wikidata::Crossref2Wikidata;
 use crate::datacite2wikidata::DataCite2Wikidata;
+use crate::europepmc2wikidata::EuropePMC2Wikidata;
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::identifiers::{GenericWorkIdentifier, IdProp};
 use crate::openalex2wikidata::OpenAlex2Wikidata;
@@ -260,6 +261,7 @@ impl SourceMDbot {
         wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
         wdp.add_adapter(Box::new(OpenAlex2Wikidata::new()));
         wdp.add_adapter(Box::new(DataCite2Wikidata::new()));
+        wdp.add_adapter(Box::new(EuropePMC2Wikidata::new()));
         wdp
     }
 }
