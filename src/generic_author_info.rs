@@ -318,9 +318,7 @@ impl GenericAuthorInfo {
                 }
             }
         }
-        for name in &author2.alternative_names {
-            self.alternative_names.push(name.to_string());
-        }
+        self.alternative_names.extend(author2.alternative_names.iter().cloned());
         self.alternative_names.sort();
         self.alternative_names.dedup();
         Ok(())

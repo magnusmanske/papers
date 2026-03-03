@@ -165,7 +165,7 @@ impl WikidataPapers {
     ) {
         // Shortcut
         if authors.is_empty() {
-            *authors = authors2.par_iter().cloned().collect();
+            *authors = authors2.clone();
             return;
         }
 
@@ -239,14 +239,7 @@ impl WikidataPapers {
         authors: &Vec<GenericAuthorInfo>,
         mw_api: Arc<RwLock<Api>>,
     ) {
-        let mut qs: Vec<String> = vec![];
-        for author in authors {
-            let q = match &author.wikidata_item {
-                Some(q) => q,
-                None => continue,
-            };
-            qs.push(q.to_string());
-        }
+        let qs: Vec<String> = authors.iter().filter_map(|a| a.wikidata_item.clone()).collect();
         if qs.is_empty() {
             return;
         }
@@ -280,7 +273,7 @@ impl WikidataPapers {
                 .filter(|adapter| adapter.publication_property().is_some())
                 .filter(|adapter| Some(prop.to_owned()) == adapter.publication_property())
                 .filter_map(|adapter| adapter.publication_id_for_statement(id.id()))
-                .nth(0);
+                .next();
             if let Some(id) = id2statement {
                 item.add_claim(Statement::new_normal(
                     Snak::new_external_id(prop.as_str(), &id),

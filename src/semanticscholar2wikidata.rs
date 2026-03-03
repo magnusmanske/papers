@@ -191,8 +191,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
             None => return ret,
         };
 
-        for num in 0..work.authors.len() {
-            let author = &work.authors[num];
+        for (num, author) in work.authors.iter().enumerate() {
             let mut entry = GenericAuthorInfo {
                 name: author.name.clone(),
                 prop2id: HashMap::new(),

@@ -102,8 +102,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
             None => return vec![],
         };
 
-        for num in 0..work.author_ids.len() {
-            let orcid_author_id = &work.author_ids[num];
+        for orcid_author_id in &work.author_ids {
             if let Some(author) = self.get_or_load_author_data(orcid_author_id) {
                 let mut gai = GenericAuthorInfo {
                     name: None,
