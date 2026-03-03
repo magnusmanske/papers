@@ -254,10 +254,6 @@ impl SourceMDbot {
         wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
         wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
         wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
-        wdp.set_edit_summary(Some(format!(
-            "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{}",
-            command.batch_id, command.batch_id, command.id
-        )));
         wdp
     }
 }

@@ -48,17 +48,10 @@ impl Orcid2Wikidata {
 
     pub fn get_or_load_author_data(&mut self, orcid_author_id: &str) -> Option<Author> {
         if !self.author_data.contains_key(orcid_author_id) {
-            match self.client.author(&orcid_author_id.to_string()) {
-                Ok(data) => self
-                    .author_data
-                    .insert(orcid_author_id.to_string(), Some(data)),
-                Err(_) => self.author_data.insert(orcid_author_id.to_string(), None),
-            };
+            let data = self.client.author(&orcid_author_id.to_string()).ok();
+            self.author_data.insert(orcid_author_id.to_string(), data);
         }
-        match self.author_data.get(orcid_author_id) {
-            Some(ret) => ret.to_owned(),
-            None => None,
-        }
+        self.author_data.get(orcid_author_id).and_then(|r| r.clone())
     }
 }
 
