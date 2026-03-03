@@ -355,33 +355,27 @@ impl GenericAuthorInfo {
         ret.trim().to_string()
     }
 
+    /// Collects all long (3+ char) words from a pre-processed name string, sorted.
+    fn sorted_name_parts(re: &Regex, s: &str) -> Vec<String> {
+        let mut parts: Vec<String> = re.captures_iter(s).map(|c| c[1].to_string()).collect();
+        parts.sort();
+        parts
+    }
+
     /// Compares long (3+ characters) name parts
     fn author_names_match(&self, name1: &str, name2: &str) -> u16 {
-        let mut ret = 0;
         lazy_static! {
             static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b")
                 .expect("GenericAuthorInfo::author_names_match: could not compile RE1");
         }
         let name1_mod = self.asciify_string(name1).replace('.', " ");
         let name2_mod = self.asciify_string(name2).replace('.', " ");
-        if RE1.is_match(&name1_mod) && RE1.is_match(&name2_mod) {
-            let mut parts1: Vec<String> = vec![];
-            for cap in RE1.captures_iter(&name1_mod) {
-                parts1.push(cap[1].to_string());
-            }
-            parts1.sort();
-            let mut parts2: Vec<String> = vec![];
-            for cap in RE1.captures_iter(&name2_mod) {
-                parts2.push(cap[1].to_string());
-            }
-            parts2.sort();
-            parts1.iter().for_each(|part| {
-                if parts2.contains(part) {
-                    ret += 1;
-                }
-            });
+        if !RE1.is_match(&name1_mod) || !RE1.is_match(&name2_mod) {
+            return 0;
         }
-        ret
+        let parts1 = Self::sorted_name_parts(&RE1, &name1_mod);
+        let parts2 = Self::sorted_name_parts(&RE1, &name2_mod);
+        parts1.iter().filter(|part| parts2.contains(*part)).count() as u16
     }
 
     pub fn compare(&self, author2: &GenericAuthorInfo) -> u16 {
