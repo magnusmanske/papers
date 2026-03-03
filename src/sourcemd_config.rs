@@ -260,14 +260,12 @@ impl SourceMD {
             self.create_mysql_pool();
         }
 
-        if self.pool.is_none() {
-            println!("{settings:?}");
-            panic!("Can't establish DB connection!");
-        }
-
         let pool = match &self.pool {
             Some(pool) => pool,
-            None => panic!("Oh no!"),
+            None => {
+                println!("{settings:?}");
+                panic!("Can't establish DB connection!");
+            }
         };
         pool.prep_exec(
             r#"UPDATE `batch` SET `status`='TODO' WHERE status='RUNNING'"#,
