@@ -198,18 +198,10 @@ pub trait ScientificPublicationAdapter {
             return true;
         }
         // Not so easy then...
-        let t1 = t1
-            .to_lowercase()
-            .trim_end_matches('.')
-            .to_string()
-            .trim()
-            .to_string();
-        let t2 = t2
-            .to_lowercase()
-            .trim_end_matches('.')
-            .to_string()
-            .trim()
-            .to_string();
+        let t1 = t1.to_lowercase();
+        let t1 = t1.trim_end_matches('.').trim();
+        let t2 = t2.to_lowercase();
+        let t2 = t2.trim_end_matches('.').trim();
         t1 == t2
     }
 
