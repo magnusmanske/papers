@@ -5,6 +5,7 @@ use crate::sourcemd_command::SourceMDcommand;
 use crate::wikidata_string_cache::WikidataStringCache;
 use futures::prelude::*;
 use papers::author_name_string::AuthorNameString;
+use papers::arxiv2wikidata::Arxiv2Wikidata;
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::identifiers::GenericWorkIdentifier;
 use papers::orcid2wikidata::Orcid2Wikidata;
@@ -108,6 +109,7 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
     wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
     wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
+    wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
 
     if let Some(q) = RE_WD.captures(id).and_then(|c| c.get(1)) {
         save_item_changes(&mut wdp, mw_api.clone(), q.as_str()).await;

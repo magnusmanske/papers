@@ -1,3 +1,4 @@
+use crate::arxiv2wikidata::Arxiv2Wikidata;
 use crate::crossref2wikidata::Crossref2Wikidata;
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::identifiers::{GenericWorkIdentifier, IdProp};
@@ -254,6 +255,7 @@ impl SourceMDbot {
         wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
         wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
         wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
+        wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
         wdp
     }
 }

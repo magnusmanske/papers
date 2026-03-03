@@ -6,6 +6,7 @@ extern crate lazy_static;
 use wikibase::entity_diff::*;
 use wikibase::*;
 
+pub mod arxiv2wikidata;
 pub mod author_name_string;
 pub mod crossref2wikidata;
 pub mod generic_author_info;

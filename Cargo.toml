@@ -43,4 +43,5 @@ pubmed = "*"
 #wikibase = { path='../wikibase_rs' }
 #wikibase = { git="https://gitlab.com/tobias47n9e/wikibase_rs",branch = "rayon"}
 wikibase = { git = "https://gitlab.com/tobias47n9e/wikibase_rs" }
+arxiv-rs = "0.2.0"
 #wikibase = "*"
