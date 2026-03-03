@@ -352,36 +352,6 @@ pub trait ScientificPublicationAdapter {
         self.author_cache().is_empty()
     }
 
-    fn update_author_item(
-        &mut self,
-        source_author_name: &str,
-        author_id: &str,
-        author_name: &str,
-        item: &mut Entity,
-    ) {
-        item.set_label(LocaleString::new("en", source_author_name));
-        if source_author_name != author_name {
-            item.add_alias(LocaleString::new("en", author_name));
-        }
-
-        if !item.has_claims_with_property("P31") {
-            item.add_claim(Statement::new_normal(
-                Snak::new_item("P31", "Q5"),
-                vec![],
-                self.reference(),
-            ));
-        }
-        if let Some(prop) = self.author_property() {
-            if !item.has_claims_with_property("P31") {
-                item.add_claim(Statement::new_normal(
-                    Snak::new_external_id(prop, author_id.to_string()),
-                    vec![],
-                    self.reference(),
-                ));
-            }
-        }
-    }
-
     /// Caches language ISO codes and their mapping to Wikidata items
     async fn language2q(&self, language: &str) -> Option<String> {
         static L2Q: OnceCell<HashMap<String, String>> = OnceCell::const_new();
@@ -444,7 +414,6 @@ mod tests {
     fn set_author_cache_entry(&mut self, catalog_author_id: &str, q: &str) {
     fn get_author_item_from_cache(&self, catalog_author_id: &str) -> Option<&String> {
     fn author_cache_is_empty(&self) -> bool {
-    fn update_author_item(
     fn language2q
     */
 }
