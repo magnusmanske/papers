@@ -76,23 +76,21 @@ impl GenericAuthorInfo {
             .iter()
             .for_each(|snak| match snak.property() {
                 // List number
-                "P1545" => match snak.data_value() {
-                    Some(dv) => {
+                "P1545" => {
+                    if let Some(dv) = snak.data_value() {
                         if let Value::StringValue(s) = dv.value() {
                             ret.list_number = Some(s.to_string())
                         }
                     }
-                    None => {}
-                },
+                }
                 // Named as
-                "P1932" => match snak.data_value() {
-                    Some(dv) => {
+                "P1932" => {
+                    if let Some(dv) = snak.data_value() {
                         if let Value::StringValue(s) = dv.value() {
                             ret.name = Some(s.to_string())
                         }
                     }
-                    None => {}
-                },
+                }
                 _ => {}
             });
 
@@ -159,20 +157,17 @@ impl GenericAuthorInfo {
 
     pub fn amend_author_item(&self, item: &mut Entity) {
         // Set label, unless already set (then try alias)
-        match &self.name {
-            Some(name) => {
-                if !name.is_empty() {
-                    match item.label_in_locale("en") {
-                        Some(s) => {
-                            if s != name {
-                                item.add_alias(LocaleString::new("en", name));
-                            }
+        if let Some(name) = &self.name {
+            if !name.is_empty() {
+                match item.label_in_locale("en") {
+                    Some(s) => {
+                        if s != name {
+                            item.add_alias(LocaleString::new("en", name));
                         }
-                        None => item.set_label(LocaleString::new("en", name)),
                     }
+                    None => item.set_label(LocaleString::new("en", name)),
                 }
             }
-            None => {}
         }
 
         item.descriptions_mut()

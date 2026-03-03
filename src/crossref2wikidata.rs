@@ -175,29 +175,23 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         ];
         for option in string_options {
             if !item.has_claims_with_property(option.0) {
-                match option.1 {
-                    Some(v) => {
-                        if self.should_add_string(v) {
-                            item.add_claim(Statement::new_normal(
-                                Snak::new_string(option.0, v),
-                                vec![],
-                                self.reference(),
-                            ));
-                        }
+                if let Some(v) = option.1 {
+                    if self.should_add_string(v) {
+                        item.add_claim(Statement::new_normal(
+                            Snak::new_string(option.0, v),
+                            vec![],
+                            self.reference(),
+                        ));
                     }
-                    None => {}
                 }
             }
         }
 
-        match &work.subject {
-            Some(subjects) => {
-                for _subject in subjects {
-                    //println!("Subject:{}", &subject);
-                    // TODO
-                }
+        if let Some(subjects) = &work.subject {
+            for _subject in subjects {
+                //println!("Subject:{}", &subject);
+                // TODO
             }
-            None => {}
         }
 
         // TODO journal (already done via ISSN?)

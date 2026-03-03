@@ -128,12 +128,12 @@ impl SourceMD {
             "SELECT * FROM batch WHERE id={} AND `status` NOT IN ('RUNNING','TODO')",
             batch_id
         );
-        let result = match pool.prep_exec(sql, ()) {
+        let mut result = match pool.prep_exec(sql, ()) {
             Ok(r) => r,
             Err(e) => return Err(format!("Error: {}", e)),
         };
         /* trunk-ignore(clippy/never_loop) */
-        for _row in result {
+        if result.next().is_some() {
             return Err(format!(
                 "QuickStatementsConfig::check_batch_not_stopped: batch #{} is not RUNNING or TODO",
                 batch_id
@@ -168,7 +168,7 @@ impl SourceMD {
         };
         let sql = r#"SELECT * FROM command FORCE INDEX (batch_id_4) WHERE `batch_id`=? AND `status`='TODO' ORDER BY `serial_number` LIMIT 1"#;
         /* trunk-ignore(clippy/never_loop) */
-        for row in pool.prep_exec(sql, (my::Value::Int(batch_id),)).ok()? {
+        if let Some(row) = (pool.prep_exec(sql, (my::Value::Int(batch_id),)).ok()?).next() {
             let row = row.ok()?;
             return SourceMDcommand::new_from_row(row);
         }
@@ -291,10 +291,7 @@ impl SourceMD {
         }
 
         // Min 2, max 7 connections
-        self.pool = match my::Pool::new_manual(2, 7, builder) {
-            Ok(pool) => Some(pool),
-            _ => None,
-        }
+        self.pool = my::Pool::new_manual(2, 7, builder).ok()
     }
 
     pub async fn create_mw_api(ini_file: &str) -> Result<Api, String> {

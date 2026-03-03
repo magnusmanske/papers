@@ -116,7 +116,7 @@ impl WikidataStringCache {
 
         // Do prune
         println!("Pruning {}", property);
-        let mut times: Vec<SystemTime> = data.iter().map(|(_k, v)| v.timestamp()).collect();
+        let mut times: Vec<SystemTime> = data.values().map(|v| v.timestamp()).collect();
         times.sort();
         // Remove older half of cache
         let half_time = times[times.len() / 2];
@@ -200,7 +200,7 @@ mod tests {
     #[tokio::test]
     async fn fix_key() {
         let wsc = WikidataStringCache::new(api().await);
-        assert_eq!(wsc.fix_key(&" fOoBAr  ".to_string()), "foobar".to_string());
+        assert_eq!(wsc.fix_key(" fOoBAr  "), "foobar".to_string());
     }
 
     #[tokio::test]
@@ -225,28 +225,25 @@ mod tests {
     async fn get_set() {
         let wsc = WikidataStringCache::new(api().await);
         assert_eq!(
-            wsc.get("P698", &"16116339".to_string()).await,
+            wsc.get("P698", "16116339").await,
             Some("Q46664291".to_string())
         );
-        assert_eq!(wsc.get("P698", &"not_a_valid_id".to_string()).await, None);
-        wsc.set("P698", &"16116339".to_string(), Some("foobar".to_string()))
+        assert_eq!(wsc.get("P698", "not_a_valid_id").await, None);
+        wsc.set("P698", "16116339", Some("foobar".to_string()))
             .await;
         assert_eq!(
-            wsc.get("P698", &"16116339".to_string()).await,
+            wsc.get("P698", "16116339").await,
             Some("foobar".to_string())
         );
-        wsc.set("P698", &"16116339".to_string(), None).await;
-        assert_eq!(wsc.get("P698", &"16116339".to_string()).await, None);
+        wsc.set("P698", "16116339", None).await;
+        assert_eq!(wsc.get("P698", "16116339").await, None);
     }
 
     #[tokio::test]
     async fn issn2q() {
         let wsc = WikidataStringCache::new(api().await);
-        assert_eq!(
-            wsc.issn2q(&"1351-5101".to_string()).await,
-            Some("Q15757256".to_string())
-        );
-        assert_eq!(wsc.issn2q(&"nope-di-dope".to_string()).await, None);
+        assert_eq!(wsc.issn2q("1351-5101").await, Some("Q15757256".to_string()));
+        assert_eq!(wsc.issn2q("nope-di-dope").await, None);
     }
 
     #[tokio::test]

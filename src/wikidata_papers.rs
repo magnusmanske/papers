@@ -112,29 +112,26 @@ impl WikidataPapers {
             })
             .for_each(|(author, p2093_statement)| {
                 if let Some((candidate, _points)) = author.find_best_match(authors) {
-                    match &authors[candidate].wikidata_item {
-                        Some(q) => {
-                            if p50.contains(q) {
-                                // Strange, we already have this one, remove
-                                if author.list_number.is_some()
-                                    && author.list_number == authors[candidate].list_number
-                                {
-                                    println!(
-                                        "REMOVING AUTHOR {:?}\nBECAUSE:\n{:?}\n{:?}",
-                                        &p2093_statement, &author, &authors[candidate]
-                                    );
-                                    // Same list number, remove P2093
-                                    Self::remove_p2093_statement(p2093_statement);
-                                } else {
-                                    println!("NOT REMOVING AUTHOR {:?}", &p2093_statement);
-                                }
-                            } else if let Some(p50_statement) =
-                                &authors[candidate].generate_author_statement()
+                    if let Some(q) = &authors[candidate].wikidata_item {
+                        if p50.contains(q) {
+                            // Strange, we already have this one, remove
+                            if author.list_number.is_some()
+                                && author.list_number == authors[candidate].list_number
                             {
-                                Self::update_p2093_to_p50_statement(p50_statement, p2093_statement);
+                                println!(
+                                    "REMOVING AUTHOR {:?}\nBECAUSE:\n{:?}\n{:?}",
+                                    &p2093_statement, &author, &authors[candidate]
+                                );
+                                // Same list number, remove P2093
+                                Self::remove_p2093_statement(p2093_statement);
+                            } else {
+                                println!("NOT REMOVING AUTHOR {:?}", &p2093_statement);
                             }
+                        } else if let Some(p50_statement) =
+                            &authors[candidate].generate_author_statement()
+                        {
+                            Self::update_p2093_to_p50_statement(p50_statement, p2093_statement);
                         }
-                        None => {}
                     }
                 }
             });

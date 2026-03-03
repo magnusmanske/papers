@@ -64,11 +64,8 @@ impl Semanticscholar2Wikidata {
 
         ret.push(GenericWorkIdentifier::new_prop(my_prop, publication_id));
 
-        match &work.doi {
-            Some(id) => {
-                ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id));
-            }
-            None => {}
+        if let Some(id) = &work.doi {
+            ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id));
         }
 
         /*
@@ -203,13 +200,10 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
                 list_number: Some((num + 1).to_string()),
                 alternative_names: vec![],
             };
-            match &author.author_id {
-                Some(id) => {
-                    entry
-                        .prop2id
-                        .insert(author_property.to_owned(), id.to_string());
-                }
-                None => {}
+            if let Some(id) = &author.author_id {
+                entry
+                    .prop2id
+                    .insert(author_property.to_owned(), id.to_string());
             }
             ret.push(entry);
         }

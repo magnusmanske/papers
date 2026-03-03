@@ -64,20 +64,18 @@ async fn command_ans(ini_file: &str) {
     let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).await.unwrap()));
     let mw_api = smd.read().await.mw_api();
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
-    let mut ans = AuthorNameString::default();
-    /* trunk-ignore(clippy/field_reassign_with_default) */
-    ans.logging_level = 2;
+    let ans = AuthorNameString { logging_level: 2 };
 
     let mut futures: Vec<_> = io::stdin()
         .lock()
         .lines()
         /* trunk-ignore(clippy/lines_filter_map_ok) */
-        .filter_map(|line| line.ok())
+        .map_while(Result::ok)
         .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty())
         .map(|line| ans.process_author_q(line, &mw_api, &cache))
         .collect();
-    futures.shuffle(&mut rand::thread_rng());
+    futures.shuffle(&mut rand::rng());
 
     let stream = futures::stream::iter(futures).buffer_unordered(MAX_AUTHORS_IN_PARALLEL);
     stream.collect::<Vec<_>>().await;

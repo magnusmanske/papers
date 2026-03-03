@@ -44,10 +44,11 @@ impl Pubmed2Wikidata {
         };
         match &author.fore_name {
             Some(s) => ret = s.to_string() + " " + &ret,
-            None => match &author.initials {
-                Some(s) => ret = s.to_string() + " " + &ret,
-                None => {}
-            },
+            None => {
+                if let Some(s) = &author.initials {
+                    ret = s.to_string() + " " + &ret
+                }
+            }
         }
         Some(self.sanitize_author_name(&ret))
     }
@@ -112,20 +113,16 @@ impl Pubmed2Wikidata {
         let medline_citation = work.medline_citation.to_owned()?;
         let article = medline_citation.article?;
 
-        match &work.pubmed_data {
-            Some(pubmed_data) => match &pubmed_data.article_ids {
-                Some(article_ids) => {
-                    article_ids.ids.iter().for_each(|id| {
-                        if let (Some(key), Some(id)) = (&id.id_type, &id.id) {
-                            if let "doi" = key.as_str() {
-                                ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id));
-                            }
+        if let Some(pubmed_data) = &work.pubmed_data {
+            if let Some(article_ids) = &pubmed_data.article_ids {
+                article_ids.ids.iter().for_each(|id| {
+                    if let (Some(key), Some(id)) = (&id.id_type, &id.id) {
+                        if let "doi" = key.as_str() {
+                            ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id));
                         }
-                    });
-                }
-                None => {}
-            },
-            None => {}
+                    }
+                });
+            }
         }
 
         // ???
@@ -237,24 +234,19 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
 
         // Work language
         if !item.has_claims_with_property("P407") {
-            match &work.medline_citation {
-                Some(medline_citation) => match &medline_citation.article {
-                    Some(article) => match &article.language {
-                        Some(language) => {
-                            if let Some(q) = self.language2q(language).await {
-                                let statement = Statement::new_normal(
-                                    Snak::new_item("P407", &q),
-                                    vec![],
-                                    self.reference(),
-                                );
-                                item.add_claim(statement);
-                            }
+            if let Some(medline_citation) = &work.medline_citation {
+                if let Some(article) = &medline_citation.article {
+                    if let Some(language) = &article.language {
+                        if let Some(q) = self.language2q(language).await {
+                            let statement = Statement::new_normal(
+                                Snak::new_item("P407", &q),
+                                vec![],
+                                self.reference(),
+                            );
+                            item.add_claim(statement);
                         }
-                        None => {}
-                    },
-                    None => {}
-                },
-                None => {}
+                    }
+                }
             }
         }
     }
@@ -365,7 +357,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                     match source.as_str() {
                         "ORCID" => {
                             // URL => ID
-                            if let Some(id) = id.split('/').last() {
+                            if let Some(id) = id.split('/').next_back() {
                                 prop2id.insert("P496".to_string(), id.to_string());
                             }
                         }

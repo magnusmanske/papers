@@ -121,7 +121,7 @@ mod tests {
         assert_eq!(cmd.status, "TODO");
         assert_eq!(cmd.note, "");
         assert_eq!(cmd.q, "");
-        assert_eq!(cmd.auto_escalate, false);
+        assert!(!cmd.auto_escalate);
     }
 
     #[test]
