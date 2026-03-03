@@ -57,12 +57,36 @@ impl Crossref2Wikidata {
         }
         true
     }
+
+    /// Maps a Crossref work type string to a Wikidata Q-item for P31 (instance of).
+    fn crossref_type_to_q(type_: &str) -> Option<&'static str> {
+        match type_ {
+            "journal-article" => Some("Q13442814"),       // scientific article
+            "book" | "edited-book" | "reference-book" => Some("Q571"), // book
+            "monograph" => Some("Q193495"),                // monograph
+            "book-chapter" | "book-section" => Some("Q1980247"), // chapter
+            "proceedings-article" => Some("Q23927052"),    // conference paper
+            "proceedings" => Some("Q1143604"),              // proceedings
+            "dissertation" => Some("Q187685"),             // doctoral thesis
+            "posted-content" => Some("Q580922"),           // preprint
+            "dataset" => Some("Q1172284"),                 // dataset
+            "report" | "report-series" => Some("Q10870555"), // report
+            "standard" => Some("Q317623"),                 // standard
+            "peer-review" => Some("Q7161778"),             // peer review (the article)
+            _ => None,
+        }
+    }
 }
 
 #[async_trait(?Send)]
 impl ScientificPublicationAdapter for Crossref2Wikidata {
     fn name(&self) -> &str {
         "Crossref2Wikidata"
+    }
+
+    fn get_work_type(&self, publication_id: &str) -> Option<String> {
+        let work = self.get_cached_publication_from_id(publication_id)?;
+        Self::crossref_type_to_q(&work.type_).map(|s| s.to_string())
     }
 
     fn get_work_issn(&self, publication_id: &str) -> Option<String> {
@@ -199,23 +223,66 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 
 #[cfg(test)]
 mod tests {
-    //use super::*;
-    //use wikibase::mediawiki::api::Api;
+    use super::*;
 
-    /*
-    TODO:
-    pub fn new() -> Self {
-    pub fn get_cached_publication_from_id(
-    fn add_identifiers_from_cached_publication(
-    fn should_add_string(&self, s: &str) -> bool {
-    fn name(&self) -> &str {
-    fn get_work_issn(&self, publication_id: &str) -> Option<String> {
-    fn author_cache(&self) -> &HashMap<String, String> {
-    fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
-    fn get_identifier_list(
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-    fn reference(&self) -> Vec<Reference> {
-    fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
-    fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity) {
-    */
+    #[test]
+    fn test_crossref_type_to_q_journal_article() {
+        assert_eq!(
+            Crossref2Wikidata::crossref_type_to_q("journal-article"),
+            Some("Q13442814")
+        );
+    }
+
+    #[test]
+    fn test_crossref_type_to_q_book() {
+        assert_eq!(Crossref2Wikidata::crossref_type_to_q("book"), Some("Q571"));
+        assert_eq!(
+            Crossref2Wikidata::crossref_type_to_q("edited-book"),
+            Some("Q571")
+        );
+        assert_eq!(
+            Crossref2Wikidata::crossref_type_to_q("reference-book"),
+            Some("Q571")
+        );
+    }
+
+    #[test]
+    fn test_crossref_type_to_q_monograph() {
+        assert_eq!(
+            Crossref2Wikidata::crossref_type_to_q("monograph"),
+            Some("Q193495")
+        );
+    }
+
+    #[test]
+    fn test_crossref_type_to_q_chapter() {
+        assert_eq!(
+            Crossref2Wikidata::crossref_type_to_q("book-chapter"),
+            Some("Q1980247")
+        );
+        assert_eq!(
+            Crossref2Wikidata::crossref_type_to_q("book-section"),
+            Some("Q1980247")
+        );
+    }
+
+    #[test]
+    fn test_crossref_type_to_q_unknown_returns_none() {
+        assert_eq!(
+            Crossref2Wikidata::crossref_type_to_q("unknown-type"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_crossref_type_to_q_proceedings() {
+        assert_eq!(
+            Crossref2Wikidata::crossref_type_to_q("proceedings-article"),
+            Some("Q23927052")
+        );
+        assert_eq!(
+            Crossref2Wikidata::crossref_type_to_q("proceedings"),
+            Some("Q1143604")
+        );
+    }
 }

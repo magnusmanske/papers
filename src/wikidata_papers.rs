@@ -224,6 +224,22 @@ impl WikidataPapers {
             self.merge_authors(&mut authors, &authors2);
         }
 
+        // Set P31 (instance of) based on work type from adapters, if not already set.
+        // Adapters like Crossref can determine the correct type (book, article, etc.)
+        if !item.has_claims_with_property("P31") {
+            let work_type_q = adapter2work_id
+                .iter()
+                .find_map(|(adapter_id, pub_id)| {
+                    self.adapters[*adapter_id].get_work_type(pub_id)
+                })
+                .unwrap_or_else(|| "Q13442814".to_string()); // default: scientific article
+            item.add_claim(Statement::new_normal(
+                Snak::new_item("P31", &work_type_q),
+                vec![],
+                vec![],
+            ));
+        }
+
         // Final deduplication pass after all sources have been merged
         GenericAuthorInfo::deduplicate(&mut authors);
 
@@ -315,13 +331,7 @@ impl WikidataPapers {
     }
 
     fn new_publication_item(&self) -> Entity {
-        let mut item = Entity::new_empty_item();
-        item.add_claim(Statement::new_normal(
-            Snak::new_item("P31", "Q13442814"),
-            vec![],
-            vec![],
-        ));
-        item
+        Entity::new_empty_item()
     }
 
     async fn create_or_update_item_from_items(
@@ -764,6 +774,20 @@ mod tests {
             named_as,
             Some("Smith, John A.".to_string()),
             "P1932 should preserve the original author name string from Wikidata"
+        );
+    }
+
+    // === Bug reproduction: wrong P31 for non-article works (issue #14) ===
+
+    #[tokio::test]
+    async fn new_publication_item_has_no_p31() {
+        // new_publication_item should NOT hardcode P31, so that adapters
+        // can set it based on the actual work type.
+        let wdp = make_wdp().await;
+        let item = wdp.new_publication_item();
+        assert!(
+            !item.has_claims_with_property("P31"),
+            "new_publication_item should not set P31; it should be set later based on work type"
         );
     }
 }

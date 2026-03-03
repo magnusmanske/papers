@@ -96,6 +96,12 @@ pub trait ScientificPublicationAdapter {
         None
     }
 
+    /// Returns the Wikidata Q-item for the type of work (P31), if known.
+    /// E.g. "Q571" for a book, "Q13442814" for a scientific article.
+    fn get_work_type(&self, _publication_id: &str) -> Option<String> {
+        None
+    }
+
     // For a publication ID, return the ISSN as a `String`, if known
     fn get_work_issn(&self, _publication_id: &str) -> Option<String> {
         None
