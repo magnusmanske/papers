@@ -207,7 +207,7 @@ impl SourceMD {
 
     pub fn init(&mut self) {
         // File::with_name(..) is shorthand for File::from(Path::new(..))
-        let ini_file = "replica.my.ini";
+        let ini_file = "/data/project/sourcemd/rust/papers/replica.my.ini";
         let settings = Config::builder()
             .add_source(File::with_name(ini_file))
             .build()
