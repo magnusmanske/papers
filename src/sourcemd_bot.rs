@@ -165,12 +165,6 @@ impl SourceMDbot {
         lazy_static! {
             static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
                 .expect("SourceMDbot::process_paper: RE_WD does not compile");
-            static ref RE_DOI: Regex = Regex::new(r#"^(.+/.+)$"#)
-                .expect("SourceMDbot::process_paper: RE_DOI does not compile");
-            static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#)
-                .expect("SourceMDbot::process_paper: RE_PMID does not compile");
-            static ref RE_PMCID: Regex = Regex::new(r#"^(PMC\d+)$"#)
-                .expect("SourceMDbot::process_paper: RE_PMCID does not compile");
         }
 
         let mut wdp = self.new_wdp(command);
@@ -191,25 +185,11 @@ impl SourceMDbot {
                 .ok_or(format!("Can't update {}", &command.identifier));
         }
 
-        // Others
-        let mut ids = vec![];
-        if let Some(caps) = RE_DOI.captures(&command.identifier) {
-            if let Some(x) = caps.get(1) {
-                ids.push(GenericWorkIdentifier::new_prop(IdProp::DOI, x.as_str()))
-            }
-        };
-        if let Some(caps) = RE_PMID.captures(&command.identifier) {
-            if let Some(x) = caps.get(1) {
-                ids.push(GenericWorkIdentifier::new_prop(IdProp::PMID, x.as_str()))
-            }
-        };
-        if let Some(caps) = RE_PMCID.captures(&command.identifier) {
-            if let Some(x) = caps.get(1) {
-                ids.push(GenericWorkIdentifier::new_prop(IdProp::PMCID, x.as_str()))
-            }
-        };
-        if let Ok(j) = serde_json::from_str(&command.identifier) {
-            let j: serde_json::Value = j;
+        // Others: regex-recognised formats
+        let mut ids = GenericWorkIdentifier::parse_ids_from_str(&command.identifier);
+
+        // JSON format: {"doi":..., "pmid":..., "pmc":..., "pmcid":...}
+        if let Ok(j) = serde_json::from_str::<serde_json::Value>(&command.identifier) {
             if let Some(id) = j["doi"].as_str() {
                 let id = id.replace("doi: ", "");
                 ids.push(GenericWorkIdentifier::new_prop(IdProp::DOI, &id));

@@ -7,7 +7,6 @@ use futures::prelude::*;
 use papers::author_name_string::AuthorNameString;
 use papers::crossref2wikidata::Crossref2Wikidata;
 use papers::identifiers::GenericWorkIdentifier;
-use papers::identifiers::IdProp;
 use papers::orcid2wikidata::Orcid2Wikidata;
 use papers::pmc2wikidata::PMC2Wikidata;
 use papers::pubmed2wikidata::Pubmed2Wikidata;
@@ -98,12 +97,6 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
     lazy_static! {
         static ref RE_WD: Regex =
             Regex::new(r#"^(Q\d+)$"#).expect("main.rs::paper_from_id: RE_WD does not compile");
-        static ref RE_DOI: Regex =
-            Regex::new(r#"^(.+/.+)$"#).expect("main.rs::paper_from_id: RE_DOI does not compile");
-        static ref RE_PMID: Regex =
-            Regex::new(r#"^(\d+)$"#).expect("main.rs::paper_from_id: RE_PMID does not compile");
-        static ref RE_PMCID: Regex =
-            Regex::new(r#"^(PMC\d+)$"#).expect("main.rs::paper_from_id: RE_PMCID does not compile");
     }
 
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
@@ -116,29 +109,12 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
     wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
     wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
 
-    if let Some(caps) = RE_WD.captures(id) {
-        if let Some(q) = caps.get(1) {
-            save_item_changes(&mut wdp, mw_api.clone(), q.as_str()).await;
-            return;
-        }
+    if let Some(q) = RE_WD.captures(id).and_then(|c| c.get(1)) {
+        save_item_changes(&mut wdp, mw_api.clone(), q.as_str()).await;
+        return;
     }
 
-    let mut ids = vec![];
-    if let Some(caps) = RE_DOI.captures(id) {
-        if let Some(id) = caps.get(1) {
-            ids.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id.as_str()))
-        }
-    };
-    if let Some(caps) = RE_PMID.captures(id) {
-        if let Some(id) = caps.get(1) {
-            ids.push(GenericWorkIdentifier::new_prop(IdProp::PMID, id.as_str()))
-        }
-    };
-    if let Some(caps) = RE_PMCID.captures(id) {
-        if let Some(id) = caps.get(1) {
-            ids.push(GenericWorkIdentifier::new_prop(IdProp::PMCID, id.as_str()))
-        }
-    };
+    let mut ids = GenericWorkIdentifier::parse_ids_from_str(id);
 
     // Paranoia
     ids.retain(|id| !id.id().is_empty());

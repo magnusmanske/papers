@@ -1,3 +1,4 @@
+use regex::Regex;
 use std::str::FromStr;
 
 const PROP_PMID: &str = "P698";
@@ -106,6 +107,28 @@ impl GenericWorkIdentifier {
 
     pub fn work_type(&self) -> &GenericWorkType {
         &self.work_type
+    }
+
+    /// Parses a free-form identifier string into zero or more `GenericWorkIdentifier`s.
+    /// Recognises DOIs (`xx/yy`), PubMed IDs (digits only) and PMC IDs (`PMCnnn`).
+    /// Q-items are intentionally excluded; callers handle those separately.
+    pub fn parse_ids_from_str(s: &str) -> Vec<Self> {
+        lazy_static::lazy_static! {
+            static ref RE_DOI:   Regex = Regex::new(r#"^(.+/.+)$"#).expect("RE_DOI");
+            static ref RE_PMID:  Regex = Regex::new(r#"^(\d+)$"#).expect("RE_PMID");
+            static ref RE_PMCID: Regex = Regex::new(r#"^(PMC\d+)$"#).expect("RE_PMCID");
+        }
+        let mut ids = vec![];
+        if let Some(x) = RE_DOI.captures(s).and_then(|c| c.get(1)) {
+            ids.push(Self::new_prop(IdProp::DOI, x.as_str()));
+        }
+        if let Some(x) = RE_PMID.captures(s).and_then(|c| c.get(1)) {
+            ids.push(Self::new_prop(IdProp::PMID, x.as_str()));
+        }
+        if let Some(x) = RE_PMCID.captures(s).and_then(|c| c.get(1)) {
+            ids.push(Self::new_prop(IdProp::PMCID, x.as_str()));
+        }
+        ids
     }
 }
 
