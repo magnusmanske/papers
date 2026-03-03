@@ -1,9 +1,9 @@
 use crate::sourcemd_command::SourceMDcommand;
 use chrono::prelude::*;
 use config::{Config, File};
+use dashmap::DashSet;
 use mysql as my;
 use serde_json::Value;
-use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
@@ -11,8 +11,8 @@ use wikibase::mediawiki::api::Api;
 #[derive(Debug, Clone)]
 pub struct SourceMD {
     params: Value,
-    running_batch_ids: Arc<RwLock<HashSet<i64>>>,
-    failed_batch_ids: Arc<RwLock<HashSet<i64>>>,
+    running_batch_ids: DashSet<i64>,
+    failed_batch_ids: DashSet<i64>,
     pool: Option<my::Pool>,
     mw_api: Arc<RwLock<Api>>,
 }
@@ -21,15 +21,15 @@ impl SourceMD {
     pub async fn new(ini_file: &str) -> Result<Self, String> {
         Ok(Self {
             params: json!({}),
-            running_batch_ids: Arc::new(RwLock::new(HashSet::new())),
-            failed_batch_ids: Arc::new(RwLock::new(HashSet::new())),
+            running_batch_ids: DashSet::new(),
+            failed_batch_ids: DashSet::new(),
             pool: None,
             mw_api: Arc::new(RwLock::new(Self::create_mw_api(ini_file).await?)),
         })
     }
 
     pub async fn set_batch_failed(&self, batch_id: i64) {
-        self.failed_batch_ids.write().await.insert(batch_id);
+        self.failed_batch_ids.insert(batch_id);
     }
 
     pub fn mw_api(&self) -> Arc<RwLock<Api>> {
@@ -56,7 +56,7 @@ impl SourceMD {
 
     pub async fn set_batch_running(&self, batch_id: i64) {
         println!("set_batch_running: Starting batch #{}", batch_id);
-        self.running_batch_ids.write().await.insert(batch_id);
+        self.running_batch_ids.insert(batch_id);
         println!(
             "Currently {} bots running",
             self.number_of_bots_running().await
@@ -64,7 +64,7 @@ impl SourceMD {
     }
 
     pub async fn number_of_bots_running(&self) -> usize {
-        self.running_batch_ids.read().await.len()
+        self.running_batch_ids.len()
     }
 
     pub fn timestamp(&self) -> String {
@@ -86,9 +86,7 @@ impl SourceMD {
                 my::Value::Int(x) => *x,
                 _ => continue,
             };
-            if self.running_batch_ids.read().await.contains(&id)
-                || self.failed_batch_ids.read().await.contains(&id)
-            {
+            if self.running_batch_ids.contains(&id) || self.failed_batch_ids.contains(&id) {
                 continue;
             }
             return Some(id);
@@ -100,7 +98,7 @@ impl SourceMD {
         println!("Deactivating batch #{}", batch_id);
         self.set_batch_finished(batch_id)?;
         {
-            self.running_batch_ids.write().await.remove(&batch_id);
+            self.running_batch_ids.remove(&batch_id);
         }
         println!(
             "Currently {} bots running",

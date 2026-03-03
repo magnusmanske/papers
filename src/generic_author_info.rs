@@ -127,9 +127,7 @@ impl GenericAuthorInfo {
     /// Used to detect ambiguous matches that didn't meet the threshold for a definitive match.
     /// Requires more than just a list number coincidence (score > SCORE_LIST_NUMBER).
     pub fn has_partial_match(&self, authors: &[GenericAuthorInfo]) -> bool {
-        authors
-            .iter()
-            .any(|a| self.compare(a) > SCORE_LIST_NUMBER)
+        authors.iter().any(|a| self.compare(a) > SCORE_LIST_NUMBER)
     }
 
     /// Deduplicates a list of authors by merging entries that match.
@@ -739,10 +737,7 @@ mod tests {
             Some(&"0000-1111-2222-3333".to_string())
         );
         // Non-conflicting property: absorbed
-        assert_eq!(
-            ga1.prop2id.get("P1053"),
-            Some(&"A-1234-5678".to_string())
-        );
+        assert_eq!(ga1.prop2id.get("P1053"), Some(&"A-1234-5678".to_string()));
     }
 
     #[test]
@@ -807,7 +802,10 @@ mod tests {
 
         let score_exact = ga_ref.compare(&ga_exact);
         let score_partial = ga_ref.compare(&ga_partial);
-        assert!(score_exact > score_partial, "Exact name match must outscore partial");
+        assert!(
+            score_exact > score_partial,
+            "Exact name match must outscore partial"
+        );
         // 101 (2 words × 50 + 1 bonus) vs 50 (1 word match, no bonus)
         assert_eq!(score_exact, SCORE_NAME_MATCH * 2 + 1);
         assert_eq!(score_partial, SCORE_NAME_MATCH);
@@ -826,7 +824,11 @@ mod tests {
         let mut ga_different = GenericAuthorInfo::new();
         ga_different.name = Some("Lo".to_string());
 
-        assert_eq!(ga_ref.compare(&ga_same), 1, "Only the +1 exact bonus contributes");
+        assert_eq!(
+            ga_ref.compare(&ga_same),
+            1,
+            "Only the +1 exact bonus contributes"
+        );
         assert_eq!(ga_ref.compare(&ga_different), 0, "No match, no bonus");
     }
 
@@ -937,7 +939,8 @@ mod tests {
             .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
         let mut other = GenericAuthorInfo::new();
-        other.prop2id
+        other
+            .prop2id
             .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
         assert!(ga.has_partial_match(&[other]));
@@ -964,7 +967,7 @@ mod tests {
         let mut matching = GenericAuthorInfo::new();
         matching.name = Some("J Doe".to_string()); // shares "doe"
 
-        assert!(!ga.has_partial_match(&[unrelated.clone()]));
+        assert!(!ga.has_partial_match(std::slice::from_ref(&unrelated)));
         assert!(ga.has_partial_match(&[unrelated, matching]));
     }
 
@@ -1018,7 +1021,9 @@ mod tests {
         GenericAuthorInfo::deduplicate(&mut authors);
         assert_eq!(authors.len(), 1);
         assert_eq!(authors[0].name, Some("John Smith".to_string()));
-        assert!(authors[0].alternative_names.contains(&"J Smith".to_string()));
+        assert!(authors[0]
+            .alternative_names
+            .contains(&"J Smith".to_string()));
     }
 
     #[test]
