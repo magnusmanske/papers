@@ -22,7 +22,6 @@ use std::env;
 use std::io;
 use std::io::prelude::*;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
@@ -222,9 +221,9 @@ async fn command_bot(ini_file: &str) {
     loop {
         //println!("BOT!");
         if run_bot(smd.clone(), cache.clone()).await {
-            thread::sleep(Duration::from_millis(1000));
+            tokio::time::sleep(Duration::from_millis(1000)).await;
         } else {
-            thread::sleep(Duration::from_millis(5000));
+            tokio::time::sleep(Duration::from_millis(5000)).await;
         }
     }
 }
