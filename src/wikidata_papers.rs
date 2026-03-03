@@ -484,33 +484,30 @@ impl WikidataPapers {
             .iter()
             .map(|q| q.property().to_string())
             .collect();
-        // Build merged qualifiers: start with P2093's, then add non-conflicting P50 ones
+        // Build merged qualifiers: start with P2093's, then add non-conflicting P50 ones.
+        // Always exclude P1932 from the P50's qualifiers — we'll add the correct one
+        // from the P2093's actual name string below.
         let mut merged_qualifiers: Vec<Snak> = p2093_statement.qualifiers().to_vec();
         for q in p50_statement.qualifiers() {
-            if !p2093_properties.contains(q.property()) {
+            if q.property() != "P1932" && !p2093_properties.contains(q.property()) {
                 merged_qualifiers.push(q.clone());
             }
         }
+
+        // P1932 "object named as" — always use the P2093's original author name string,
+        // not the adapter's version (which may differ in accents, formatting, etc.)
+        if let Some(dv) = p2093_statement.main_snak().data_value() {
+            if let Value::StringValue(author_name_string) = dv.value() {
+                merged_qualifiers.push(Snak::new_string("P1932", author_name_string));
+            }
+        }
+
         // Rebuild the P50 statement with merged qualifiers
         p50_statement = Statement::new_normal(
             p50_statement.main_snak().clone(),
             merged_qualifiers,
             p50_statement.references().to_vec(),
         );
-
-        // P1932 "object named as" — add from the P2093's author name string,
-        // but only if P1932 isn't already present from the merged qualifiers
-        let has_p1932 = p50_statement
-            .qualifiers()
-            .iter()
-            .any(|q| q.property() == "P1932");
-        if !has_p1932 {
-            if let Some(dv) = p2093_statement.main_snak().data_value() {
-                if let Value::StringValue(author_name_string) = dv.value() {
-                    p50_statement.add_qualifier_snak(Snak::new_string("P1932", author_name_string));
-                }
-            }
-        }
 
         // Preserve references
         let references = p2093_statement.references().clone();
@@ -687,6 +684,86 @@ mod tests {
             unique.len(),
             "Ordinals should be unique, but got duplicates: {:?}",
             ordinals
+        );
+    }
+
+    /// Extract P1932 ("object named as") qualifier value from a statement
+    fn get_named_as(statement: &Statement) -> Option<String> {
+        statement.qualifiers().iter().find_map(|q| {
+            if q.property() == "P1932" {
+                match q.data_value() {
+                    Some(dv) => match dv.value() {
+                        Value::StringValue(s) => Some(s.to_string()),
+                        _ => None,
+                    },
+                    None => None,
+                }
+            } else {
+                None
+            }
+        })
+    }
+
+    // === Bug reproduction: P1932 uses adapter name instead of P2093 name (issue #5) ===
+    //
+    // When converting P2093 "José García" to P50, the P1932 ("object named as")
+    // qualifier should preserve the original P2093 name, not the adapter's
+    // version (which may differ in accents, formatting, etc.).
+
+    #[tokio::test]
+    async fn update_author_statements_p1932_preserves_original_name() {
+        let wdp = make_wdp().await;
+        let mut item = Entity::new_empty_item();
+        // P2093 with accented name as it appears on Wikidata
+        item.add_claim(make_p2093("José García", "5"));
+
+        // Adapter has ASCII-ified version of the name
+        let mut adapter_author = GenericAuthorInfo::new();
+        adapter_author.name = Some("Jose Garcia".to_string()); // different from Wikidata!
+        adapter_author.wikidata_item = Some("Q12345".to_string());
+        adapter_author.list_number = Some("5".to_string());
+
+        wdp.update_author_statements(&[adapter_author], &mut item);
+
+        assert_eq!(item.claims().len(), 1);
+        let claim = &item.claims()[0];
+        assert_eq!(claim.main_snak().property(), "P50");
+
+        // P1932 should preserve the original P2093 name "José García",
+        // NOT the adapter's "Jose Garcia"
+        let named_as = get_named_as(claim);
+        assert_eq!(
+            named_as,
+            Some("José García".to_string()),
+            "P1932 should preserve the original author name string from Wikidata"
+        );
+    }
+
+    // Same issue but with a completely different adapter name (e.g. transliteration)
+    #[tokio::test]
+    async fn update_author_statements_p1932_preserves_original_name_transliteration() {
+        let wdp = make_wdp().await;
+        let mut item = Entity::new_empty_item();
+        item.add_claim(make_p2093("Smith, John A.", "1"));
+
+        // Adapter reformats the name
+        let mut adapter_author = GenericAuthorInfo::new();
+        adapter_author.name = Some("John Smith".to_string()); // reordered, no middle initial
+        adapter_author.wikidata_item = Some("Q99999".to_string());
+        adapter_author.list_number = Some("1".to_string());
+
+        wdp.update_author_statements(&[adapter_author], &mut item);
+
+        assert_eq!(item.claims().len(), 1);
+        let claim = &item.claims()[0];
+        assert_eq!(claim.main_snak().property(), "P50");
+
+        // P1932 must be "Smith, John A." (the original), not "John Smith" (adapter)
+        let named_as = get_named_as(claim);
+        assert_eq!(
+            named_as,
+            Some("Smith, John A.".to_string()),
+            "P1932 should preserve the original author name string from Wikidata"
         );
     }
 }
