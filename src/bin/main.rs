@@ -1,9 +1,5 @@
-extern crate config;
-extern crate papers;
 #[macro_use]
 extern crate lazy_static;
-extern crate regex;
-extern crate serde_json;
 
 use crate::sourcemd_command::SourceMDcommand;
 use crate::wikidata_string_cache::WikidataStringCache;

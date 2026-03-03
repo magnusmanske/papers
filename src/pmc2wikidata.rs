@@ -1,5 +1,3 @@
-extern crate lazy_static;
-
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
