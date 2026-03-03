@@ -117,6 +117,9 @@ impl WikidataStringCache {
         // Do prune
         println!("Pruning {}", property);
         let mut times: Vec<SystemTime> = data.values().map(|v| v.timestamp()).collect();
+        if times.is_empty() {
+            return;
+        }
         times.sort();
         // Remove older half of cache
         let half_time = times[times.len() / 2];
@@ -277,6 +280,16 @@ mod tests {
         }
         wsc.max_cache_size_per_property = 5;
         assert!(wsc.property_needs_pruning("P123").await);
+    }
+
+    #[tokio::test]
+    async fn prune_empty_property() {
+        let mut wsc = WikidataStringCache::new(api().await);
+        wsc.max_cache_size_per_property = 0; // Force pruning to trigger
+        wsc.ensure_property("P999").await;
+        // This should not panic even though the property has zero entries
+        wsc.prune_property("P999").await;
+        assert_eq!(wsc.cache.read().await.get("P999").unwrap().len(), 0);
     }
 
     #[tokio::test]
