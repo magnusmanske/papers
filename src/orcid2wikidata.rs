@@ -82,14 +82,8 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         // TODO other ID types than DOI?
-        let doi = match self.get_external_identifier_from_item(item, &IdProp::DOI) {
-            Some(s) => s,
-            None => return None,
-        };
-        let author_ids = match self.client.search_doi(&doi) {
-            Ok(author_ids) => author_ids,
-            _ => return None, // No such work
-        };
+        let doi = self.get_external_identifier_from_item(item, &IdProp::DOI)?;
+        let author_ids = self.client.search_doi(&doi).ok()?;
 
         let work = PseudoWork { author_ids };
         let publication_id = doi;

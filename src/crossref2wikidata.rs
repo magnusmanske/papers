@@ -105,10 +105,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
     }
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        let doi = match self.get_external_identifier_from_item(item, &IdProp::DOI) {
-            Some(s) => s,
-            None => return None,
-        };
+        let doi = self.get_external_identifier_from_item(item, &IdProp::DOI)?;
         let work = match self.get_client().work(&doi).await {
             Ok(w) => w,
             _ => return None, // No such work

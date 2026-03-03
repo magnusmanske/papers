@@ -37,10 +37,7 @@ impl SourceMD {
     }
 
     pub fn restart_batch(&self, batch_id: i64) -> Option<()> {
-        let pool = match &self.pool {
-            Some(pool) => pool,
-            None => return None,
-        };
+        let pool = self.pool.as_ref()?;
         pool.prep_exec(
             r#"UPDATE `batch` SET `status`="RUNNING",`last_action`=? WHERE id=?"#,
             (my::Value::from(self.timestamp()), my::Value::Int(batch_id)),
@@ -73,10 +70,7 @@ impl SourceMD {
     }
 
     pub async fn get_next_batch(&self) -> Option<i64> {
-        let pool = match &self.pool {
-            Some(pool) => pool,
-            None => return None,
-        };
+        let pool = self.pool.as_ref()?;
 
         let sql: String = r#"SELECT * FROM batch WHERE `status` ='TODO' AND NOT EXISTS (SELECT * FROM command WHERE batch_id=batch.id AND `status` IN ("RUNNING","TODO") AND `mode` NOT IN ("CREATE_PAPER_BY_ID","ADD_AUTHOR_TO_PUBLICATION")) ORDER BY `last_action`"#.into();
         //let sql: String = "SELECT * FROM batch WHERE id=8117".into(); // TESTING (also 551)
@@ -113,23 +107,16 @@ impl SourceMD {
     }
 
     pub fn check_batch_not_stopped(&self, batch_id: i64) -> Result<(), String> {
-        let pool = match &self.pool {
-            Some(pool) => pool,
-            None => {
-                return Err(
-                    "QuickStatementsConfig::check_batch_not_stopped: Can't get DB handle"
-                        .to_string(),
-                )
-            }
-        };
+        let pool = self.pool.as_ref().ok_or_else(|| {
+            "QuickStatementsConfig::check_batch_not_stopped: Can't get DB handle".to_string()
+        })?;
         let sql: String = format!(
             "SELECT * FROM batch WHERE id={} AND `status` NOT IN ('RUNNING','TODO')",
             batch_id
         );
-        let mut result = match pool.prep_exec(sql, ()) {
-            Ok(r) => r,
-            Err(e) => return Err(format!("Error: {}", e)),
-        };
+        let mut result = pool
+            .prep_exec(sql, ())
+            .map_err(|e| format!("Error: {}", e))?;
         /* trunk-ignore(clippy/never_loop) */
         if result.next().is_some() {
             return Err(format!(
@@ -141,10 +128,7 @@ impl SourceMD {
     }
 
     fn set_batch_status(&self, status: &str, batch_id: i64) -> Option<()> {
-        let pool = match &self.pool {
-            Some(pool) => pool,
-            None => return None,
-        };
+        let pool = self.pool.as_ref()?;
         // TODO stats
         pool.prep_exec(
             r#"UPDATE `batch` SET `status`=?,`last_action`=? WHERE id=?"#,
@@ -160,10 +144,7 @@ impl SourceMD {
     }
 
     pub fn get_next_command(&self, batch_id: i64) -> Option<SourceMDcommand> {
-        let pool = match &self.pool {
-            Some(pool) => pool,
-            None => return None,
-        };
+        let pool = self.pool.as_ref()?;
         let sql = r#"SELECT * FROM command FORCE INDEX (batch_id_4) WHERE `batch_id`=? AND `status`='TODO' ORDER BY `serial_number` LIMIT 1"#;
         /* trunk-ignore(clippy/never_loop) */
         if let Some(row) = (pool.prep_exec(sql, (my::Value::Int(batch_id),)).ok()?).next() {
@@ -179,10 +160,7 @@ impl SourceMD {
         new_status: &str,
         new_message: Option<String>,
     ) -> Option<()> {
-        let pool = match &self.pool {
-            Some(pool) => pool,
-            None => return None,
-        };
+        let pool = self.pool.as_ref()?;
         pool.prep_exec(
             r#"UPDATE `command` SET `status`=?,`note`=?,`q`=? WHERE `id`=?"#,
             (
