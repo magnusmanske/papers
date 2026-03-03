@@ -169,17 +169,13 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
     }
 
     fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
-        match self.get_cached_publication_from_id(publication_id) {
-            Some(work) => match &work.medline_citation {
-                Some(citation) => match &citation.article {
-                    Some(article) => match &article.title {
-                        Some(title) => vec![LocaleString::new("en", title)],
-                        None => vec![],
-                    },
-                    None => vec![],
-                },
-                None => vec![],
-            },
+        let title = self
+            .get_cached_publication_from_id(publication_id)
+            .and_then(|w| w.medline_citation.as_ref())
+            .and_then(|c| c.article.as_ref())
+            .and_then(|a| a.title.as_ref());
+        match title {
+            Some(t) => vec![LocaleString::new("en", t)],
             None => vec![],
         }
     }

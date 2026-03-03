@@ -290,24 +290,15 @@ pub trait ScientificPublicationAdapter {
         month: Option<u8>,
         day: Option<u8>,
     ) -> Statement {
-        let mut precision: u64 = 9; // Year; default
-        let mut time = "+".to_string();
-        time += &year.to_string();
-        match month {
-            Some(x) => {
-                time += &format!("-{:02}", x);
-                precision = 10
-            }
-            None => time += "-01",
+        let (month_str, precision) = match month {
+            Some(m) => (format!("-{m:02}"), 10u64),
+            None => ("-01".to_string(), 9),
         };
-        match day {
-            Some(x) => {
-                time += &format!("-{:02}", x);
-                precision = 11
-            }
-            None => time += "-01",
+        let (day_str, precision) = match day {
+            Some(d) => (format!("-{d:02}"), 11u64),
+            None => ("-01".to_string(), precision),
         };
-        time += "T00:00:00Z";
+        let time = format!("+{year}{month_str}{day_str}T00:00:00Z");
         Statement::new_normal(
             Snak::new_time(property, time, precision),
             vec![],
