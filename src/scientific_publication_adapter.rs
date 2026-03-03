@@ -1,6 +1,7 @@
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::*;
 use async_trait::async_trait;
+use regex::Regex;
 use std::collections::HashMap;
 use tokio::sync::OnceCell;
 use wikibase::mediawiki::api::Api;
@@ -125,6 +126,18 @@ pub trait ScientificPublicationAdapter {
         author_name.replace(['†', '‡'], "").trim().to_string()
     }
 
+    /// Strips HTML/XML tags from a string, preserving text content.
+    /// E.g. "Correction: <i>Accidental aspiration</i>" → "Correction: Accidental aspiration"
+    fn strip_html_tags(&self, s: &str) -> String {
+        lazy_static! {
+            static ref RE_HTML: Regex = Regex::new(r"<[^>]+>")
+                .expect("strip_html_tags: could not compile RE_HTML");
+        }
+        let result = RE_HTML.replace_all(s, "");
+        // Collapse multiple whitespace into single space
+        result.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
     async fn update_statements_for_publication_id_default(
         &self,
         publication_id: &str,
@@ -211,11 +224,12 @@ pub trait ScientificPublicationAdapter {
             return;
         }
 
-        // Re-org
+        // Re-org, stripping HTML tags from title values (APIs like Crossref
+        // and PubMed may return titles with <i>, <b>, <sub>, <sup> etc.)
         let mut by_lang: HashMap<String, Vec<String>> = HashMap::new();
         titles.iter().for_each(|t| {
             let lv = by_lang.entry(t.language().to_string()).or_default();
-            lv.push(t.value().to_string())
+            lv.push(self.strip_html_tags(t.value()))
         });
         for (language, titles) in by_lang.iter() {
             let mut titles = titles.clone();
@@ -376,35 +390,132 @@ pub trait ScientificPublicationAdapter {
 
 #[cfg(test)]
 mod tests {
-    //use super::*;
-    //use wikibase::mediawiki::api::Api;
+    use super::*;
 
-    /*
-    TODO:
-    fn name(&self) -> &str;
-    fn author_cache(&self) -> &HashMap<String, String>;
-    fn author_cache_mut(&mut self) -> &mut HashMap<String, String>;
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-    fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity);
-    fn get_author_list(&mut self, _publication_id: &str) -> Vec<GenericAuthorInfo> {
-    fn get_identifier_list(
-    fn author_property(&self) -> Option<String> {
-    fn publication_property(&self) -> Option<String> {
-    fn topic_property(&self) -> Option<String> {
-    fn get_work_issn(&self, _publication_id: &str) -> Option<String> {
-    fn get_work_titles(&self, _publication_id: &str) -> Vec<LocaleString> {
-    fn do_cache_work(&mut self, _publication_id: &str) -> Option<String> {
-    fn reference(&self) -> Vec<Reference> {
-    fn sanitize_author_name(&self, author_name: &str) -> String {
-    fn update_statements_for_publication_id_default(
-    fn update_work_item_with_title(&self, publication_id: &str, item: &mut Entity) {
-    fn update_work_item_with_journal(
-    fn update_work_item_with_property(&self, publication_id: &str, item: &mut Entity) {
-    fn get_wb_time_from_partial(
-    fn get_external_identifier_from_item(&self, item: &Entity, property: &str) -> Option<String> {
-    fn set_author_cache_entry(&mut self, catalog_author_id: &str, q: &str) {
-    fn get_author_item_from_cache(&self, catalog_author_id: &str) -> Option<&String> {
-    fn author_cache_is_empty(&self) -> bool {
-    fn language2q
-    */
+    /// Minimal test adapter that returns configurable titles
+    struct TestAdapter {
+        titles: Vec<LocaleString>,
+        author_cache: HashMap<String, String>,
+    }
+
+    impl TestAdapter {
+        fn with_titles(titles: Vec<&str>) -> Self {
+            Self {
+                titles: titles.into_iter().map(|t| LocaleString::new("en", t)).collect(),
+                author_cache: HashMap::new(),
+            }
+        }
+    }
+
+    #[async_trait(?Send)]
+    impl ScientificPublicationAdapter for TestAdapter {
+        fn name(&self) -> &str {
+            "test"
+        }
+        fn author_cache(&self) -> &HashMap<String, String> {
+            &self.author_cache
+        }
+        fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
+            &mut self.author_cache
+        }
+        async fn update_statements_for_publication_id(
+            &self,
+            _publication_id: &str,
+            _item: &mut Entity,
+        ) {
+        }
+        fn get_work_titles(&self, _publication_id: &str) -> Vec<LocaleString> {
+            self.titles.clone()
+        }
+    }
+
+    // === strip_html_tags tests ===
+
+    #[test]
+    fn strip_html_tags_removes_italic_tags() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert_eq!(
+            adapter.strip_html_tags("Correction: <i>Accidental aspiration of a solid tablet of sodium hydroxide</i>"),
+            "Correction: Accidental aspiration of a solid tablet of sodium hydroxide"
+        );
+    }
+
+    #[test]
+    fn strip_html_tags_removes_various_tags() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert_eq!(
+            adapter.strip_html_tags("The <i>Drosophila</i> <b>gene</b>"),
+            "The Drosophila gene"
+        );
+    }
+
+    #[test]
+    fn strip_html_tags_handles_sub_sup() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert_eq!(
+            adapter.strip_html_tags("H<sub>2</sub>O and CO<sub>2</sub>"),
+            "H2O and CO2"
+        );
+        assert_eq!(
+            adapter.strip_html_tags("x<sup>2</sup> + y<sup>2</sup>"),
+            "x2 + y2"
+        );
+    }
+
+    #[test]
+    fn strip_html_tags_no_tags_unchanged() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert_eq!(
+            adapter.strip_html_tags("A simple title"),
+            "A simple title"
+        );
+    }
+
+    #[test]
+    fn strip_html_tags_collapses_whitespace() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert_eq!(
+            adapter.strip_html_tags("Before  <i> middle </i>  after"),
+            "Before middle after"
+        );
+    }
+
+    // === update_work_item_with_title with HTML tags (issue #7) ===
+
+    #[test]
+    fn update_work_item_with_title_strips_html_from_label() {
+        let adapter = TestAdapter::with_titles(vec![
+            "Correction: <i>Accidental aspiration of a solid tablet of sodium hydroxide</i>",
+        ]);
+        let mut item = Entity::new_empty_item();
+        adapter.update_work_item_with_title("test_id", &mut item);
+
+        assert_eq!(
+            item.label_in_locale("en"),
+            Some("Correction: Accidental aspiration of a solid tablet of sodium hydroxide"),
+        );
+    }
+
+    #[test]
+    fn update_work_item_with_title_strips_html_from_species_names() {
+        let adapter = TestAdapter::with_titles(vec![
+            "Population genetics of <i>Drosophila melanogaster</i> in tropical environments",
+        ]);
+        let mut item = Entity::new_empty_item();
+        adapter.update_work_item_with_title("test_id", &mut item);
+
+        assert_eq!(
+            item.label_in_locale("en"),
+            Some("Population genetics of Drosophila melanogaster in tropical environments"),
+        );
+    }
+
+    #[test]
+    fn update_work_item_with_title_plain_text_unaffected() {
+        let adapter = TestAdapter::with_titles(vec!["A plain text title"]);
+        let mut item = Entity::new_empty_item();
+        adapter.update_work_item_with_title("test_id", &mut item);
+
+        assert_eq!(item.label_in_locale("en"), Some("A plain text title"));
+    }
 }
