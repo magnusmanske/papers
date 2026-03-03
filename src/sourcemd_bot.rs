@@ -251,7 +251,7 @@ impl SourceMDbot {
         self.config.read().await.get_next_command(self.batch_id)
     }
 
-    fn new_wdp(&self, command: &SourceMDcommand) -> WikidataPapers {
+    fn new_wdp(&self, _command: &SourceMDcommand) -> WikidataPapers {
         let mut wdp = WikidataPapers::new(self.cache.clone());
         wdp.add_adapter(Box::new(PMC2Wikidata::new()));
         wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));

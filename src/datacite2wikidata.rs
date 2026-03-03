@@ -35,7 +35,9 @@ impl DataCite2Wikidata {
     /// Returns the `data.attributes` object from the cached JSON:API response.
     fn get_attributes(&self, publication_id: &str) -> Option<&serde_json::Value> {
         let work = self.get_cached_publication_from_id(publication_id)?;
-        work["data"]["attributes"].as_object().map(|_| &work["data"]["attributes"])
+        work["data"]["attributes"]
+            .as_object()
+            .map(|_| &work["data"]["attributes"])
     }
 
     async fn fetch_work_by_doi(&mut self, doi: &str) -> Option<String> {
@@ -181,13 +183,10 @@ impl ScientificPublicationAdapter for DataCite2Wikidata {
                         if ni["nameIdentifierScheme"].as_str() == Some("ORCID") {
                             if let Some(orcid) = ni["nameIdentifier"].as_str() {
                                 // May be full URL or bare ID
-                                let orcid = orcid
-                                    .strip_prefix("https://orcid.org/")
-                                    .unwrap_or(orcid);
+                                let orcid =
+                                    orcid.strip_prefix("https://orcid.org/").unwrap_or(orcid);
                                 if !orcid.is_empty() {
-                                    entry
-                                        .prop2id
-                                        .insert("P496".to_string(), orcid.to_string());
+                                    entry.prop2id.insert("P496".to_string(), orcid.to_string());
                                 }
                             }
                         }
@@ -368,7 +367,7 @@ mod tests {
         );
         assert_eq!(authors[1].name, Some("Bob Jones".to_string()));
         assert_eq!(authors[1].list_number, Some("2".to_string()));
-        assert!(authors[1].prop2id.get("P496").is_none());
+        assert!(!authors[1].prop2id.contains_key("P496"));
     }
 
     #[test]

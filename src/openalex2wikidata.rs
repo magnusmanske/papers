@@ -54,9 +54,7 @@ impl OpenAlex2Wikidata {
         // DOI
         if let Some(doi) = work["doi"].as_str() {
             // OpenAlex returns DOI as full URL like "https://doi.org/10.1234/..."
-            let doi = doi
-                .strip_prefix("https://doi.org/")
-                .unwrap_or(doi);
+            let doi = doi.strip_prefix("https://doi.org/").unwrap_or(doi);
             ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, doi));
         }
 
@@ -217,9 +215,7 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
                     // Format: "https://orcid.org/0000-0001-2345-6789"
                     if let Some(orcid) = orcid_url.rsplit('/').next() {
                         if !orcid.is_empty() {
-                            entry
-                                .prop2id
-                                .insert("P496".to_string(), orcid.to_string());
+                            entry.prop2id.insert("P496".to_string(), orcid.to_string());
                         }
                     }
                 }
@@ -359,14 +355,8 @@ mod tests {
         adapter
             .work_cache
             .insert("10.1234/TEST".to_string(), make_work());
-        assert_eq!(
-            adapter.get_volume("10.1234/TEST"),
-            Some("42".to_string())
-        );
-        assert_eq!(
-            adapter.get_issue("10.1234/TEST"),
-            Some("3".to_string())
-        );
+        assert_eq!(adapter.get_volume("10.1234/TEST"), Some("42".to_string()));
+        assert_eq!(adapter.get_issue("10.1234/TEST"), Some("3".to_string()));
     }
 
     #[test]
@@ -397,7 +387,7 @@ mod tests {
         );
         assert_eq!(authors[1].name, Some("Bob Jones".to_string()));
         assert_eq!(authors[1].list_number, Some("2".to_string()));
-        assert!(authors[1].prop2id.get("P496").is_none());
+        assert!(!authors[1].prop2id.contains_key("P496"));
     }
 
     #[test]
@@ -417,15 +407,18 @@ mod tests {
             .insert("10.1234/TEST".to_string(), make_work());
         let mut ret = vec![];
         adapter.add_identifiers_from_cached_publication("10.1234/TEST", &mut ret);
-        assert!(ret.iter().any(|id| *id.work_type()
-            == GenericWorkType::Property(IdProp::DOI)
-            && id.id() == "10.1234/TEST"));
-        assert!(ret.iter().any(|id| *id.work_type()
-            == GenericWorkType::Property(IdProp::PMID)
-            && id.id() == "12345678"));
-        assert!(ret.iter().any(|id| *id.work_type()
-            == GenericWorkType::Property(IdProp::PMCID)
-            && id.id() == "PMC9876543"));
+        assert!(ret.iter().any(
+            |id| *id.work_type() == GenericWorkType::Property(IdProp::DOI)
+                && id.id() == "10.1234/TEST"
+        ));
+        assert!(ret.iter().any(
+            |id| *id.work_type() == GenericWorkType::Property(IdProp::PMID)
+                && id.id() == "12345678"
+        ));
+        assert!(ret.iter().any(
+            |id| *id.work_type() == GenericWorkType::Property(IdProp::PMCID)
+                && id.id() == "PMC9876543"
+        ));
     }
 
     #[test]

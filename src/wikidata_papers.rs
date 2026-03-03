@@ -162,6 +162,7 @@ impl WikidataPapers {
         }
     }
 
+    #[allow(clippy::ptr_arg)]
     fn merge_authors(
         &self,
         authors: &mut Vec<GenericAuthorInfo>,
@@ -229,9 +230,7 @@ impl WikidataPapers {
         if !item.has_claims_with_property("P31") {
             let work_type_q = adapter2work_id
                 .iter()
-                .find_map(|(adapter_id, pub_id)| {
-                    self.adapters[*adapter_id].get_work_type(pub_id)
-                })
+                .find_map(|(adapter_id, pub_id)| self.adapters[*adapter_id].get_work_type(pub_id))
                 .unwrap_or_else(|| "Q13442814".to_string()); // default: scientific article
             item.add_claim(Statement::new_normal(
                 Snak::new_item("P31", &work_type_q),
@@ -259,7 +258,10 @@ impl WikidataPapers {
         authors: &Vec<GenericAuthorInfo>,
         mw_api: Arc<RwLock<Api>>,
     ) {
-        let qs: Vec<String> = authors.iter().filter_map(|a| a.wikidata_item.clone()).collect();
+        let qs: Vec<String> = authors
+            .iter()
+            .filter_map(|a| a.wikidata_item.clone())
+            .collect();
         if qs.is_empty() {
             return;
         }
@@ -679,11 +681,7 @@ mod tests {
         wdp.update_author_statements(&[author1, author2], &mut item);
 
         // Collect ordinals from all claims
-        let ordinals: Vec<String> = item
-            .claims()
-            .iter()
-            .filter_map(get_ordinal)
-            .collect();
+        let ordinals: Vec<String> = item.claims().iter().filter_map(get_ordinal).collect();
 
         // Ordinals should not conflict - each should be unique
         let mut unique = ordinals.clone();
