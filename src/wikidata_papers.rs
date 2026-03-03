@@ -119,28 +119,32 @@ impl WikidataPapers {
 
     fn update_author_statements(&self, authors: &[GenericAuthorInfo], item: &mut Entity) {
         let p50 = Self::get_p50s_from_item(item);
+        let mut used_candidates: HashSet<usize> = HashSet::new();
 
-        item.claims_mut()
-            .par_iter_mut()
-            .filter(|statement| statement.property() == "P2093")
-            .filter_map(|statement| {
-                let author = GenericAuthorInfo::new_from_statement(statement)?;
-                Some((author, statement))
-            })
-            .for_each(|(author, p2093_statement)| {
-                if let Some((candidate, _points)) = author.find_best_match(authors) {
-                    if let Some(q) = &authors[candidate].wikidata_item {
-                        if p50.contains(q) {
-                            // Author already has P50, remove redundant P2093
-                            Self::remove_p2093_statement(p2093_statement);
-                        } else if let Some(p50_statement) =
-                            &authors[candidate].generate_author_statement()
-                        {
-                            Self::update_p2093_to_p50_statement(p50_statement, p2093_statement);
-                        }
-                    }
-                }
-            });
+        for statement in item.claims_mut().iter_mut() {
+            if statement.property() != "P2093" {
+                continue;
+            }
+            let author = match GenericAuthorInfo::new_from_statement(statement) {
+                Some(a) => a,
+                None => continue,
+            };
+            let (candidate, _points) = match author.find_best_match(authors) {
+                Some(m) => m,
+                None => continue,
+            };
+            let q = match &authors[candidate].wikidata_item {
+                Some(q) => q,
+                None => continue,
+            };
+            if p50.contains(q) || used_candidates.contains(&candidate) {
+                // Author already has P50 or candidate already used; remove redundant P2093
+                Self::remove_p2093_statement(statement);
+            } else if let Some(p50_statement) = &authors[candidate].generate_author_statement() {
+                Self::update_p2093_to_p50_statement(p50_statement, statement);
+                used_candidates.insert(candidate);
+            }
+        }
 
         Self::remove_statements_with_no_value(item);
     }
@@ -472,22 +476,39 @@ impl WikidataPapers {
     fn update_p2093_to_p50_statement(p50_statement: &Statement, p2093_statement: &mut Statement) {
         let mut p50_statement = p50_statement.to_owned();
 
-        // Preserve qualifiers
-        p2093_statement.qualifiers().iter().for_each(|q1| {
-            if !p50_statement
-                .qualifiers()
-                .iter()
-                .any(|q2| q1.property() == q2.property())
-            {
-                p50_statement.add_qualifier_snak(q1.clone())
+        // Preserve qualifiers from the existing P2093 statement (e.g. P1545 ordinal).
+        // P2093 qualifiers take precedence over the generated P50's qualifiers,
+        // because the P2093 reflects what's already on Wikidata.
+        let p2093_properties: HashSet<String> = p2093_statement
+            .qualifiers()
+            .iter()
+            .map(|q| q.property().to_string())
+            .collect();
+        // Build merged qualifiers: start with P2093's, then add non-conflicting P50 ones
+        let mut merged_qualifiers: Vec<Snak> = p2093_statement.qualifiers().to_vec();
+        for q in p50_statement.qualifiers() {
+            if !p2093_properties.contains(q.property()) {
+                merged_qualifiers.push(q.clone());
             }
-        });
+        }
+        // Rebuild the P50 statement with merged qualifiers
+        p50_statement = Statement::new_normal(
+            p50_statement.main_snak().clone(),
+            merged_qualifiers,
+            p50_statement.references().to_vec(),
+        );
 
-        // P1932 "object named as"
-        if let Some(dv) = p2093_statement.main_snak().data_value() {
-            if let Value::StringValue(author_name_string) = dv.value() {
-                let p1932_qualifier = Snak::new_string("P1932", author_name_string);
-                p50_statement.add_qualifier_snak(p1932_qualifier);
+        // P1932 "object named as" — add from the P2093's author name string,
+        // but only if P1932 isn't already present from the merged qualifiers
+        let has_p1932 = p50_statement
+            .qualifiers()
+            .iter()
+            .any(|q| q.property() == "P1932");
+        if !has_p1932 {
+            if let Some(dv) = p2093_statement.main_snak().data_value() {
+                if let Value::StringValue(author_name_string) = dv.value() {
+                    p50_statement.add_qualifier_snak(Snak::new_string("P1932", author_name_string));
+                }
             }
         }
 
@@ -512,27 +533,160 @@ impl WikidataPapers {
 
 #[cfg(test)]
 mod tests {
-    //use super::*;
-    //use wikibase::mediawiki::api::Api;
+    use super::*;
 
-    /*
-    TODO:
-    pub fn new(cache: Arc<WikidataStringCache>) -> WikidataPapers {
-    pub fn adapters_mut(&mut self) -> &mut Vec<Box<dyn ScientificPublicationAdapter>> {
-    pub fn add_adapter(&mut self, adapter_box: Box<dyn ScientificPublicationAdapter>) {
-    pub fn edit_summary(&self) -> &Option<String> {
-    pub fn set_edit_summary(&mut self, edit_summary: Option<String>) {
-    fn create_author_statements(&mut self, authors: &Vec<GenericAuthorInfo>, item: &mut Entity) {
-    fn update_author_statements(&self, authors: &Vec<GenericAuthorInfo>, item: &mut Entity) {
-    fn create_or_update_author_statements(
-    fn merge_authors(
-    pub fn update_item_from_adapters(
-    fn update_author_items(&self, authors: &Vec<GenericAuthorInfo>, mw_api: &mut Api) {
-    fn update_item_with_ids(&self, item: &mut wikibase::Entity, ids: &Vec<GenericWorkIdentifier>) {
-    pub fn create_or_update_item_from_ids(
-    pub fn create_or_update_item_from_q(
-    fn create_or_update_item_from_items(
-    pub fn update_from_paper_ids(
-    pub fn get_items_for_ids(&self, ids: &Vec<GenericWorkIdentifier>) -> Vec<String> {
-    */
+    /// Helper: create a P2093 statement with name and ordinal qualifier P1545
+    fn make_p2093(name: &str, ordinal: &str) -> Statement {
+        Statement::new_normal(
+            Snak::new_string("P2093", name),
+            vec![Snak::new_string("P1545", ordinal)],
+            vec![],
+        )
+    }
+
+    /// Helper: create a WikidataPapers with no adapters (for unit testing)
+    async fn make_wdp() -> WikidataPapers {
+        let mw_api = Arc::new(tokio::sync::RwLock::new(
+            wikibase::mediawiki::api::Api::new("https://www.wikidata.org/w/api.php")
+                .await
+                .unwrap(),
+        ));
+        let cache = Arc::new(WikidataStringCache::new(mw_api));
+        WikidataPapers::new(cache)
+    }
+
+    /// Extract P1545 qualifier value from a statement
+    fn get_ordinal(statement: &Statement) -> Option<String> {
+        statement.qualifiers().iter().find_map(|q| {
+            if q.property() == "P1545" {
+                match q.data_value() {
+                    Some(dv) => match dv.value() {
+                        Value::StringValue(s) => Some(s.to_string()),
+                        _ => None,
+                    },
+                    None => None,
+                }
+            } else {
+                None
+            }
+        })
+    }
+
+    // === Bug reproduction: ordinal swapping (issue #3) ===
+    //
+    // When a P2093 "Giorgio Alimonti" at ordinal #42 is matched to adapter
+    // author with the same name but ordinal #44, the resulting P50 should
+    // keep ordinal #42 (from Wikidata), not #44 (from the adapter).
+
+    #[tokio::test]
+    async fn update_author_statements_preserves_p2093_ordinal() {
+        let wdp = make_wdp().await;
+        let mut item = Entity::new_empty_item();
+        item.add_claim(make_p2093("Giorgio Alimonti", "42"));
+
+        // Adapter author with same name but different ordinal
+        let mut adapter_author = GenericAuthorInfo::new();
+        adapter_author.name = Some("Giorgio Alimonti".to_string());
+        adapter_author.wikidata_item = Some("Q64863661".to_string());
+        adapter_author.list_number = Some("44".to_string()); // different ordinal!
+
+        wdp.update_author_statements(&[adapter_author], &mut item);
+
+        // Should have exactly one claim: a P50 for Q64863661
+        assert_eq!(item.claims().len(), 1, "Expected exactly one claim");
+        let claim = &item.claims()[0];
+        assert_eq!(claim.main_snak().property(), "P50", "Should be P50");
+
+        // The ordinal should be #42 (from the original P2093), NOT #44 (from the adapter)
+        let ordinal = get_ordinal(claim);
+        assert_eq!(
+            ordinal,
+            Some("42".to_string()),
+            "Ordinal should be preserved from the original P2093 statement, not taken from adapter"
+        );
+    }
+
+    // === Bug reproduction: duplicate Q-item assignment (issue #3) ===
+    //
+    // If two P2093 statements for name variants of the same person both
+    // match the same adapter author, only one P50 should be created and
+    // the other P2093 should be removed.
+
+    #[tokio::test]
+    async fn update_author_statements_prevents_duplicate_p50() {
+        let wdp = make_wdp().await;
+        let mut item = Entity::new_empty_item();
+        // Two P2093s for what is effectively the same person (different name orderings)
+        item.add_claim(make_p2093("Giorgio Alimonti", "42"));
+        item.add_claim(make_p2093("Alimonti Giorgio", "44"));
+
+        let mut adapter_author = GenericAuthorInfo::new();
+        adapter_author.name = Some("Giorgio Alimonti".to_string());
+        adapter_author.wikidata_item = Some("Q64863661".to_string());
+        adapter_author.list_number = Some("42".to_string());
+
+        wdp.update_author_statements(&[adapter_author], &mut item);
+
+        // Count how many P50 statements reference Q64863661
+        let p50_count = item
+            .claims()
+            .iter()
+            .filter(|s| s.property() == "P50")
+            .filter(|s| match s.main_snak().data_value() {
+                Some(dv) => matches!(dv.value(), Value::Entity(e) if e.id() == "Q64863661"),
+                None => false,
+            })
+            .count();
+
+        assert!(
+            p50_count <= 1,
+            "Same Q-item should not appear in multiple P50 statements, got {}",
+            p50_count
+        );
+    }
+
+    // === Bug reproduction: conflicting ordinals (issue #3) ===
+    //
+    // When adapter gives two different authors the same ordinal but Wikidata
+    // has them at different ordinals, the Wikidata ordinals should be preserved.
+
+    #[tokio::test]
+    async fn update_author_statements_no_conflicting_ordinals() {
+        let wdp = make_wdp().await;
+        let mut item = Entity::new_empty_item();
+        // Two different authors at different positions on Wikidata
+        item.add_claim(make_p2093("Jahred Adelman", "15"));
+        item.add_claim(make_p2093("Stephanie Zimmermann", "2879"));
+
+        // Adapter has both authors with Q-items but erroneously gives same ordinal
+        let mut author1 = GenericAuthorInfo::new();
+        author1.name = Some("Jahred Adelman".to_string());
+        author1.wikidata_item = Some("Q100001".to_string());
+        author1.list_number = Some("15".to_string());
+
+        let mut author2 = GenericAuthorInfo::new();
+        author2.name = Some("Stephanie Zimmermann".to_string());
+        author2.wikidata_item = Some("Q100002".to_string());
+        author2.list_number = Some("15".to_string()); // adapter erroneously gives same ordinal
+
+        wdp.update_author_statements(&[author1, author2], &mut item);
+
+        // Collect ordinals from all claims
+        let ordinals: Vec<String> = item
+            .claims()
+            .iter()
+            .filter_map(get_ordinal)
+            .collect();
+
+        // Ordinals should not conflict - each should be unique
+        let mut unique = ordinals.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(
+            ordinals.len(),
+            unique.len(),
+            "Ordinals should be unique, but got duplicates: {:?}",
+            ordinals
+        );
+    }
 }
