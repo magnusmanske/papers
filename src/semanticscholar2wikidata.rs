@@ -94,7 +94,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     }
 
     fn publication_property(&self) -> Option<IdProp> {
-        Some(IdProp::SematicScholar)
+        Some(IdProp::SemanticScholar)
     }
 
     /*

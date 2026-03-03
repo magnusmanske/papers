@@ -4,7 +4,7 @@ const PROP_PMID: &str = "P698";
 const PROP_PMCID: &str = "P932";
 const PROP_DOI: &str = "P356";
 const PROP_ARXIV: &str = "P818";
-const PROP_SEMATIC_SCHOLAR: &str = "P4011";
+const PROP_SEMANTIC_SCHOLAR: &str = "P4011";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum IdProp {
@@ -12,7 +12,7 @@ pub enum IdProp {
     PMCID,
     DOI,
     ARXIV,
-    SematicScholar,
+    SemanticScholar,
 }
 
 impl FromStr for IdProp {
@@ -24,7 +24,7 @@ impl FromStr for IdProp {
             PROP_PMCID => Ok(IdProp::PMCID),
             PROP_DOI => Ok(IdProp::DOI),
             PROP_ARXIV => Ok(IdProp::ARXIV),
-            PROP_SEMATIC_SCHOLAR => Ok(IdProp::SematicScholar),
+            PROP_SEMANTIC_SCHOLAR => Ok(IdProp::SemanticScholar),
             _ => Err(format!("Invalid ID property: {s}")),
         }
     }
@@ -40,7 +40,7 @@ impl std::fmt::Display for IdProp {
                 IdProp::PMCID => PROP_PMCID,
                 IdProp::DOI => PROP_DOI,
                 IdProp::ARXIV => PROP_ARXIV,
-                IdProp::SematicScholar => PROP_SEMATIC_SCHOLAR,
+                IdProp::SemanticScholar => PROP_SEMANTIC_SCHOLAR,
             }
         )
     }
@@ -53,7 +53,7 @@ impl IdProp {
             IdProp::PMCID => PROP_PMCID,
             IdProp::DOI => PROP_DOI,
             IdProp::ARXIV => PROP_ARXIV,
-            IdProp::SematicScholar => PROP_SEMATIC_SCHOLAR,
+            IdProp::SemanticScholar => PROP_SEMANTIC_SCHOLAR,
         }
     }
 }
@@ -87,7 +87,7 @@ impl GenericWorkIdentifier {
     pub fn new_prop(prop: IdProp, id: &str) -> Self {
         let id = match &prop {
             IdProp::DOI => id.to_uppercase(), // DOIs are always uppercase
-            IdProp::SematicScholar => id.to_lowercase(), // Sematic Scholar IDs are always lowercase
+            IdProp::SemanticScholar => id.to_lowercase(), // Semantic Scholar IDs are always lowercase
             _other => id.to_string(),
         };
         Self {
@@ -120,8 +120,8 @@ mod tests {
         assert_eq!(IdProp::from_str(PROP_DOI).unwrap(), IdProp::DOI);
         assert_eq!(IdProp::from_str(PROP_ARXIV).unwrap(), IdProp::ARXIV);
         assert_eq!(
-            IdProp::from_str(PROP_SEMATIC_SCHOLAR).unwrap(),
-            IdProp::SematicScholar
+            IdProp::from_str(PROP_SEMANTIC_SCHOLAR).unwrap(),
+            IdProp::SemanticScholar
         );
         assert!(IdProp::from_str("P123").is_err());
     }
@@ -132,7 +132,7 @@ mod tests {
         assert_eq!(IdProp::PMCID.to_string(), PROP_PMCID);
         assert_eq!(IdProp::DOI.to_string(), PROP_DOI);
         assert_eq!(IdProp::ARXIV.to_string(), PROP_ARXIV);
-        assert_eq!(IdProp::SematicScholar.to_string(), PROP_SEMATIC_SCHOLAR);
+        assert_eq!(IdProp::SemanticScholar.to_string(), PROP_SEMANTIC_SCHOLAR);
     }
 
     #[test]
