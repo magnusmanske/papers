@@ -240,7 +240,13 @@ impl WikidataPapers {
         }
 
         // Final deduplication pass after all sources have been merged
-        GenericAuthorInfo::deduplicate(&mut authors);
+        // CPU-bound: O(n²) author matching with regex — offload from async runtime
+        let authors = tokio::task::spawn_blocking(move || {
+            GenericAuthorInfo::deduplicate(&mut authors);
+            authors
+        })
+        .await
+        .expect("deduplicate panicked");
 
         let mut new_authors: Vec<GenericAuthorInfo> = vec![];
         for author in authors {
