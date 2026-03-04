@@ -1,11 +1,10 @@
+use self::identifiers::IdProp;
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
 use async_trait::async_trait;
 use orcid::*;
 use std::collections::HashMap;
-
-use self::identifiers::IdProp;
 
 #[derive(Debug, Clone, Default)]
 pub struct PseudoWork {
@@ -46,12 +45,14 @@ impl Orcid2Wikidata {
         self.work_cache.get(publication_id)
     }
 
-    pub fn get_or_load_author_data(&mut self, orcid_author_id: &str) -> Option<Author> {
+    pub async fn get_or_load_author_data(&mut self, orcid_author_id: &str) -> Option<Author> {
         if !self.author_data.contains_key(orcid_author_id) {
-            let data = self.client.author(&orcid_author_id.to_string()).ok();
+            let data = self.client.author(&orcid_author_id.to_string()).await.ok();
             self.author_data.insert(orcid_author_id.to_string(), data);
         }
-        self.author_data.get(orcid_author_id).and_then(|r| r.clone())
+        self.author_data
+            .get(orcid_author_id)
+            .and_then(|r| r.clone())
     }
 }
 
@@ -76,7 +77,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         // TODO other ID types than DOI?
         let doi = self.get_external_identifier_from_item(item, &IdProp::DOI)?;
-        let author_ids = self.client.search_doi(&doi).ok()?;
+        let author_ids = self.client.search_doi(&doi).await.ok()?;
 
         let work = PseudoWork { author_ids };
         let publication_id = doi;
@@ -91,7 +92,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
         };
     }
 
-    fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
+    async fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
         let mut ret: Vec<GenericAuthorInfo> = vec![];
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w.clone(),
@@ -103,7 +104,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
         };
 
         for orcid_author_id in &work.author_ids {
-            if let Some(author) = self.get_or_load_author_data(orcid_author_id) {
+            if let Some(author) = self.get_or_load_author_data(orcid_author_id).await {
                 let mut gai = GenericAuthorInfo {
                     name: None,
                     prop2id: HashMap::new(),

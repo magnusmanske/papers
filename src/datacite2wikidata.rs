@@ -152,7 +152,7 @@ impl ScientificPublicationAdapter for DataCite2Wikidata {
         Some((year, None, None))
     }
 
-    fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
+    async fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
         let attrs = match self.get_attributes(publication_id) {
             Some(a) => a.clone(),
             None => return vec![],
@@ -351,13 +351,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_get_author_list() {
+    #[tokio::test]
+    async fn test_get_author_list() {
         let mut adapter = DataCite2Wikidata::new();
         adapter
             .work_cache
             .insert("10.5281/ZENODO.1234567".to_string(), make_datacite_work());
-        let authors = adapter.get_author_list("10.5281/ZENODO.1234567");
+        let authors = adapter.get_author_list("10.5281/ZENODO.1234567").await;
         assert_eq!(authors.len(), 2);
         assert_eq!(authors[0].name, Some("Alice Smith".to_string()));
         assert_eq!(authors[0].list_number, Some("1".to_string()));
@@ -370,8 +370,8 @@ mod tests {
         assert!(!authors[1].prop2id.contains_key("P496"));
     }
 
-    #[test]
-    fn test_get_author_list_name_only() {
+    #[tokio::test]
+    async fn test_get_author_list_name_only() {
         let mut adapter = DataCite2Wikidata::new();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["creators"] = json!([
@@ -383,19 +383,22 @@ mod tests {
         adapter
             .work_cache
             .insert("10.5281/ZENODO.1234567".to_string(), work);
-        let authors = adapter.get_author_list("10.5281/ZENODO.1234567");
+        let authors = adapter.get_author_list("10.5281/ZENODO.1234567").await;
         assert_eq!(authors.len(), 1);
         assert_eq!(authors[0].name, Some("CERN Data Team".to_string()));
     }
 
-    #[test]
-    fn test_get_author_list_empty() {
+    #[tokio::test]
+    async fn test_get_author_list_empty() {
         let mut adapter = DataCite2Wikidata::new();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["creators"] = json!([]);
         adapter
             .work_cache
             .insert("10.5281/ZENODO.1234567".to_string(), work);
-        assert!(adapter.get_author_list("10.5281/ZENODO.1234567").is_empty());
+        assert!(adapter
+            .get_author_list("10.5281/ZENODO.1234567")
+            .await
+            .is_empty());
     }
 }

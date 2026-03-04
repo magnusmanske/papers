@@ -221,7 +221,7 @@ impl WikidataPapers {
                 .await;
 
             // Authors
-            let authors2 = adapter.get_author_list(&publication_id);
+            let authors2 = adapter.get_author_list(&publication_id).await;
             self.merge_authors(&mut authors, &authors2);
         }
 

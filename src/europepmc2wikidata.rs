@@ -166,7 +166,7 @@ impl ScientificPublicationAdapter for EuropePMC2Wikidata {
             .map(|s| s.to_string())
     }
 
-    fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
+    async fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w.clone(),
             None => return vec![],
@@ -249,9 +249,7 @@ mod tests {
         let mut adapter = EuropePMC2Wikidata::new();
         let mut work = make_epmc_work();
         work["title"] = json!("");
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), work);
+        adapter.work_cache.insert("10.1234/TEST".to_string(), work);
         assert!(adapter.get_work_titles("10.1234/TEST").is_empty());
     }
 
@@ -272,9 +270,7 @@ mod tests {
         let mut adapter = EuropePMC2Wikidata::new();
         let mut work = make_epmc_work();
         work["firstPublicationDate"] = json!(null);
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), work);
+        adapter.work_cache.insert("10.1234/TEST".to_string(), work);
         assert_eq!(
             adapter.get_publication_date("10.1234/TEST"),
             Some((2023, Some(6), None))
@@ -287,14 +283,8 @@ mod tests {
         adapter
             .work_cache
             .insert("10.1234/TEST".to_string(), make_epmc_work());
-        assert_eq!(
-            adapter.get_volume("10.1234/TEST"),
-            Some("42".to_string())
-        );
-        assert_eq!(
-            adapter.get_issue("10.1234/TEST"),
-            Some("3".to_string())
-        );
+        assert_eq!(adapter.get_volume("10.1234/TEST"), Some("42".to_string()));
+        assert_eq!(adapter.get_issue("10.1234/TEST"), Some("3".to_string()));
     }
 
     #[test]
@@ -309,13 +299,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_get_author_list() {
+    #[tokio::test]
+    async fn test_get_author_list() {
         let mut adapter = EuropePMC2Wikidata::new();
         adapter
             .work_cache
             .insert("10.1234/TEST".to_string(), make_epmc_work());
-        let authors = adapter.get_author_list("10.1234/TEST");
+        let authors = adapter.get_author_list("10.1234/TEST").await;
         assert_eq!(authors.len(), 2);
         assert_eq!(authors[0].name, Some("Alice Smith".to_string()));
         assert_eq!(authors[0].list_number, Some("1".to_string()));
@@ -323,21 +313,19 @@ mod tests {
         assert_eq!(authors[1].list_number, Some("2".to_string()));
     }
 
-    #[test]
-    fn test_get_author_list_empty() {
+    #[tokio::test]
+    async fn test_get_author_list_empty() {
         let mut adapter = EuropePMC2Wikidata::new();
         let mut work = make_epmc_work();
         work["authorList"]["author"] = json!([]);
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), work);
-        assert!(adapter.get_author_list("10.1234/TEST").is_empty());
+        adapter.work_cache.insert("10.1234/TEST".to_string(), work);
+        assert!(adapter.get_author_list("10.1234/TEST").await.is_empty());
     }
 
-    #[test]
-    fn test_get_author_list_missing() {
+    #[tokio::test]
+    async fn test_get_author_list_missing() {
         let mut adapter = EuropePMC2Wikidata::new();
-        assert!(adapter.get_author_list("nonexistent").is_empty());
+        assert!(adapter.get_author_list("nonexistent").await.is_empty());
     }
 
     #[test]
@@ -348,15 +336,18 @@ mod tests {
             .insert("10.1234/TEST".to_string(), make_epmc_work());
         let mut ret = vec![];
         adapter.add_identifiers_from_cached_publication("10.1234/TEST", &mut ret);
-        assert!(ret.iter().any(|id| *id.work_type()
-            == GenericWorkType::Property(IdProp::DOI)
-            && id.id() == "10.1234/TEST"));
-        assert!(ret.iter().any(|id| *id.work_type()
-            == GenericWorkType::Property(IdProp::PMID)
-            && id.id() == "12345678"));
-        assert!(ret.iter().any(|id| *id.work_type()
-            == GenericWorkType::Property(IdProp::PMCID)
-            && id.id() == "PMC9876543"));
+        assert!(ret.iter().any(
+            |id| *id.work_type() == GenericWorkType::Property(IdProp::DOI)
+                && id.id() == "10.1234/TEST"
+        ));
+        assert!(ret.iter().any(
+            |id| *id.work_type() == GenericWorkType::Property(IdProp::PMID)
+                && id.id() == "12345678"
+        ));
+        assert!(ret.iter().any(
+            |id| *id.work_type() == GenericWorkType::Property(IdProp::PMCID)
+                && id.id() == "PMC9876543"
+        ));
     }
 
     #[test]
@@ -364,13 +355,12 @@ mod tests {
         let mut adapter = EuropePMC2Wikidata::new();
         let mut work = make_epmc_work();
         work["pmcid"] = json!(null);
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), work);
+        adapter.work_cache.insert("10.1234/TEST".to_string(), work);
         let mut ret = vec![];
         adapter.add_identifiers_from_cached_publication("10.1234/TEST", &mut ret);
         assert_eq!(ret.len(), 2); // DOI + PMID, no PMCID
-        assert!(!ret.iter().any(|id| *id.work_type()
-            == GenericWorkType::Property(IdProp::PMCID)));
+        assert!(!ret
+            .iter()
+            .any(|id| *id.work_type() == GenericWorkType::Property(IdProp::PMCID)));
     }
 }

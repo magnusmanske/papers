@@ -41,7 +41,11 @@ impl Arxiv2Wikidata {
         };
         // Strip version suffix (e.g. "v1", "v2")
         match id.rfind('v') {
-            Some(pos) if pos > 0 && id[pos + 1..].chars().all(|c| c.is_ascii_digit()) && !id[pos + 1..].is_empty() => {
+            Some(pos)
+                if pos > 0
+                    && id[pos + 1..].chars().all(|c| c.is_ascii_digit())
+                    && !id[pos + 1..].is_empty() =>
+            {
                 id[..pos].to_string()
             }
             _ => id.to_string(),
@@ -91,10 +95,7 @@ impl ScientificPublicationAdapter for Arxiv2Wikidata {
                     if let Ok(results) = arxiv::fetch_arxivs(query).await {
                         if let Some(arxiv) = results.into_iter().next() {
                             let arxiv_id = Self::extract_arxiv_id(&arxiv.id);
-                            ret.push(GenericWorkIdentifier::new_prop(
-                                IdProp::ARXIV,
-                                &arxiv_id,
-                            ));
+                            ret.push(GenericWorkIdentifier::new_prop(IdProp::ARXIV, &arxiv_id));
                             self.work_cache.insert(arxiv_id, arxiv);
                         }
                     }
@@ -138,7 +139,7 @@ impl ScientificPublicationAdapter for Arxiv2Wikidata {
         Self::parse_date(&arxiv.published)
     }
 
-    fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
+    async fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
         match self.get_cached_publication_from_id(publication_id) {
             Some(arxiv) => arxiv
                 .authors
@@ -215,10 +216,7 @@ mod tests {
             Arxiv2Wikidata::parse_date("2023-06"),
             Some((2023, Some(6), None))
         );
-        assert_eq!(
-            Arxiv2Wikidata::parse_date("2023"),
-            Some((2023, None, None))
-        );
+        assert_eq!(Arxiv2Wikidata::parse_date("2023"), Some((2023, None, None)));
     }
 
     #[test]
@@ -232,7 +230,12 @@ mod tests {
         let mut adapter = Arxiv2Wikidata::new();
         adapter.work_cache.insert(
             "2301.12345".to_string(),
-            make_arxiv("2301.12345", "Test Paper Title", vec![], "2023-01-15T00:00:00Z"),
+            make_arxiv(
+                "2301.12345",
+                "Test Paper Title",
+                vec![],
+                "2023-01-15T00:00:00Z",
+            ),
         );
         let titles = adapter.get_work_titles("2301.12345");
         assert_eq!(titles.len(), 1);
@@ -269,8 +272,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_get_author_list() {
+    #[tokio::test]
+    async fn test_get_author_list() {
         let mut adapter = Arxiv2Wikidata::new();
         adapter.work_cache.insert(
             "2301.12345".to_string(),
@@ -281,7 +284,7 @@ mod tests {
                 "2023-01-15T00:00:00Z",
             ),
         );
-        let authors = adapter.get_author_list("2301.12345");
+        let authors = adapter.get_author_list("2301.12345").await;
         assert_eq!(authors.len(), 2);
         assert_eq!(authors[0].name, Some("Alice Smith".to_string()));
         assert_eq!(authors[0].list_number, Some("1".to_string()));
@@ -289,14 +292,14 @@ mod tests {
         assert_eq!(authors[1].list_number, Some("2".to_string()));
     }
 
-    #[test]
-    fn test_get_author_list_empty() {
+    #[tokio::test]
+    async fn test_get_author_list_empty() {
         let mut adapter = Arxiv2Wikidata::new();
         adapter.work_cache.insert(
             "2301.12345".to_string(),
             make_arxiv("2301.12345", "Title", vec![], "2023-01-15T00:00:00Z"),
         );
-        assert!(adapter.get_author_list("2301.12345").is_empty());
+        assert!(adapter.get_author_list("2301.12345").await.is_empty());
     }
 
     #[test]

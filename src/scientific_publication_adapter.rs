@@ -49,7 +49,7 @@ pub trait ScientificPublicationAdapter {
     // You should implement these yourself, where applicable
 
     /// Returns a list of the authors, if available, with list number, name, catalog-specific author ID, and WIkidata ID, as available
-    fn get_author_list(&mut self, _publication_id: &str) -> Vec<GenericAuthorInfo> {
+    async fn get_author_list(&mut self, _publication_id: &str) -> Vec<GenericAuthorInfo> {
         vec![]
     }
 
@@ -136,8 +136,8 @@ pub trait ScientificPublicationAdapter {
     /// E.g. "Correction: <i>Accidental aspiration</i>" → "Correction: Accidental aspiration"
     fn strip_html_tags(&self, s: &str) -> String {
         lazy_static! {
-            static ref RE_HTML: Regex = Regex::new(r"<[^>]+>")
-                .expect("strip_html_tags: could not compile RE_HTML");
+            static ref RE_HTML: Regex =
+                Regex::new(r"<[^>]+>").expect("strip_html_tags: could not compile RE_HTML");
         }
         let result = RE_HTML.replace_all(s, "");
         // Collapse multiple whitespace into single space
@@ -407,7 +407,10 @@ mod tests {
     impl TestAdapter {
         fn with_titles(titles: Vec<&str>) -> Self {
             Self {
-                titles: titles.into_iter().map(|t| LocaleString::new("en", t)).collect(),
+                titles: titles
+                    .into_iter()
+                    .map(|t| LocaleString::new("en", t))
+                    .collect(),
                 author_cache: HashMap::new(),
             }
         }
@@ -441,7 +444,9 @@ mod tests {
     fn strip_html_tags_removes_italic_tags() {
         let adapter = TestAdapter::with_titles(vec![]);
         assert_eq!(
-            adapter.strip_html_tags("Correction: <i>Accidental aspiration of a solid tablet of sodium hydroxide</i>"),
+            adapter.strip_html_tags(
+                "Correction: <i>Accidental aspiration of a solid tablet of sodium hydroxide</i>"
+            ),
             "Correction: Accidental aspiration of a solid tablet of sodium hydroxide"
         );
     }
@@ -471,10 +476,7 @@ mod tests {
     #[test]
     fn strip_html_tags_no_tags_unchanged() {
         let adapter = TestAdapter::with_titles(vec![]);
-        assert_eq!(
-            adapter.strip_html_tags("A simple title"),
-            "A simple title"
-        );
+        assert_eq!(adapter.strip_html_tags("A simple title"), "A simple title");
     }
 
     #[test]

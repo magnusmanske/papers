@@ -101,7 +101,10 @@ impl Pubmed2Wikidata {
         work_ids
             .iter()
             .map(|s| s.to_string())
-            .filter(|pub_id| self.get_dois_from_cached_publication(pub_id).contains(&doi_upper))
+            .filter(|pub_id| {
+                self.get_dois_from_cached_publication(pub_id)
+                    .contains(&doi_upper)
+            })
             .collect()
     }
 
@@ -359,7 +362,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
         Some(publication_id.to_string())
     }
 
-    fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
+    async fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
             None => return vec![],
@@ -455,8 +458,10 @@ mod tests {
     #[test]
     fn test_get_dois_from_cached_publication_with_doi() {
         let mut pm = Pubmed2Wikidata::new();
-        pm.work_cache
-            .insert("12345".to_string(), make_article(12345, Some("10.1234/test")));
+        pm.work_cache.insert(
+            "12345".to_string(),
+            make_article(12345, Some("10.1234/test")),
+        );
         let dois = pm.get_dois_from_cached_publication("12345");
         assert!(dois.contains(&"10.1234/TEST".to_string()));
     }
