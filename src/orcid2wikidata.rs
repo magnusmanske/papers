@@ -49,7 +49,7 @@ impl Orcid2Wikidata {
 
     pub async fn get_or_load_author_data(&self, orcid_author_id: &str) -> Option<Author> {
         if !self.author_data.lock().await.contains_key(orcid_author_id) {
-            let data = self.client.author(&orcid_author_id.to_string()).await.ok();
+            let data = self.client.author(orcid_author_id).await.ok();
             self.author_data
                 .lock()
                 .await

@@ -1976,11 +1976,15 @@ dependencies = [
 
 [[package]]
 name = "orcid"
-version = "0.1.4"
-source = "git+https://github.com/magnusmanske/orcid_rs#638ebe2dbdd456d6fd3a4668cdb4ae7ca72a819d"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ee8965c221af6b18d1e6ef36dcf11bbc0639dfef10a8c7d873b9acd60310100"
 dependencies = [
+ "anyhow",
  "reqwest 0.13.2",
  "serde_json",
+ "tokio",
+ "urlencoding",
 ]
 
 [[package]]

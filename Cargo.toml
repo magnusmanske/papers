@@ -33,8 +33,8 @@ crossref = { git = "https://github.com/magnusmanske/crossref-rs", branch = "asyn
 #semanticscholar = "*"
 semanticscholar = { git = "https://github.com/magnusmanske/semanticscholar" }
 
-#orcid="*"
-orcid = { git = "https://github.com/magnusmanske/orcid_rs" }
+orcid="*"
+# orcid = { git = "https://github.com/magnusmanske/orcid_rs" }
 
 pubmed = "*"
 #pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
