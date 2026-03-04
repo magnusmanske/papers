@@ -32,11 +32,14 @@ impl OpenAlex2Wikidata {
         self.work_cache.get(publication_id)
     }
 
-    async fn fetch_work_by_doi(&mut self, doi: &str) -> Option<String> {
+    async fn fetch_doi_data(doi: &str) -> Option<(String, serde_json::Value)> {
         let url = format!("https://api.openalex.org/works/doi:{}", doi);
         let json: serde_json::Value = reqwest::get(&url).await.ok()?.json().await.ok()?;
-        // Use the DOI as publication_id
-        let pub_id = doi.to_uppercase();
+        Some((doi.to_uppercase(), json))
+    }
+
+    async fn fetch_work_by_doi(&mut self, doi: &str) -> Option<String> {
+        let (pub_id, json) = Self::fetch_doi_data(doi).await?;
         self.work_cache.insert(pub_id.clone(), json);
         Some(pub_id)
     }
@@ -126,14 +129,27 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
         &mut self,
         ids: &[GenericWorkIdentifier],
     ) -> Vec<GenericWorkIdentifier> {
-        let mut ret: Vec<GenericWorkIdentifier> = vec![];
-        for id in ids {
-            if let GenericWorkType::Property(prop) = id.work_type() {
-                if *prop == IdProp::DOI {
-                    if let Some(pub_id) = self.fetch_work_by_doi(id.id()).await {
-                        self.add_identifiers_from_cached_publication(&pub_id, &mut ret);
+        let dois: Vec<&str> = ids
+            .iter()
+            .filter_map(|id| {
+                if let GenericWorkType::Property(prop) = id.work_type() {
+                    if *prop == IdProp::DOI {
+                        return Some(id.id());
                     }
                 }
+                None
+            })
+            .collect();
+        let futures: Vec<_> = dois.iter().map(|doi| Self::fetch_doi_data(doi)).collect();
+        for result in futures::future::join_all(futures).await.into_iter().flatten() {
+            let (pub_id, json) = result;
+            self.work_cache.insert(pub_id, json);
+        }
+        let mut ret = vec![];
+        for doi in &dois {
+            let pub_id = doi.to_uppercase();
+            if self.work_cache.contains_key(&pub_id) {
+                self.add_identifiers_from_cached_publication(&pub_id, &mut ret);
             }
         }
         ret
