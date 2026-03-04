@@ -8,6 +8,16 @@ use wikibase::mediawiki::api::Api;
 
 use self::identifiers::{GenericWorkIdentifier, IdProp};
 
+/// Parses a date string like "2023-01-15" or "2023-01-15T00:00:00Z" into (year, month, day).
+pub fn parse_date(date_str: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
+    let date_part = date_str.split('T').next()?;
+    let parts: Vec<&str> = date_part.split('-').collect();
+    let year: u32 = parts.first()?.parse().ok()?;
+    let month: Option<u8> = parts.get(1).and_then(|s| s.parse().ok());
+    let day: Option<u8> = parts.get(2).and_then(|s| s.parse().ok());
+    Some((year, month, day))
+}
+
 #[async_trait(?Send)]
 pub trait ScientificPublicationAdapter {
     // You will need to implement these yourself
@@ -331,23 +341,16 @@ pub trait ScientificPublicationAdapter {
         item: &Entity,
         property: &IdProp,
     ) -> Option<String> {
-        for claim in item.claims() {
-            if claim.main_snak().property() == property.as_str()
-                && *claim.main_snak().snak_type() == SnakType::Value
-            {
-                match claim.main_snak().data_value() {
-                    Some(dv) => {
-                        let value = dv.value().clone();
-                        match &value {
-                            Value::StringValue(s) => return Some(s.to_string()),
-                            _ => continue,
-                        }
-                    }
-                    None => continue,
-                }
-            }
-        }
-        None
+        item.claims()
+            .iter()
+            .filter(|claim| {
+                claim.main_snak().property() == property.as_str()
+                    && *claim.main_snak().snak_type() == SnakType::Value
+            })
+            .find_map(|claim| match claim.main_snak().data_value().as_ref()?.value() {
+                Value::StringValue(s) => Some(s.to_string()),
+                _ => None,
+            })
     }
 
     fn set_author_cache_entry(&mut self, catalog_author_id: &str, q: &str) {

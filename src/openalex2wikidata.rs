@@ -101,14 +101,6 @@ impl OpenAlex2Wikidata {
         }
     }
 
-    /// Parses a date string like "2023-01-15" into (year, month, day).
-    fn parse_date(date_str: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
-        let parts: Vec<&str> = date_str.split('-').collect();
-        let year: u32 = parts.first()?.parse().ok()?;
-        let month: Option<u8> = parts.get(1).and_then(|s| s.parse().ok());
-        let day: Option<u8> = parts.get(2).and_then(|s| s.parse().ok());
-        Some((year, month, day))
-    }
 }
 
 #[async_trait(?Send)]
@@ -188,7 +180,7 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
     fn get_publication_date(&self, publication_id: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
         let work = self.get_cached_publication_from_id(publication_id)?;
         let date_str = work["publication_date"].as_str()?;
-        Self::parse_date(date_str)
+        crate::scientific_publication_adapter::parse_date(date_str)
     }
 
     fn get_volume(&self, publication_id: &str) -> Option<String> {
@@ -440,7 +432,7 @@ mod tests {
     #[test]
     fn test_parse_date_full() {
         assert_eq!(
-            OpenAlex2Wikidata::parse_date("2023-06-15"),
+            crate::scientific_publication_adapter::parse_date("2023-06-15"),
             Some((2023, Some(6), Some(15)))
         );
     }
@@ -448,13 +440,13 @@ mod tests {
     #[test]
     fn test_parse_date_year_only() {
         assert_eq!(
-            OpenAlex2Wikidata::parse_date("2023"),
+            crate::scientific_publication_adapter::parse_date("2023"),
             Some((2023, None, None))
         );
     }
 
     #[test]
     fn test_parse_date_invalid() {
-        assert_eq!(OpenAlex2Wikidata::parse_date(""), None);
+        assert_eq!(crate::scientific_publication_adapter::parse_date(""), None);
     }
 }

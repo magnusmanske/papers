@@ -90,16 +90,10 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
     }
 
     fn get_work_issn(&self, publication_id: &str) -> Option<String> {
-        match self.get_cached_publication_from_id(publication_id) {
-            Some(work) => match &work.issn {
-                Some(array) => match array.len() {
-                    0 => None,
-                    _ => Some(array[0].clone()),
-                },
-                None => None,
-            },
-            None => None,
-        }
+        self.get_cached_publication_from_id(publication_id)?
+            .issn
+            .as_ref()
+            .and_then(|a| a.first().cloned())
     }
 
     fn author_cache(&self) -> &HashMap<String, String> {

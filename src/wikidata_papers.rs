@@ -300,10 +300,8 @@ impl WikidataPapers {
             let id2statement = self
                 .adapters
                 .iter()
-                .filter(|adapter| adapter.publication_property().is_some())
-                .filter(|adapter| Some(prop.to_owned()) == adapter.publication_property())
-                .filter_map(|adapter| adapter.publication_id_for_statement(id.id()))
-                .next();
+                .filter(|adapter| adapter.publication_property().as_ref() == Some(&prop))
+                .find_map(|adapter| adapter.publication_id_for_statement(id.id()));
             if let Some(id) = id2statement {
                 item.add_claim(Statement::new_normal(
                     Snak::new_external_id(prop.as_str(), &id),
@@ -486,19 +484,16 @@ impl WikidataPapers {
     }
 
     fn get_p50s_from_item(item: &mut Entity) -> Vec<String> {
-        let p50: Vec<String> = item
-            .claims()
+        item.claims()
             .par_iter()
             .filter(|statement| statement.property() == "P50")
-            .filter_map(|statement| match statement.main_snak().data_value() {
-                Some(dv) => match dv.value() {
+            .filter_map(|statement| {
+                match statement.main_snak().data_value().as_ref()?.value() {
                     Value::Entity(entity) => Some(entity.id().to_string()),
                     _ => None,
-                },
-                _ => None,
+                }
             })
-            .collect();
-        p50
+            .collect()
     }
 
     fn update_p2093_to_p50_statement(p50_statement: &Statement, p2093_statement: &mut Statement) {
@@ -580,21 +575,21 @@ mod tests {
         WikidataPapers::new(cache)
     }
 
-    /// Extract P1545 qualifier value from a statement
-    fn get_ordinal(statement: &Statement) -> Option<String> {
+    fn get_string_qualifier(statement: &Statement, property: &str) -> Option<String> {
         statement.qualifiers().iter().find_map(|q| {
-            if q.property() == "P1545" {
-                match q.data_value() {
-                    Some(dv) => match dv.value() {
-                        Value::StringValue(s) => Some(s.to_string()),
-                        _ => None,
-                    },
-                    None => None,
-                }
-            } else {
-                None
+            if q.property() != property {
+                return None;
+            }
+            match q.data_value().as_ref()?.value() {
+                Value::StringValue(s) => Some(s.to_string()),
+                _ => None,
             }
         })
+    }
+
+    /// Extract P1545 qualifier value from a statement
+    fn get_ordinal(statement: &Statement) -> Option<String> {
+        get_string_qualifier(statement, "P1545")
     }
 
     // === Bug reproduction: ordinal swapping (issue #3) ===
@@ -713,19 +708,7 @@ mod tests {
 
     /// Extract P1932 ("object named as") qualifier value from a statement
     fn get_named_as(statement: &Statement) -> Option<String> {
-        statement.qualifiers().iter().find_map(|q| {
-            if q.property() == "P1932" {
-                match q.data_value() {
-                    Some(dv) => match dv.value() {
-                        Value::StringValue(s) => Some(s.to_string()),
-                        _ => None,
-                    },
-                    None => None,
-                }
-            } else {
-                None
-            }
-        })
+        get_string_qualifier(statement, "P1932")
     }
 
     // === Bug reproduction: P1932 uses adapter name instead of P2093 name (issue #5) ===

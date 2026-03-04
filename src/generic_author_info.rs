@@ -1,6 +1,7 @@
 use crate::wikidata_interaction::WikidataInteraction;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
+use deunicode::deunicode;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -42,52 +43,30 @@ impl GenericAuthorInfo {
 
     pub fn new_from_statement(statement: &Statement) -> Option<Self> {
         let mut ret = Self::new();
-        if statement.property() == "P2093" {
-            match statement.main_snak().data_value() {
-                Some(dv) => match dv.value() {
-                    Value::StringValue(name) => {
-                        ret.name = Some(name.to_string());
-                    }
-                    _ => return None,
-                },
+        let dv = statement.main_snak().data_value().as_ref()?;
+        match statement.property() {
+            "P2093" => match dv.value() {
+                Value::StringValue(name) => ret.name = Some(name.to_string()),
                 _ => return None,
-            }
-        } else if statement.property() == "P50" {
-            match statement.main_snak().data_value() {
-                Some(dv) => match dv.value() {
-                    Value::Entity(entity) => {
-                        ret.wikidata_item = Some(entity.id().to_string());
-                    }
-                    _ => return None,
-                },
+            },
+            "P50" => match dv.value() {
+                Value::Entity(entity) => ret.wikidata_item = Some(entity.id().to_string()),
                 _ => return None,
-            }
-        } else {
-            return None;
+            },
+            _ => return None,
         }
 
-        statement
-            .qualifiers()
-            .iter()
-            .for_each(|snak| match snak.property() {
-                // List number
-                "P1545" => {
-                    if let Some(dv) = snak.data_value() {
-                        if let Value::StringValue(s) = dv.value() {
-                            ret.list_number = Some(s.to_string())
-                        }
+        for snak in statement.qualifiers() {
+            if let Some(dv) = snak.data_value().as_ref() {
+                if let Value::StringValue(s) = dv.value() {
+                    match snak.property() {
+                        "P1545" => ret.list_number = Some(s.to_string()),
+                        "P1932" => ret.name = Some(s.to_string()),
+                        _ => {}
                     }
                 }
-                // Named as
-                "P1932" => {
-                    if let Some(dv) = snak.data_value() {
-                        if let Value::StringValue(s) = dv.value() {
-                            ret.name = Some(s.to_string())
-                        }
-                    }
-                }
-                _ => {}
-            });
+            }
+        }
 
         Some(ret)
     }
@@ -325,17 +304,7 @@ impl GenericAuthorInfo {
     }
 
     fn asciify_string(&self, s: &str) -> String {
-        // As long as some sources insist on using ASCII only for names :-(
-        s.to_lowercase()
-            .replace('ä', "a")
-            .replace('ö', "o")
-            .replace('ü', "u")
-            .replace(['á', 'à', 'â'], "a")
-            .replace(['é', 'è'], "e")
-            .replace('ñ', "n")
-            .replace('ï', "i")
-            .replace('ç', "c")
-            .replace('ß', "ss")
+        deunicode(s).to_lowercase()
     }
 
     /// Simplifies a name by removing short words

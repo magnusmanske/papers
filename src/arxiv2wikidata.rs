@@ -52,14 +52,6 @@ impl Arxiv2Wikidata {
         }
     }
 
-    /// Parses an ISO 8601 date string like "2023-01-15T00:00:00Z" into (year, month, day).
-    fn parse_date(date_str: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
-        let parts: Vec<&str> = date_str.split('T').next()?.split('-').collect();
-        let year: u32 = parts.first()?.parse().ok()?;
-        let month: Option<u8> = parts.get(1).and_then(|s| s.parse().ok());
-        let day: Option<u8> = parts.get(2).and_then(|s| s.parse().ok());
-        Some((year, month, day))
-    }
 }
 
 #[async_trait(?Send)]
@@ -151,7 +143,7 @@ impl ScientificPublicationAdapter for Arxiv2Wikidata {
 
     fn get_publication_date(&self, publication_id: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
         let arxiv = self.get_cached_publication_from_id(publication_id)?;
-        Self::parse_date(&arxiv.published)
+        crate::scientific_publication_adapter::parse_date(&arxiv.published)
     }
 
     async fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
@@ -220,7 +212,7 @@ mod tests {
     #[test]
     fn test_parse_date_full() {
         assert_eq!(
-            Arxiv2Wikidata::parse_date("2023-01-15T00:00:00Z"),
+            crate::scientific_publication_adapter::parse_date("2023-01-15T00:00:00Z"),
             Some((2023, Some(1), Some(15)))
         );
     }
@@ -228,16 +220,16 @@ mod tests {
     #[test]
     fn test_parse_date_partial() {
         assert_eq!(
-            Arxiv2Wikidata::parse_date("2023-06"),
+            crate::scientific_publication_adapter::parse_date("2023-06"),
             Some((2023, Some(6), None))
         );
-        assert_eq!(Arxiv2Wikidata::parse_date("2023"), Some((2023, None, None)));
+        assert_eq!(crate::scientific_publication_adapter::parse_date("2023"), Some((2023, None, None)));
     }
 
     #[test]
     fn test_parse_date_invalid() {
-        assert_eq!(Arxiv2Wikidata::parse_date(""), None);
-        assert_eq!(Arxiv2Wikidata::parse_date("not-a-date"), None);
+        assert_eq!(crate::scientific_publication_adapter::parse_date(""), None);
+        assert_eq!(crate::scientific_publication_adapter::parse_date("not-a-date"), None);
     }
 
     #[test]

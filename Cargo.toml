@@ -25,6 +25,7 @@ futures = "*"
 async-trait = "*"
 anyhow = "*"
 rand = "*"
+deunicode = "1"
 
 #crossref = "*"
 #crossref = { git = "https://github.com/MattsSe/crossref-rs" }
