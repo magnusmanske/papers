@@ -114,16 +114,31 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         &mut self,
         ids: &[GenericWorkIdentifier],
     ) -> Vec<GenericWorkIdentifier> {
-        let mut ret: Vec<GenericWorkIdentifier> = vec![];
-        for id in ids {
-            if let GenericWorkType::Property(prop) = &id.work_type() {
-                if *prop == IdProp::DOI {
-                    if let Ok(work) = self.get_client().work(id.id()).await {
-                        self.work_cache.insert(work.doi.clone(), work.clone());
-                        self.add_identifiers_from_cached_publication(&work.doi, &mut ret);
+        let dois: Vec<String> = ids
+            .iter()
+            .filter_map(|id| {
+                if let GenericWorkType::Property(prop) = &id.work_type() {
+                    if *prop == IdProp::DOI {
+                        return Some(id.id().to_string());
                     }
                 }
-            }
+                None
+            })
+            .collect();
+        let futures: Vec<_> = dois
+            .iter()
+            .map(|doi| {
+                let client = self.get_client();
+                let doi = doi.clone();
+                async move { client.work(&doi).await.ok() }
+            })
+            .collect();
+        for work in futures::future::join_all(futures).await.into_iter().flatten() {
+            self.work_cache.insert(work.doi.clone(), work);
+        }
+        let mut ret = vec![];
+        for doi in &dois {
+            self.add_identifiers_from_cached_publication(doi, &mut ret);
         }
         ret
     }
