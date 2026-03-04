@@ -2,6 +2,7 @@ use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
+use anyhow::Result;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -196,7 +197,7 @@ impl WikidataPapers {
         item: &mut Entity,
         adapter2work_id: &mut HashMap<usize, String>,
         mw_api: Arc<RwLock<Api>>,
-    ) {
+    ) -> Result<()> {
         let mut authors: Vec<GenericAuthorInfo> = vec![];
         for adapter_id in 0..self.adapters.len() {
             let publication_id = match self.adapters[adapter_id]
@@ -245,18 +246,19 @@ impl WikidataPapers {
             GenericAuthorInfo::deduplicate(&mut authors);
             authors
         })
-        .await
-        .expect("deduplicate panicked");
+        .await?;
 
-        let mut new_authors: Vec<GenericAuthorInfo> = vec![];
-        for author in authors {
-            let r = author
-                .get_or_create_author_item(mw_api.clone(), self.cache.clone(), false)
-                .await;
-            new_authors.push(r);
+        let mut futures = vec![];
+        for author in &authors {
+            let future =
+                author.get_or_create_author_item(mw_api.clone(), self.cache.clone(), false);
+            futures.push(future);
         }
+        let new_authors = futures::future::join_all(futures).await;
+
         self.update_author_items(&new_authors, mw_api.clone()).await;
         self.create_or_update_author_statements(item, &new_authors);
+        Ok(())
     }
 
     pub async fn update_author_items(
@@ -369,7 +371,8 @@ impl WikidataPapers {
 
         let mut adapter2work_id = HashMap::new();
         self.update_item_from_adapters(&mut item, &mut adapter2work_id, mw_api.clone())
-            .await;
+            .await
+            .ok()?;
 
         // Paranoia
         if item.claims().len() < 4 {

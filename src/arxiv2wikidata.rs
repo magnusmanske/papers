@@ -105,16 +105,18 @@ impl ScientificPublicationAdapter for Arxiv2Wikidata {
                 arxiv::fetch_arxivs(query)
             })
             .collect();
+        let results = futures::future::join_all(futures).await;
+
         let mut ret = vec![];
-        for result in futures::future::join_all(futures).await {
-            if let Ok(results) = result {
-                if let Some(arxiv) = results.into_iter().next() {
-                    let arxiv_id = Self::extract_arxiv_id(&arxiv.id);
-                    ret.push(GenericWorkIdentifier::new_prop(IdProp::ARXIV, &arxiv_id));
-                    self.work_cache.insert(arxiv_id, arxiv);
-                }
-            }
-        }
+        results
+            .into_iter()
+            .flatten()
+            .filter_map(|result| result.into_iter().next())
+            .for_each(|arxiv| {
+                let arxiv_id = Self::extract_arxiv_id(&arxiv.id);
+                ret.push(GenericWorkIdentifier::new_prop(IdProp::ARXIV, &arxiv_id));
+                self.work_cache.insert(arxiv_id, arxiv);
+            });
         ret
     }
 
