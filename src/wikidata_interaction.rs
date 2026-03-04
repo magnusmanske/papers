@@ -46,7 +46,7 @@ pub trait WikidataInteraction {
         let mut mw_api = mw_api.write().await;
         // println!("Applying diff: {:?}", diff);
         let new_json = diff.apply_diff(&mut mw_api, &diff).await.ok()?;
-        println!("Diff applied");
+        // println!("Diff applied");
         drop(mw_api);
         EntityDiff::get_entity_id(&new_json)
     }
