@@ -466,9 +466,14 @@ impl WikidataPapers {
                 items.push(q)
             }
         }
-        items.sort();
-        items.dedup();
-        items
+        // CPU work: sort + dedup on potentially large identifier list
+        tokio::task::spawn_blocking(move || {
+            items.sort();
+            items.dedup();
+            items
+        })
+        .await
+        .unwrap_or_default()
     }
 
     pub fn entities_mut(&mut self) -> &mut entity_container::EntityContainer {
