@@ -360,20 +360,72 @@ impl GenericAuthorInfo {
         parts
     }
 
-    /// Compares long (3+ characters) name parts
+    /// Compares long (3+ characters) name parts, with initials compatibility check.
+    /// Returns 0 if the non-matching parts have conflicting initials
+    /// (e.g. "Bruce Allen" vs "G. Allen" — shared surname but B ≠ G).
     fn author_names_match(&self, name1: &str, name2: &str) -> u16 {
         lazy_static! {
-            static ref RE1: Regex = Regex::new(r"\b(\w{3,})\b")
-                .expect("GenericAuthorInfo::author_names_match: could not compile RE1");
+            static ref RE_LONG: Regex = Regex::new(r"\b(\w{3,})\b")
+                .expect("GenericAuthorInfo::author_names_match: could not compile RE_LONG");
+            static ref RE_ALL: Regex = Regex::new(r"\b(\w+)\b")
+                .expect("GenericAuthorInfo::author_names_match: could not compile RE_ALL");
         }
         let name1_mod = self.asciify_string(name1).replace('.', " ");
         let name2_mod = self.asciify_string(name2).replace('.', " ");
-        if !RE1.is_match(&name1_mod) || !RE1.is_match(&name2_mod) {
+        if !RE_LONG.is_match(&name1_mod) || !RE_LONG.is_match(&name2_mod) {
             return 0;
         }
-        let parts1 = Self::sorted_name_parts(&RE1, &name1_mod);
-        let parts2 = Self::sorted_name_parts(&RE1, &name2_mod);
-        parts1.iter().filter(|part| parts2.contains(*part)).count() as u16
+        let parts1 = Self::sorted_name_parts(&RE_LONG, &name1_mod);
+        let parts2 = Self::sorted_name_parts(&RE_LONG, &name2_mod);
+        let matching_count = parts1.iter().filter(|part| parts2.contains(*part)).count() as u16;
+        if matching_count == 0 {
+            return 0;
+        }
+
+        // Check for conflicting first-name initials.
+        // After removing matched long words, if both names still have remaining parts,
+        // their initials must overlap. Otherwise the names are for different people
+        // (e.g. "Bruce Allen" vs "G. Allen" — shared surname but conflicting first initials).
+        let all1: Vec<String> = RE_ALL.captures_iter(&name1_mod).map(|c| c[1].to_string()).collect();
+        let all2: Vec<String> = RE_ALL.captures_iter(&name2_mod).map(|c| c[1].to_string()).collect();
+        let matched_words: Vec<String> = parts1.iter().filter(|p| parts2.contains(p)).cloned().collect();
+        let remaining1 = Self::remove_matched_words(&all1, &matched_words);
+        let remaining2 = Self::remove_matched_words(&all2, &matched_words);
+        if !remaining1.is_empty() && !remaining2.is_empty() {
+            let initials1 = Self::extract_initials_from_parts(&remaining1);
+            let initials2 = Self::extract_initials_from_parts(&remaining2);
+            if !initials1.iter().any(|c| initials2.contains(c)) {
+                return 0; // Conflicting initials
+            }
+        }
+
+        matching_count
+    }
+
+    /// Removes one occurrence of each matched word from the parts list.
+    fn remove_matched_words(all_parts: &[String], matched: &[String]) -> Vec<String> {
+        let mut remaining = all_parts.to_vec();
+        for m in matched {
+            if let Some(pos) = remaining.iter().position(|p| p == m) {
+                remaining.remove(pos);
+            }
+        }
+        remaining
+    }
+
+    /// Extracts initials from name parts.
+    /// Short parts (< 3 chars) contribute each character as a potential initial.
+    /// Long parts (>= 3 chars) contribute only their first character.
+    fn extract_initials_from_parts(parts: &[String]) -> Vec<char> {
+        let mut initials = Vec::new();
+        for part in parts {
+            if part.len() < 3 {
+                initials.extend(part.chars());
+            } else if let Some(c) = part.chars().next() {
+                initials.push(c);
+            }
+        }
+        initials
     }
 
     pub fn compare(&self, author2: &GenericAuthorInfo) -> u16 {
@@ -1068,6 +1120,60 @@ mod tests {
         assert_eq!(authors.len(), 1);
         assert_eq!(authors[0].list_number, first.list_number); // First's list number kept
         assert!(authors[0].prop2id.contains_key("P496")); // ORCID absorbed
+    }
+
+    // --- initials conflict detection tests ---
+
+    #[test]
+    fn author_names_match_rejects_conflicting_first_initials() {
+        let ga = GenericAuthorInfo::new();
+        // Cases from the false-positive Wikidata edit:
+        assert_eq!(ga.author_names_match("Bruce Allen", "G. Allen"), 0);
+        assert_eq!(ga.author_names_match("Jonathan Anderson", "S. B. Anderson"), 0);
+        assert_eq!(ga.author_names_match("Carl Blair", "D. G. Blair"), 0);
+        assert_eq!(ga.author_names_match("R Gustafson", "E. K. Gustafson"), 0);
+        assert_eq!(ga.author_names_match("Andrew M. Hopkins", "P. Hopkins"), 0);
+        assert_eq!(ga.author_names_match("Bryn Jones", "D. I. Jones"), 0);
+    }
+
+    #[test]
+    fn author_names_match_allows_compatible_initials() {
+        let ga = GenericAuthorInfo::new();
+        // Initial matches first letter of full name
+        assert_eq!(ga.author_names_match("John Smith", "J. Smith"), 1);
+        assert_eq!(ga.author_names_match("J Smith", "John Smith"), 1);
+        // Multiple initials, one matches
+        assert_eq!(ga.author_names_match("John Smith", "J. A. Smith"), 1);
+    }
+
+    #[test]
+    fn author_names_match_no_conflict_when_one_side_fully_matched() {
+        let ga = GenericAuthorInfo::new();
+        // "Heinrich Manske" vs "manske heinrich" — all long words match, no remaining parts
+        assert_eq!(
+            ga.author_names_match("Heinrich Manske", "manske heinrich"),
+            2
+        );
+    }
+
+    #[test]
+    fn conflicting_initials_prevents_false_match_with_list_number() {
+        // "Bruce Allen"(5) vs "G. Allen"(5): should NOT match even with same list number.
+        let mut ga1 = GenericAuthorInfo::new();
+        ga1.name = Some("Bruce Allen".to_string());
+        ga1.list_number = Some("5".to_string());
+
+        let mut ga2 = GenericAuthorInfo::new();
+        ga2.name = Some("G. Allen".to_string());
+        ga2.list_number = Some("5".to_string());
+
+        let score = ga1.compare(&ga2);
+        assert!(
+            score < SCORE_MATCH_MIN,
+            "Conflicting initials must not produce a match (score {} >= {})",
+            score,
+            SCORE_MATCH_MIN
+        );
     }
 
     /*
