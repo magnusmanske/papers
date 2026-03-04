@@ -122,6 +122,10 @@ impl Orcid2Wikidata {
                     "Researcher Name Resolver ID" => {
                         gai.prop2id.insert("P9776".to_string(), id.1);
                     }
+                    "ISNI" => {
+                        gai.prop2id
+                            .insert("P213".to_string(), id.1.replace("-", ""));
+                    }
                     other => {
                         self.warn(&format!(
                             "orcid2wikidata: Unknown ID '{}':'{}'",
