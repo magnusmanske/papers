@@ -84,21 +84,34 @@ impl ScientificPublicationAdapter for Arxiv2Wikidata {
         &mut self,
         ids: &[GenericWorkIdentifier],
     ) -> Vec<GenericWorkIdentifier> {
-        let mut ret: Vec<GenericWorkIdentifier> = vec![];
-        for id in ids {
-            if let GenericWorkType::Property(prop) = id.work_type() {
-                if *prop == IdProp::ARXIV {
-                    let query = arxiv::ArxivQueryBuilder::new()
-                        .id_list(id.id())
-                        .max_results(1)
-                        .build();
-                    if let Ok(results) = arxiv::fetch_arxivs(query).await {
-                        if let Some(arxiv) = results.into_iter().next() {
-                            let arxiv_id = Self::extract_arxiv_id(&arxiv.id);
-                            ret.push(GenericWorkIdentifier::new_prop(IdProp::ARXIV, &arxiv_id));
-                            self.work_cache.insert(arxiv_id, arxiv);
-                        }
+        let arxiv_ids: Vec<&str> = ids
+            .iter()
+            .filter_map(|id| {
+                if let GenericWorkType::Property(prop) = id.work_type() {
+                    if *prop == IdProp::ARXIV {
+                        return Some(id.id());
                     }
+                }
+                None
+            })
+            .collect();
+        let futures: Vec<_> = arxiv_ids
+            .iter()
+            .map(|arxiv_id| {
+                let query = arxiv::ArxivQueryBuilder::new()
+                    .id_list(arxiv_id)
+                    .max_results(1)
+                    .build();
+                arxiv::fetch_arxivs(query)
+            })
+            .collect();
+        let mut ret = vec![];
+        for result in futures::future::join_all(futures).await {
+            if let Ok(results) = result {
+                if let Some(arxiv) = results.into_iter().next() {
+                    let arxiv_id = Self::extract_arxiv_id(&arxiv.id);
+                    ret.push(GenericWorkIdentifier::new_prop(IdProp::ARXIV, &arxiv_id));
+                    self.work_cache.insert(arxiv_id, arxiv);
                 }
             }
         }
