@@ -119,6 +119,8 @@ impl WikidataStringCache {
         if times.is_empty() {
             return;
         }
+        // TODO: CPU work — sort+retain run while holding async write lock;
+        // refactor to release the lock before sorting if this becomes a bottleneck
         times.sort();
         // Remove older half of cache
         let half_time = times[times.len() / 2];

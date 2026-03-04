@@ -437,6 +437,7 @@ impl WikidataPapers {
             let last_id_size = ids.len();
             for adapter_id in 0..self.adapters.len() {
                 let adapter = &mut self.adapters[adapter_id];
+                // TODO: CPU work — par_iter blocks the async runtime thread; consider spawn_blocking
                 let vids: Vec<GenericWorkIdentifier> = ids.par_iter().cloned().collect();
                 //println!("Adapter {}", adapter.name());
                 adapter
@@ -452,6 +453,7 @@ impl WikidataPapers {
                 break;
             }
         }
+        // TODO: CPU work — par_iter blocks the async runtime thread; consider spawn_blocking
         ids.par_iter().filter(|id| id.is_legit()).cloned().collect()
     }
 
