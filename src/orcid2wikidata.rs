@@ -119,9 +119,9 @@ impl Orcid2Wikidata {
                     "Ciência ID" => {
                         gai.prop2id.insert("P7893".to_string(), id.1);
                     }
-                    "Researcher Name Resolver ID" => {
-                        gai.prop2id.insert("P9776".to_string(), id.1);
-                    }
+                    // "Researcher Name Resolver ID" => {
+                    //     gai.prop2id.insert("P9776".to_string(), id.1);
+                    // }
                     "ISNI" => {
                         gai.prop2id
                             .insert("P213".to_string(), id.1.replace("-", ""));
