@@ -212,4 +212,173 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    fn make_work(title: Option<&str>, doi: Option<&str>, paper_id: Option<&str>) -> Work {
+        Work {
+            arxiv_id: None,
+            authors: vec![],
+            citation_velocity: None,
+            citations: vec![],
+            doi: doi.map(|s| s.to_string()),
+            influential_citation_count: None,
+            paper_id: paper_id.map(|s| s.to_string()),
+            references: vec![],
+            title: title.map(|s| s.to_string()),
+            topics: vec![],
+            url: None,
+            venue: None,
+            year: None,
+        }
+    }
+
+    fn make_ss(id: &str, work: Work) -> Semanticscholar2Wikidata {
+        let mut ss = Semanticscholar2Wikidata::new();
+        ss.work_cache.insert(id.to_string(), work);
+        ss
+    }
+
+    // === property getters ===
+
+    #[test]
+    fn name_returns_expected_string() {
+        let ss = Semanticscholar2Wikidata::new();
+        assert_eq!(ss.name(), "Semanticscholar2Wikidata");
+    }
+
+    #[test]
+    fn author_property_returns_p4012() {
+        let ss = Semanticscholar2Wikidata::new();
+        assert_eq!(ss.author_property(), Some("P4012".to_string()));
+    }
+
+    #[test]
+    fn publication_property_returns_semantic_scholar() {
+        let ss = Semanticscholar2Wikidata::new();
+        assert_eq!(ss.publication_property(), Some(IdProp::SemanticScholar));
+    }
+
+    #[test]
+    fn topic_property_returns_p6611() {
+        let ss = Semanticscholar2Wikidata::new();
+        assert_eq!(ss.topic_property(), Some("P6611".to_string()));
+    }
+
+    // === get_work_titles ===
+
+    #[test]
+    fn get_work_titles_returns_title() {
+        let ss = make_ss("abc123", make_work(Some("A paper title"), None, None));
+        let titles = ss.get_work_titles("abc123");
+        assert_eq!(titles.len(), 1);
+        assert_eq!(titles[0].value(), "A paper title");
+        assert_eq!(titles[0].language(), "en");
+    }
+
+    #[test]
+    fn get_work_titles_returns_empty_when_no_title() {
+        let ss = make_ss("abc123", make_work(None, None, None));
+        assert!(ss.get_work_titles("abc123").is_empty());
+    }
+
+    #[test]
+    fn get_work_titles_returns_empty_for_missing_publication() {
+        let ss = Semanticscholar2Wikidata::new();
+        assert!(ss.get_work_titles("nonexistent").is_empty());
+    }
+
+    // === add_identifiers_from_cached_publication ===
+
+    #[test]
+    fn add_identifiers_includes_semantic_scholar_id() {
+        let mut ss = make_ss("abc123", make_work(None, None, None));
+        let mut ret = vec![];
+        ss.add_identifiers_from_cached_publication("abc123", &mut ret);
+        assert!(ret
+            .iter()
+            .any(|id| id.work_type() == &identifiers::GenericWorkType::Property(IdProp::SemanticScholar)
+                && id.id() == "abc123"));
+    }
+
+    #[test]
+    fn add_identifiers_includes_doi_when_present() {
+        let mut ss = make_ss("abc123", make_work(None, Some("10.1234/test"), None));
+        let mut ret = vec![];
+        ss.add_identifiers_from_cached_publication("abc123", &mut ret);
+        assert!(ret
+            .iter()
+            .any(|id| id.work_type() == &identifiers::GenericWorkType::Property(IdProp::DOI)));
+    }
+
+    #[test]
+    fn add_identifiers_no_doi_when_absent() {
+        let mut ss = make_ss("abc123", make_work(None, None, None));
+        let mut ret = vec![];
+        ss.add_identifiers_from_cached_publication("abc123", &mut ret);
+        assert!(!ret
+            .iter()
+            .any(|id| id.work_type() == &identifiers::GenericWorkType::Property(IdProp::DOI)));
+    }
+
+    #[test]
+    fn add_identifiers_does_nothing_for_missing_publication() {
+        let mut ss = Semanticscholar2Wikidata::new();
+        let mut ret = vec![];
+        ss.add_identifiers_from_cached_publication("nonexistent", &mut ret);
+        assert!(ret.is_empty());
+    }
+
+    // === get_author_list ===
+
+    #[tokio::test]
+    async fn get_author_list_returns_authors_with_names() {
+        let work = Work {
+            authors: vec![
+                Author {
+                    author_id: Some("auth1".to_string()),
+                    name: Some("Alice Smith".to_string()),
+                    url: None,
+                },
+                Author {
+                    author_id: None,
+                    name: Some("Bob Jones".to_string()),
+                    url: None,
+                },
+            ],
+            ..make_work(None, None, None)
+        };
+        let mut ss = make_ss("abc123", work);
+        let authors = ss.get_author_list("abc123").await;
+        assert_eq!(authors.len(), 2);
+        assert_eq!(authors[0].name, Some("Alice Smith".to_string()));
+        assert_eq!(authors[0].list_number, Some("1".to_string()));
+        assert_eq!(authors[1].name, Some("Bob Jones".to_string()));
+        assert_eq!(authors[1].list_number, Some("2".to_string()));
+    }
+
+    #[tokio::test]
+    async fn get_author_list_includes_author_id_in_prop2id() {
+        let work = Work {
+            authors: vec![Author {
+                author_id: Some("ss_auth_42".to_string()),
+                name: Some("Carol White".to_string()),
+                url: None,
+            }],
+            ..make_work(None, None, None)
+        };
+        let mut ss = make_ss("abc123", work);
+        let authors = ss.get_author_list("abc123").await;
+        assert_eq!(authors.len(), 1);
+        assert_eq!(
+            authors[0].prop2id.get("P4012"),
+            Some(&"ss_auth_42".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn get_author_list_empty_for_missing_publication() {
+        let mut ss = Semanticscholar2Wikidata::new();
+        assert!(ss.get_author_list("nonexistent").await.is_empty());
+    }
+}

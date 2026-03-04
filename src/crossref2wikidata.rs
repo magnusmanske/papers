@@ -274,6 +274,29 @@ mod tests {
         );
     }
 
+    // === should_add_string ===
+
+    #[test]
+    fn should_add_string_rejects_na() {
+        let c = Crossref2Wikidata::new();
+        assert!(!c.should_add_string("n/a"));
+        assert!(!c.should_add_string("n/a-n/a"));
+    }
+
+    #[test]
+    fn should_add_string_accepts_valid_strings() {
+        let c = Crossref2Wikidata::new();
+        assert!(c.should_add_string("1"));
+        assert!(c.should_add_string("some-value"));
+        assert!(c.should_add_string("N/A")); // case-sensitive: uppercase is accepted
+    }
+
+    #[test]
+    fn should_add_string_accepts_empty_string() {
+        let c = Crossref2Wikidata::new();
+        assert!(c.should_add_string(""));
+    }
+
     #[test]
     fn test_crossref_type_to_q_proceedings() {
         assert_eq!(

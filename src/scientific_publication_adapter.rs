@@ -488,6 +488,146 @@ mod tests {
         );
     }
 
+    // === sanitize_author_name ===
+
+    #[test]
+    fn sanitize_author_name_removes_dagger() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert_eq!(adapter.sanitize_author_name("Smith†"), "Smith");
+        assert_eq!(adapter.sanitize_author_name("Jones‡"), "Jones");
+    }
+
+    #[test]
+    fn sanitize_author_name_trims_whitespace_after_removal() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert_eq!(adapter.sanitize_author_name("Alice †"), "Alice");
+        assert_eq!(adapter.sanitize_author_name("Bob ‡ "), "Bob");
+    }
+
+    #[test]
+    fn sanitize_author_name_unchanged_when_no_special_chars() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert_eq!(adapter.sanitize_author_name("Jane Doe"), "Jane Doe");
+        assert_eq!(adapter.sanitize_author_name(""), "");
+    }
+
+    // === titles_are_equal ===
+
+    #[test]
+    fn titles_are_equal_exact_match() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert!(adapter.titles_are_equal("Hello World", "Hello World"));
+    }
+
+    #[test]
+    fn titles_are_equal_case_insensitive() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert!(adapter.titles_are_equal("hello world", "HELLO WORLD"));
+        assert!(adapter.titles_are_equal("Hello World", "hello world"));
+    }
+
+    #[test]
+    fn titles_are_equal_trailing_period_stripped() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert!(adapter.titles_are_equal("A title.", "A title"));
+        assert!(adapter.titles_are_equal("A title", "A title."));
+        assert!(adapter.titles_are_equal("A title.", "A title."));
+    }
+
+    #[test]
+    fn titles_are_equal_different_titles_return_false() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        assert!(!adapter.titles_are_equal("Title One", "Title Two"));
+    }
+
+    // === get_wb_time_from_partial ===
+
+    #[test]
+    fn get_wb_time_year_only_has_precision_9() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        let stmt = adapter.get_wb_time_from_partial("P577".to_string(), 2021, None, None);
+        assert_eq!(stmt.main_snak().property(), "P577");
+        if let Some(dv) = stmt.main_snak().data_value() {
+            if let Value::Time(tv) = dv.value() {
+                assert_eq!(tv.time(), "+2021-01-01T00:00:00Z");
+                assert_eq!(*tv.precision(), 9u64);
+            } else {
+                panic!("Expected Time value");
+            }
+        } else {
+            panic!("Expected data value");
+        }
+    }
+
+    #[test]
+    fn get_wb_time_year_month_has_precision_10() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        let stmt = adapter.get_wb_time_from_partial("P577".to_string(), 2021, Some(6), None);
+        if let Some(dv) = stmt.main_snak().data_value() {
+            if let Value::Time(tv) = dv.value() {
+                assert_eq!(tv.time(), "+2021-06-01T00:00:00Z");
+                assert_eq!(*tv.precision(), 10u64);
+            } else {
+                panic!("Expected Time value");
+            }
+        } else {
+            panic!("Expected data value");
+        }
+    }
+
+    #[test]
+    fn get_wb_time_full_date_has_precision_11() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        let stmt =
+            adapter.get_wb_time_from_partial("P577".to_string(), 2021, Some(3), Some(15));
+        if let Some(dv) = stmt.main_snak().data_value() {
+            if let Value::Time(tv) = dv.value() {
+                assert_eq!(tv.time(), "+2021-03-15T00:00:00Z");
+                assert_eq!(*tv.precision(), 11u64);
+            } else {
+                panic!("Expected Time value");
+            }
+        } else {
+            panic!("Expected data value");
+        }
+    }
+
+    // === get_external_identifier_from_item ===
+
+    #[test]
+    fn get_external_identifier_finds_matching_property() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        let mut item = Entity::new_empty_item();
+        item.add_claim(Statement::new_normal(
+            Snak::new_external_id("P356", "10.1234/TEST"),
+            vec![],
+            vec![],
+        ));
+        let result = adapter.get_external_identifier_from_item(&item, &IdProp::DOI);
+        assert_eq!(result, Some("10.1234/TEST".to_string()));
+    }
+
+    #[test]
+    fn get_external_identifier_returns_none_for_wrong_property() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        let mut item = Entity::new_empty_item();
+        item.add_claim(Statement::new_normal(
+            Snak::new_external_id("P356", "10.1234/TEST"),
+            vec![],
+            vec![],
+        ));
+        let result = adapter.get_external_identifier_from_item(&item, &IdProp::PMID);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn get_external_identifier_returns_none_for_empty_item() {
+        let adapter = TestAdapter::with_titles(vec![]);
+        let item = Entity::new_empty_item();
+        let result = adapter.get_external_identifier_from_item(&item, &IdProp::DOI);
+        assert_eq!(result, None);
+    }
+
     // === update_work_item_with_title with HTML tags (issue #7) ===
 
     #[test]

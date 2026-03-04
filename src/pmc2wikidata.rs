@@ -298,4 +298,229 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn make_pmc(id: &str, work: serde_json::Value) -> PMC2Wikidata {
+        let mut pmc = PMC2Wikidata::new();
+        pmc.work_cache.insert(id.to_string(), work);
+        pmc
+    }
+
+    // === is_pubmed_id ===
+
+    #[test]
+    fn is_pubmed_id_accepts_digits() {
+        let pmc = PMC2Wikidata::new();
+        assert!(pmc.is_pubmed_id("12345"));
+        assert!(pmc.is_pubmed_id("1"));
+    }
+
+    #[test]
+    fn is_pubmed_id_rejects_non_digits() {
+        let pmc = PMC2Wikidata::new();
+        assert!(!pmc.is_pubmed_id("PMC123"));
+        assert!(!pmc.is_pubmed_id("abc"));
+        assert!(!pmc.is_pubmed_id(""));
+        assert!(!pmc.is_pubmed_id("12 34"));
+        assert!(!pmc.is_pubmed_id("12.34"));
+    }
+
+    // === is_pmcid ===
+
+    #[test]
+    fn is_pmcid_accepts_pmc_prefix_with_digits() {
+        let pmc = PMC2Wikidata::new();
+        assert!(pmc.is_pmcid("PMC12345"));
+        assert!(pmc.is_pmcid("PMC1"));
+    }
+
+    #[test]
+    fn is_pmcid_rejects_invalid_formats() {
+        let pmc = PMC2Wikidata::new();
+        assert!(!pmc.is_pmcid("12345"));
+        assert!(!pmc.is_pmcid("pmc123")); // lowercase
+        assert!(!pmc.is_pmcid("PMC"));    // no digits
+        assert!(!pmc.is_pmcid(""));
+        assert!(!pmc.is_pmcid("PMC12 34"));
+    }
+
+    // === publication_id_for_statement ===
+
+    #[test]
+    fn publication_id_for_statement_strips_pmc_prefix() {
+        let pmc = PMC2Wikidata::new();
+        assert_eq!(
+            pmc.publication_id_for_statement("PMC12345"),
+            Some("12345".to_string())
+        );
+    }
+
+    #[test]
+    fn publication_id_for_statement_returns_none_for_non_pmcid() {
+        let pmc = PMC2Wikidata::new();
+        assert_eq!(pmc.publication_id_for_statement("12345"), None);
+        assert_eq!(pmc.publication_id_for_statement("pmc123"), None);
+        assert_eq!(pmc.publication_id_for_statement(""), None);
+    }
+
+    // === get_pmcid_from_work / get_pmid_from_work ===
+
+    #[test]
+    fn get_pmcid_from_work_extracts_pmcid() {
+        let pmc = PMC2Wikidata::new();
+        let work = json!({"pmcid": "PMC12345"});
+        assert_eq!(pmc.get_pmcid_from_work(&work), Some("PMC12345".to_string()));
+    }
+
+    #[test]
+    fn get_pmcid_from_work_returns_none_when_missing() {
+        let pmc = PMC2Wikidata::new();
+        let work = json!({"pmid": "99999"});
+        assert_eq!(pmc.get_pmcid_from_work(&work), None);
+    }
+
+    #[test]
+    fn get_pmid_from_work_extracts_pmid() {
+        let pmc = PMC2Wikidata::new();
+        let work = json!({"pmid": "12345"});
+        assert_eq!(pmc.get_pmid_from_work(&work), Some("12345".to_string()));
+    }
+
+    #[test]
+    fn get_pmid_from_work_returns_none_when_missing() {
+        let pmc = PMC2Wikidata::new();
+        let work = json!({"pmcid": "PMC99"});
+        assert_eq!(pmc.get_pmid_from_work(&work), None);
+    }
+
+    // === get_work_titles ===
+
+    #[test]
+    fn get_work_titles_returns_english_title() {
+        let pmc = make_pmc("PMC1", json!({"title": "A great paper"}));
+        let titles = pmc.get_work_titles("PMC1");
+        assert_eq!(titles.len(), 1);
+        assert_eq!(titles[0].value(), "A great paper");
+        assert_eq!(titles[0].language(), "en");
+    }
+
+    #[test]
+    fn get_work_titles_returns_empty_when_no_title() {
+        let pmc = make_pmc("PMC1", json!({}));
+        assert!(pmc.get_work_titles("PMC1").is_empty());
+    }
+
+    #[test]
+    fn get_work_titles_returns_empty_for_missing_publication() {
+        let pmc = PMC2Wikidata::new();
+        assert!(pmc.get_work_titles("PMC999").is_empty());
+    }
+
+    // === get_volume / get_issue / get_work_issn ===
+
+    #[test]
+    fn get_volume_extracts_from_journal_info() {
+        let pmc = make_pmc(
+            "PMC1",
+            json!({"journalInfo": {"volume": "12"}}),
+        );
+        assert_eq!(pmc.get_volume("PMC1"), Some("12".to_string()));
+    }
+
+    #[test]
+    fn get_volume_returns_none_when_missing() {
+        let pmc = make_pmc("PMC1", json!({"journalInfo": {}}));
+        assert_eq!(pmc.get_volume("PMC1"), None);
+    }
+
+    #[test]
+    fn get_issue_extracts_from_journal_info() {
+        let pmc = make_pmc(
+            "PMC1",
+            json!({"journalInfo": {"issue": "3"}}),
+        );
+        assert_eq!(pmc.get_issue("PMC1"), Some("3".to_string()));
+    }
+
+    #[test]
+    fn get_work_issn_extracts_from_journal_info() {
+        let pmc = make_pmc(
+            "PMC1",
+            json!({"journalInfo": {"journal": {"issn": "1234-5678"}}}),
+        );
+        assert_eq!(pmc.get_work_issn("PMC1"), Some("1234-5678".to_string()));
+    }
+
+    #[test]
+    fn get_work_issn_returns_none_when_missing() {
+        let pmc = make_pmc("PMC1", json!({"journalInfo": {"journal": {}}}));
+        assert_eq!(pmc.get_work_issn("PMC1"), None);
+    }
+
+    // === get_publication_date ===
+
+    #[test]
+    fn get_publication_date_year_only() {
+        let pmc = make_pmc(
+            "PMC1",
+            json!({"journalInfo": {"yearOfPublication": 2021}}),
+        );
+        assert_eq!(pmc.get_publication_date("PMC1"), Some((2021, None, None)));
+    }
+
+    #[test]
+    fn get_publication_date_year_and_month() {
+        let pmc = make_pmc(
+            "PMC1",
+            json!({"journalInfo": {"yearOfPublication": 2021, "monthOfPublication": 6}}),
+        );
+        assert_eq!(
+            pmc.get_publication_date("PMC1"),
+            Some((2021, Some(6), None))
+        );
+    }
+
+    #[test]
+    fn get_publication_date_full_date() {
+        let pmc = make_pmc(
+            "PMC1",
+            json!({"journalInfo": {
+                "yearOfPublication": 2021,
+                "monthOfPublication": 3,
+                "dayOfPublication": 15
+            }}),
+        );
+        assert_eq!(
+            pmc.get_publication_date("PMC1"),
+            Some((2021, Some(3), Some(15)))
+        );
+    }
+
+    #[test]
+    fn get_publication_date_returns_none_without_year() {
+        let pmc = make_pmc("PMC1", json!({"journalInfo": {}}));
+        assert_eq!(pmc.get_publication_date("PMC1"), None);
+    }
+
+    #[test]
+    fn get_publication_date_returns_none_for_missing_publication() {
+        let pmc = PMC2Wikidata::new();
+        assert_eq!(pmc.get_publication_date("PMC999"), None);
+    }
+
+    // === name / publication_property ===
+
+    #[test]
+    fn name_returns_expected_string() {
+        let pmc = PMC2Wikidata::new();
+        assert_eq!(pmc.name(), "PMC2Wikidata");
+    }
+
+    #[test]
+    fn publication_property_returns_pmcid() {
+        let pmc = PMC2Wikidata::new();
+        assert_eq!(pmc.publication_property(), Some(IdProp::PMCID));
+    }
+}

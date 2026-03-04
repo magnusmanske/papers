@@ -192,4 +192,78 @@ mod tests {
         assert_eq!(GenericWorkType::Item.to_string(), "Item");
         assert_eq!(GenericWorkType::Property(IdProp::DOI).to_string(), PROP_DOI);
     }
+
+    // === IdProp::as_str ===
+
+    #[test]
+    fn test_idprop_as_str() {
+        assert_eq!(IdProp::PMID.as_str(), PROP_PMID);
+        assert_eq!(IdProp::PMCID.as_str(), PROP_PMCID);
+        assert_eq!(IdProp::DOI.as_str(), PROP_DOI);
+        assert_eq!(IdProp::ARXIV.as_str(), PROP_ARXIV);
+        assert_eq!(IdProp::SemanticScholar.as_str(), PROP_SEMANTIC_SCHOLAR);
+    }
+
+    // === parse_ids_from_str ===
+
+    #[test]
+    fn parse_ids_from_str_doi() {
+        let ids = GenericWorkIdentifier::parse_ids_from_str("10.1234/foobar");
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0].id(), "10.1234/FOOBAR"); // DOIs are uppercased
+        assert_eq!(
+            ids[0].work_type(),
+            &GenericWorkType::Property(IdProp::DOI)
+        );
+    }
+
+    #[test]
+    fn parse_ids_from_str_pmid() {
+        let ids = GenericWorkIdentifier::parse_ids_from_str("12345678");
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0].id(), "12345678");
+        assert_eq!(
+            ids[0].work_type(),
+            &GenericWorkType::Property(IdProp::PMID)
+        );
+    }
+
+    #[test]
+    fn parse_ids_from_str_pmcid() {
+        let ids = GenericWorkIdentifier::parse_ids_from_str("PMC12345");
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0].id(), "PMC12345");
+        assert_eq!(
+            ids[0].work_type(),
+            &GenericWorkType::Property(IdProp::PMCID)
+        );
+    }
+
+    #[test]
+    fn parse_ids_from_str_empty_returns_nothing() {
+        let ids = GenericWorkIdentifier::parse_ids_from_str("");
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn parse_ids_from_str_q_item_excluded() {
+        // Q-items are intentionally not parsed by this function
+        let ids = GenericWorkIdentifier::parse_ids_from_str("Q12345");
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn parse_ids_from_str_doi_is_uppercased() {
+        let ids = GenericWorkIdentifier::parse_ids_from_str("10.1000/xyz123");
+        assert!(ids.iter().any(|id| id.id() == "10.1000/XYZ123"));
+    }
+
+    #[test]
+    fn parse_ids_from_str_doi_with_slash_only() {
+        // A slash-containing string should be recognised as a DOI
+        let ids = GenericWorkIdentifier::parse_ids_from_str("a/b");
+        assert!(ids
+            .iter()
+            .any(|id| id.work_type() == &GenericWorkType::Property(IdProp::DOI)));
+    }
 }
