@@ -147,6 +147,18 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
                         "Loop profile" => {
                             gai.prop2id.insert("P2798".to_string(), id.1);
                         }
+                        "SciProfiles" => {
+                            gai.prop2id.insert("P8159".to_string(), id.1);
+                        }
+                        "GitHub" => {
+                            gai.prop2id.insert("P2037".to_string(), id.1);
+                        }
+                        "Ciência ID" => {
+                            gai.prop2id.insert("P7893".to_string(), id.1);
+                        }
+                        "Researcher Name Resolver ID" => {
+                            gai.prop2id.insert("P9776".to_string(), id.1);
+                        }
                         other => {
                             self.warn(&format!(
                                 "orcid2wikidata: Unknown ID '{}':'{}'",
