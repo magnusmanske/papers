@@ -298,14 +298,4 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
 }
 
 #[cfg(test)]
-mod tests {
-    //use super::*;
-    //use wikibase::mediawiki::api::Api;
-
-    /*
-    TODO:
-    pub fn new() -> Self {
-    pub fn get_cached_publication_from_id(
-    fn get_author_name_string(&self, author: &Author) -> Option<String> {
-    */
-}
+mod tests {}
