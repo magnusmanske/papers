@@ -273,9 +273,19 @@ impl SourceMD {
         let settings = Config::builder()
             .add_source(File::with_name(ini_file))
             .build()?;
-        let lgname = settings.get_string("user.user")?;
-        let lgpass = settings.get_string("user.pass")?;
-        mw_api.login(lgname, lgpass).await?;
+        match settings.get_string("user.token") {
+            Ok(token) => {
+                // Use OAuth2 token
+                mw_api.set_oauth2(&token);
+            }
+            Err(_) => {
+                // Use username/password login
+                let lgname = settings.get_string("user.user")?;
+                let lgpass = settings.get_string("user.pass")?;
+                println!("LOGIN {lgname}/{lgpass}");
+                mw_api.login(lgname, lgpass).await?;
+            }
+        }
         Ok(mw_api)
     }
 }
