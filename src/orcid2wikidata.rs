@@ -68,62 +68,56 @@ impl Orcid2Wikidata {
         author_property: &str,
     ) -> Option<GenericAuthorInfo> {
         if let Some(author) = self.get_or_load_author_data(orcid_author_id).await {
-            let mut gai = GenericAuthorInfo {
-                name: None,
-                prop2id: HashMap::new(),
-                wikidata_item: None,
-                list_number: None,
-                alternative_names: vec![],
-            };
+            let mut gai = GenericAuthorInfo::new();
             match author.credit_name() {
-                Some(name) => gai.name = Some(name.to_string()),
+                Some(name) => gai.set_name(Some(name.to_string())),
                 None => {
                     let j = author.json();
                     let last_name = j["person"]["name"]["family-name"]["value"].as_str();
                     let given_names = j["person"]["name"]["given-names"]["value"].as_str();
                     match (given_names, last_name) {
-                        (Some(f), Some(l)) => gai.name = Some(format!("{} {}", &f, &l)),
-                        (None, Some(l)) => gai.name = Some(l.to_string()),
+                        (Some(f), Some(l)) => gai.set_name(Some(format!("{} {}", &f, &l))),
+                        (None, Some(l)) => gai.set_name(Some(l.to_string())),
                         _ => {}
                     }
                 }
             }
             if let Some(id) = author.orcid_id() {
-                gai.prop2id
+                gai.prop2id_mut()
                     .insert(author_property.to_string(), id.to_string());
             }
             let ext_ids = author.external_ids();
             for id in ext_ids {
                 match id.0.as_str() {
                     "ResearcherID" => {
-                        gai.prop2id.insert("P1053".to_string(), id.1);
+                        gai.prop2id_mut().insert("P1053".to_string(), id.1);
                     }
                     "Researcher ID" => {
-                        gai.prop2id.insert("P1053".to_string(), id.1);
+                        gai.prop2id_mut().insert("P1053".to_string(), id.1);
                     }
                     "Scopus Author ID" => {
-                        gai.prop2id.insert("P1153".to_string(), id.1);
+                        gai.prop2id_mut().insert("P1153".to_string(), id.1);
                     }
                     "Scopus ID" => {
-                        gai.prop2id.insert("P1153".to_string(), id.1);
+                        gai.prop2id_mut().insert("P1153".to_string(), id.1);
                     }
                     "Loop profile" => {
-                        gai.prop2id.insert("P2798".to_string(), id.1);
+                        gai.prop2id_mut().insert("P2798".to_string(), id.1);
                     }
                     "SciProfiles" => {
-                        gai.prop2id.insert("P8159".to_string(), id.1);
+                        gai.prop2id_mut().insert("P8159".to_string(), id.1);
                     }
                     "GitHub" => {
-                        gai.prop2id.insert("P2037".to_string(), id.1);
+                        gai.prop2id_mut().insert("P2037".to_string(), id.1);
                     }
                     "Ciência ID" => {
-                        gai.prop2id.insert("P7893".to_string(), id.1);
+                        gai.prop2id_mut().insert("P7893".to_string(), id.1);
                     }
                     // "Researcher Name Resolver ID" => {
                     //     gai.prop2id.insert("P9776".to_string(), id.1);
                     // }
                     "ISNI" => {
-                        gai.prop2id
+                        gai.prop2id_mut()
                             .insert("P213".to_string(), id.1.replace("-", ""));
                     }
                     other => {

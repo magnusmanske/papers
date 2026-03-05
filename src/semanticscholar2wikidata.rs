@@ -192,16 +192,12 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         };
 
         for (num, author) in work.authors.iter().enumerate() {
-            let mut entry = GenericAuthorInfo {
-                name: author.name.clone(),
-                prop2id: HashMap::new(),
-                wikidata_item: None,
-                list_number: Some((num + 1).to_string()),
-                alternative_names: vec![],
-            };
+            let mut entry = GenericAuthorInfo::new();
+            entry.set_name(author.name.clone());
+            entry.set_list_number(Some((num + 1).to_string()));
             if let Some(id) = &author.author_id {
                 entry
-                    .prop2id
+                    .prop2id_mut()
                     .insert(author_property.to_owned(), id.to_string());
             }
             ret.push(entry);
@@ -351,10 +347,10 @@ mod tests {
         let mut ss = make_ss("abc123", work);
         let authors = ss.get_author_list("abc123").await;
         assert_eq!(authors.len(), 2);
-        assert_eq!(authors[0].name, Some("Alice Smith".to_string()));
-        assert_eq!(authors[0].list_number, Some("1".to_string()));
-        assert_eq!(authors[1].name, Some("Bob Jones".to_string()));
-        assert_eq!(authors[1].list_number, Some("2".to_string()));
+        assert_eq!(authors[0].name(), Some("Alice Smith"));
+        assert_eq!(authors[0].list_number(), Some("1"));
+        assert_eq!(authors[1].name(), Some("Bob Jones"));
+        assert_eq!(authors[1].list_number(), Some("2"));
     }
 
     #[tokio::test]
@@ -371,7 +367,7 @@ mod tests {
         let authors = ss.get_author_list("abc123").await;
         assert_eq!(authors.len(), 1);
         assert_eq!(
-            authors[0].prop2id.get("P4012"),
+            authors[0].prop2id().get("P4012"),
             Some(&"ss_auth_42".to_string())
         );
     }

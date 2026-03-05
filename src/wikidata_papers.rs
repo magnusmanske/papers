@@ -69,14 +69,14 @@ impl WikidataPapers {
         let mut seen_names: HashSet<String> = HashSet::new();
         for author in authors {
             // Skip duplicate wikidata items (prevents duplicate P50 for same person)
-            if let Some(q) = &author.wikidata_item {
-                if !seen_q_items.insert(q.clone()) {
+            if let Some(q) = author.wikidata_item() {
+                if !seen_q_items.insert(q.to_string()) {
                     continue;
                 }
             }
             // Skip duplicate author name strings for P2093
-            if author.wikidata_item.is_none() {
-                if let Some(name) = &author.name {
+            if author.wikidata_item().is_none() {
+                if let Some(name) = author.name() {
                     let key = GenericAuthorInfo::simplify_name(&name.to_lowercase());
                     if !key.is_empty() && !seen_names.insert(key) {
                         continue;
@@ -93,7 +93,7 @@ impl WikidataPapers {
         new_author: &GenericAuthorInfo,
         item: &mut Entity,
     ) {
-        let author_q = match new_author.wikidata_item.as_ref() {
+        let author_q = match new_author.wikidata_item() {
             Some(q) => q,
             None => return,
         };
@@ -107,7 +107,7 @@ impl WikidataPapers {
                 let author = GenericAuthorInfo::new_from_statement(statement)?;
                 Some((author, statement))
             })
-            .filter(|(author, _statement)| author.name == Some(asn.to_string()))
+            .filter(|(author, _statement)| author.name() == Some(asn))
             .for_each(|(_author, p2093_statement)| {
                 let p50_statement = match &new_author.generate_author_statement() {
                     Some(p50_statement) => p50_statement.to_owned(),
@@ -134,11 +134,11 @@ impl WikidataPapers {
                 Some(m) => m,
                 None => continue,
             };
-            let q = match &authors[candidate].wikidata_item {
+            let q = match authors[candidate].wikidata_item() {
                 Some(q) => q,
                 None => continue,
             };
-            if p50.contains(q) || used_candidates.contains(&candidate) {
+            if p50.iter().any(|s| s == q) || used_candidates.contains(&candidate) {
                 // Author already has P50 or candidate already used; remove redundant P2093
                 Self::remove_p2093_statement(statement);
             } else if let Some(p50_statement) = &authors[candidate].generate_author_statement() {
@@ -268,7 +268,7 @@ impl WikidataPapers {
     ) {
         let qs: Vec<String> = authors
             .iter()
-            .filter_map(|a| a.wikidata_item.clone())
+            .filter_map(|a| a.wikidata_item().map(str::to_string))
             .collect();
         if qs.is_empty() {
             return;
@@ -625,9 +625,9 @@ mod tests {
 
         // Adapter author with same name but different ordinal
         let mut adapter_author = GenericAuthorInfo::new();
-        adapter_author.name = Some("Giorgio Alimonti".to_string());
-        adapter_author.wikidata_item = Some("Q64863661".to_string());
-        adapter_author.list_number = Some("44".to_string()); // different ordinal!
+        adapter_author.set_name(Some("Giorgio Alimonti".to_string()));
+        adapter_author.set_wikidata_item(Some("Q64863661".to_string()));
+        adapter_author.set_list_number(Some("44".to_string())); // different ordinal!
 
         wdp.update_author_statements(&[adapter_author], &mut item);
 
@@ -660,9 +660,9 @@ mod tests {
         item.add_claim(make_p2093("Alimonti Giorgio", "44"));
 
         let mut adapter_author = GenericAuthorInfo::new();
-        adapter_author.name = Some("Giorgio Alimonti".to_string());
-        adapter_author.wikidata_item = Some("Q64863661".to_string());
-        adapter_author.list_number = Some("42".to_string());
+        adapter_author.set_name(Some("Giorgio Alimonti".to_string()));
+        adapter_author.set_wikidata_item(Some("Q64863661".to_string()));
+        adapter_author.set_list_number(Some("42".to_string()));
 
         wdp.update_author_statements(&[adapter_author], &mut item);
 
@@ -699,14 +699,14 @@ mod tests {
 
         // Adapter has both authors with Q-items but erroneously gives same ordinal
         let mut author1 = GenericAuthorInfo::new();
-        author1.name = Some("Jahred Adelman".to_string());
-        author1.wikidata_item = Some("Q100001".to_string());
-        author1.list_number = Some("15".to_string());
+        author1.set_name(Some("Jahred Adelman".to_string()));
+        author1.set_wikidata_item(Some("Q100001".to_string()));
+        author1.set_list_number(Some("15".to_string()));
 
         let mut author2 = GenericAuthorInfo::new();
-        author2.name = Some("Stephanie Zimmermann".to_string());
-        author2.wikidata_item = Some("Q100002".to_string());
-        author2.list_number = Some("15".to_string()); // adapter erroneously gives same ordinal
+        author2.set_name(Some("Stephanie Zimmermann".to_string()));
+        author2.set_wikidata_item(Some("Q100002".to_string()));
+        author2.set_list_number(Some("15".to_string())); // adapter erroneously gives same ordinal
 
         wdp.update_author_statements(&[author1, author2], &mut item);
 
@@ -745,9 +745,9 @@ mod tests {
 
         // Adapter has ASCII-ified version of the name
         let mut adapter_author = GenericAuthorInfo::new();
-        adapter_author.name = Some("Jose Garcia".to_string()); // different from Wikidata!
-        adapter_author.wikidata_item = Some("Q12345".to_string());
-        adapter_author.list_number = Some("5".to_string());
+        adapter_author.set_name(Some("Jose Garcia".to_string())); // different from Wikidata!
+        adapter_author.set_wikidata_item(Some("Q12345".to_string()));
+        adapter_author.set_list_number(Some("5".to_string()));
 
         wdp.update_author_statements(&[adapter_author], &mut item);
 
@@ -774,9 +774,9 @@ mod tests {
 
         // Adapter reformats the name
         let mut adapter_author = GenericAuthorInfo::new();
-        adapter_author.name = Some("John Smith".to_string()); // reordered, no middle initial
-        adapter_author.wikidata_item = Some("Q99999".to_string());
-        adapter_author.list_number = Some("1".to_string());
+        adapter_author.set_name(Some("John Smith".to_string())); // reordered, no middle initial
+        adapter_author.set_wikidata_item(Some("Q99999".to_string()));
+        adapter_author.set_list_number(Some("1".to_string()));
 
         wdp.update_author_statements(&[adapter_author], &mut item);
 

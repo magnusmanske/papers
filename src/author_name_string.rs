@@ -47,8 +47,8 @@ impl AuthorNameString {
         };
 
         let mut author = GenericAuthorInfo::new();
-        author.name = Some(ans.clone());
-        author.wikidata_item = Some(author_q.clone());
+        author.set_name(Some(ans.clone()));
+        author.set_wikidata_item(Some(author_q.clone()));
         let mut papers = WikidataPapers::new(cache.clone());
         let api = mw_api.read().await;
         papers.entities_mut().load_entities(&api, paper_qs).await?;
@@ -167,7 +167,7 @@ impl AuthorNameString {
     ) -> Result<()> {
         self.log(1, format!("Processing {}", &root_author_q));
         let mut author = GenericAuthorInfo::new();
-        author.wikidata_item = Some(root_author_q.to_owned());
+        author.set_wikidata_item(Some(root_author_q.to_owned()));
         let api = mw_api.read().await;
         let ans2paper_qs = self.get_coauthor_ans(&root_author_q, &api).await?;
         let name2author_qs = self.get_coauthor_qs(&root_author_q, &api).await?;
@@ -262,11 +262,11 @@ impl AuthorNameString {
     ) -> Option<String> {
         self.log(1, format!("CREATING AUTHOR {ans}"));
         let mut author = GenericAuthorInfo::new();
-        author.name = Some(ans.clone());
+        author.set_name(Some(ans.clone()));
         let author = author
             .get_or_create_author_item(mw_api.clone(), cache.clone(), true)
             .await;
         self.log(1, format!("CREATED AUTHOR {ans} => {author:?}"));
-        Some(author.wikidata_item.as_ref()?.to_owned())
+        Some(author.wikidata_item()?.to_string())
     }
 }

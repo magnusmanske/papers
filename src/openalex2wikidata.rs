@@ -204,7 +204,7 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
                     // Format: "https://orcid.org/0000-0001-2345-6789"
                     if let Some(orcid) = orcid_url.rsplit('/').next() {
                         if !orcid.is_empty() {
-                            entry.prop2id.insert("P496".to_string(), orcid.to_string());
+                            entry.prop2id_mut().insert("P496".to_string(), orcid.to_string());
                         }
                     }
                 }
@@ -368,15 +368,15 @@ mod tests {
             .insert("10.1234/TEST".to_string(), make_work());
         let authors = adapter.get_author_list("10.1234/TEST").await;
         assert_eq!(authors.len(), 2);
-        assert_eq!(authors[0].name, Some("Alice Smith".to_string()));
-        assert_eq!(authors[0].list_number, Some("1".to_string()));
+        assert_eq!(authors[0].name(), Some("Alice Smith"));
+        assert_eq!(authors[0].list_number(), Some("1"));
         assert_eq!(
-            authors[0].prop2id.get("P496"),
+            authors[0].prop2id().get("P496"),
             Some(&"0000-0001-2345-6789".to_string())
         );
-        assert_eq!(authors[1].name, Some("Bob Jones".to_string()));
-        assert_eq!(authors[1].list_number, Some("2".to_string()));
-        assert!(!authors[1].prop2id.contains_key("P496"));
+        assert_eq!(authors[1].name(), Some("Bob Jones"));
+        assert_eq!(authors[1].list_number(), Some("2"));
+        assert!(!authors[1].prop2id().contains_key("P496"));
     }
 
     #[tokio::test]

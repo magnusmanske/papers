@@ -293,10 +293,10 @@ mod tests {
         );
         let authors = adapter.get_author_list("2301.12345").await;
         assert_eq!(authors.len(), 2);
-        assert_eq!(authors[0].name, Some("Alice Smith".to_string()));
-        assert_eq!(authors[0].list_number, Some("1".to_string()));
-        assert_eq!(authors[1].name, Some("Bob Jones".to_string()));
-        assert_eq!(authors[1].list_number, Some("2".to_string()));
+        assert_eq!(authors[0].name(), Some("Alice Smith"));
+        assert_eq!(authors[0].list_number(), Some("1"));
+        assert_eq!(authors[1].name(), Some("Bob Jones"));
+        assert_eq!(authors[1].list_number(), Some("2"));
     }
 
     #[tokio::test]

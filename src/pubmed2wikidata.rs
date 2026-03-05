@@ -393,13 +393,11 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                     }
                 }
             }
-            ret.push(GenericAuthorInfo {
-                name: self.get_author_name_string(author),
-                prop2id,
-                wikidata_item: None,
-                list_number: Some(list_num.to_string()),
-                alternative_names: vec![],
-            });
+            let mut gai = GenericAuthorInfo::new();
+            gai.set_name(self.get_author_name_string(author));
+            gai.set_list_number(Some(list_num.to_string()));
+            *gai.prop2id_mut() = prop2id;
+            ret.push(gai);
             list_num += 1;
         }
 

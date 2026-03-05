@@ -18,11 +18,11 @@ const SCORE_MATCH_MIN: u16 = 51;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct GenericAuthorInfo {
-    pub name: Option<String>,
-    pub prop2id: HashMap<String, String>,
-    pub wikidata_item: Option<String>,
-    pub list_number: Option<String>,
-    pub alternative_names: Vec<String>,
+    name: Option<String>,
+    prop2id: HashMap<String, String>,
+    wikidata_item: Option<String>,
+    list_number: Option<String>,
+    alternative_names: Vec<String>,
 }
 
 impl WikidataInteraction for GenericAuthorInfo {}
@@ -70,6 +70,38 @@ impl GenericAuthorInfo {
         }
 
         Some(ret)
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    pub fn set_name(&mut self, name: Option<String>) {
+        self.name = name;
+    }
+
+    pub fn wikidata_item(&self) -> Option<&str> {
+        self.wikidata_item.as_deref()
+    }
+
+    pub fn set_wikidata_item(&mut self, q: Option<String>) {
+        self.wikidata_item = q;
+    }
+
+    pub fn list_number(&self) -> Option<&str> {
+        self.list_number.as_deref()
+    }
+
+    pub fn set_list_number(&mut self, n: Option<String>) {
+        self.list_number = n;
+    }
+
+    pub fn prop2id(&self) -> &HashMap<String, String> {
+        &self.prop2id
+    }
+
+    pub fn prop2id_mut(&mut self) -> &mut HashMap<String, String> {
+        &mut self.prop2id
     }
 
     pub fn find_best_match(&self, authors: &[GenericAuthorInfo]) -> Option<(usize, u16)> {

@@ -324,10 +324,10 @@ mod tests {
             .insert("10.1234/TEST".to_string(), make_epmc_work());
         let authors = adapter.get_author_list("10.1234/TEST").await;
         assert_eq!(authors.len(), 2);
-        assert_eq!(authors[0].name, Some("Alice Smith".to_string()));
-        assert_eq!(authors[0].list_number, Some("1".to_string()));
-        assert_eq!(authors[1].name, Some("Bob Jones".to_string()));
-        assert_eq!(authors[1].list_number, Some("2".to_string()));
+        assert_eq!(authors[0].name(), Some("Alice Smith"));
+        assert_eq!(authors[0].list_number(), Some("1"));
+        assert_eq!(authors[1].name(), Some("Bob Jones"));
+        assert_eq!(authors[1].list_number(), Some("2"));
     }
 
     #[tokio::test]

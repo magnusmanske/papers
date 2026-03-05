@@ -119,10 +119,10 @@ impl SourceMDbot {
 
         let mut author = GenericAuthorInfo::new();
         if RE_WD.is_match(identifier) {
-            author.wikidata_item = Some(identifier.to_owned());
+            author.set_wikidata_item(Some(identifier.to_owned()));
         } else if RE_ORCID.is_match(identifier) {
             author
-                .prop2id
+                .prop2id_mut()
                 .insert("P496".to_string(), identifier.to_owned());
             author = author
                 .get_or_create_author_item(
@@ -139,7 +139,7 @@ impl SourceMDbot {
         }
 
         // Paranoia
-        if author.wikidata_item.is_none() {
+        if author.wikidata_item().is_none() {
             return Err(anyhow!(
                 "Failed to get/create author item for {}",
                 identifier
