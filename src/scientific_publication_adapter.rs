@@ -274,15 +274,15 @@ pub trait ScientificPublicationAdapter {
                 Some(t) => titles.retain(|x| !self.titles_are_equal(x, t)), // Title exists, remove from title list
                 None => item.set_label(LocaleString::new("en", &titles.swap_remove(0))), // No title, add and remove from title list
             }
-            let main_title = item.label_in_locale("en").unwrap_or("").to_string();
 
             // Add other potential titles as aliases
-            titles
-                .iter()
-                .filter(|t| !self.titles_are_equal(t, &main_title))
-                .for_each(|t| {
-                    item.add_alias(LocaleString::new(language.to_string(), t.to_string()))
-                });
+            // let main_title = item.label_in_locale("en").unwrap_or("").to_string();
+            // titles
+            //     .iter()
+            //     .filter(|t| !self.titles_are_equal(t, &main_title))
+            //     .for_each(|t| {
+            //         item.add_alias(LocaleString::new(language.to_string(), t.to_string()))
+            //     });
 
             // Add P1476 (title)
             if !item.has_claims_with_property("P1476") {
@@ -367,10 +367,12 @@ pub trait ScientificPublicationAdapter {
                 claim.main_snak().property() == property.as_str()
                     && *claim.main_snak().snak_type() == SnakType::Value
             })
-            .find_map(|claim| match claim.main_snak().data_value().as_ref()?.value() {
-                Value::StringValue(s) => Some(s.to_string()),
-                _ => None,
-            })
+            .find_map(
+                |claim| match claim.main_snak().data_value().as_ref()?.value() {
+                    Value::StringValue(s) => Some(s.to_string()),
+                    _ => None,
+                },
+            )
     }
 
     fn set_author_cache_entry(&mut self, catalog_author_id: &str, q: &str) {
@@ -601,8 +603,7 @@ mod tests {
     #[test]
     fn get_wb_time_full_date_has_precision_11() {
         let adapter = TestAdapter::with_titles(vec![]);
-        let stmt =
-            adapter.get_wb_time_from_partial("P577".to_string(), 2021, Some(3), Some(15));
+        let stmt = adapter.get_wb_time_from_partial("P577".to_string(), 2021, Some(3), Some(15));
         if let Some(dv) = stmt.main_snak().data_value() {
             if let Value::Time(tv) = dv.value() {
                 assert_eq!(tv.time(), "+2021-03-15T00:00:00Z");
