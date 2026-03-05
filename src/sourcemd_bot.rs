@@ -154,10 +154,10 @@ impl SourceMDbot {
 
         // Create paper object
         let mut wdp = self.new_wdp(command);
-        wdp.set_edit_summary(Some(make_edit_summary(&format!(
-            "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{}",
+        wdp.set_edit_summary(Some(format!(
+            "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{} (automated edit by SourceMD)",
             self.batch_id, self.batch_id, command.serial_number
-        ))));
+        )));
         let config = self.config.read().await;
         wdp.update_author_items(&vec![author], config.mw_api())
             .await;
@@ -171,10 +171,10 @@ impl SourceMDbot {
         }
 
         let mut wdp = self.new_wdp(command);
-        wdp.set_edit_summary(Some(make_edit_summary(&format!(
-            "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{}",
+        wdp.set_edit_summary(Some(format!(
+            "SourceMD [rust bot], [https://tools.wmflabs.org/sourcemd/?action=batch&batch={} batch #{}], command #{} (automated edit by SourceMD)",
             self.batch_id, self.batch_id, command.serial_number
-        ))));
+        )));
 
         // Wikidata ID
         if RE_WD.is_match(&command.identifier) {

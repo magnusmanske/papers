@@ -530,7 +530,7 @@ impl GenericAuthorInfo {
         params.aliases.add = EntityDiffParamState::All;
         params.claims.add = EntityDiffParamState::All;
         let mut diff = EntityDiff::new(&original_item, &item, &params);
-        diff.set_edit_summary(Some(crate::make_edit_summary("")));
+        diff.set_edit_summary(Some("(automated edit by SourceMD)".to_string()));
         if diff.is_empty() {
             return;
         }
