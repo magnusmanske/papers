@@ -14,6 +14,7 @@ use crate::sourcemd_config::SourceMD;
 use crate::wikidata_papers::WikidataPapers;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
+use anyhow::{anyhow, Result};
 use regex::Regex;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -32,7 +33,7 @@ impl SourceMDbot {
         config: Arc<RwLock<SourceMD>>,
         cache: Arc<WikidataStringCache>,
         batch_id: i64,
-    ) -> Result<Self, String> {
+    ) -> Result<Self> {
         let ret = Self {
             config,
             batch_id,
@@ -42,16 +43,16 @@ impl SourceMDbot {
         Ok(ret)
     }
 
-    pub async fn start(&self) -> Result<(), String> {
+    pub async fn start(&self) -> Result<()> {
         let config = self.config.read().await;
         config
             .restart_batch(self.batch_id)
-            .ok_or("Can't (re)start batch".to_string())?;
+            .ok_or(anyhow!("Can't (re)start batch"))?;
         config.set_batch_running(self.batch_id).await;
         Ok(())
     }
 
-    pub async fn run(&self) -> Result<bool, String> {
+    pub async fn run(&self) -> Result<bool> {
         //Check if batch is still valid (STOP etc)
         let command = self.get_next_command().await;
         let mut command = match command {
@@ -62,7 +63,7 @@ impl SourceMDbot {
                     .await
                     .deactivate_batch_run(self.batch_id)
                     .await
-                    .ok_or("Can't set batch as stopped".to_string())?;
+                    .ok_or(anyhow!("Can't set batch as stopped"))?;
                 return Ok(false);
             }
         };
@@ -79,14 +80,14 @@ impl SourceMDbot {
                 Ok(b)
             }
             Err(e) => {
-                self.set_command_status("FAILED", Some(&e.clone()), &mut command)
+                self.set_command_status("FAILED", Some(&e.to_string()), &mut command)
                     .await?;
                 Err(e)
             }
         }
     }
 
-    async fn execute_command(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
+    async fn execute_command(&self, command: &mut SourceMDcommand) -> Result<bool> {
         match &command.mode {
             SourceMDcommandMode::CreatePaperById => self.process_paper(command).await,
             SourceMDcommandMode::AddAutthorToPublication => self.process_paper(command).await,
@@ -100,14 +101,15 @@ impl SourceMDbot {
             }
             SourceMDcommandMode::EditPaperForOrcidAuthor => Ok(false), // TODO
             SourceMDcommandMode::CreateBookFromIsbn => Ok(false),      // TODO
-            other => Err(format!(
+            other => Err(anyhow!(
                 "Unrecognized command '{}' on command #{}",
-                &other, &command.id
+                &other,
+                &command.id
             )),
         }
     }
 
-    async fn get_author_item(&self, identifier: &str) -> Result<GenericAuthorInfo, String> {
+    async fn get_author_item(&self, identifier: &str) -> Result<GenericAuthorInfo> {
         lazy_static! {
             static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
                 .expect("SourceMDbot::process_author: RE_WD does not compile");
@@ -130,7 +132,7 @@ impl SourceMDbot {
                 )
                 .await
         } else {
-            return Err(format!(
+            return Err(anyhow!(
                 "Not a Wikidata item, nor an ORCID ID {}",
                 identifier
             ));
@@ -138,7 +140,7 @@ impl SourceMDbot {
 
         // Paranoia
         if author.wikidata_item.is_none() {
-            return Err(format!(
+            return Err(anyhow!(
                 "Failed to get/create author item for {}",
                 identifier
             ));
@@ -147,10 +149,7 @@ impl SourceMDbot {
         Ok(author)
     }
 
-    pub async fn process_author_metadata(
-        &self,
-        command: &mut SourceMDcommand,
-    ) -> Result<bool, String> {
+    pub async fn process_author_metadata(&self, command: &mut SourceMDcommand) -> Result<bool> {
         let author = self.get_author_item(&command.identifier).await?;
 
         // Create paper object
@@ -165,7 +164,7 @@ impl SourceMDbot {
         Ok(true)
     }
 
-    async fn process_paper(&self, command: &mut SourceMDcommand) -> Result<bool, String> {
+    async fn process_paper(&self, command: &mut SourceMDcommand) -> Result<bool> {
         lazy_static! {
             static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
                 .expect("SourceMDbot::process_paper: RE_WD does not compile");
@@ -186,7 +185,7 @@ impl SourceMDbot {
                 )
                 .await
                 .map(|_x| true)
-                .ok_or(format!("Can't update {}", &command.identifier));
+                .ok_or(anyhow!("Can't update {}", &command.identifier));
         }
 
         // Others: regex-recognised formats
@@ -235,12 +234,12 @@ impl SourceMDbot {
         status: &str,
         message: Option<&str>,
         command: &mut SourceMDcommand,
-    ) -> Result<(), String> {
+    ) -> Result<()> {
         self.config
             .read()
             .await
             .set_command_status(command, status, message.map(|s| s.to_string()))
-            .ok_or(format!(
+            .ok_or(anyhow!(
                 "Can't config.set_command_status for batch #{}",
                 self.batch_id
             ))?;
@@ -267,19 +266,4 @@ impl SourceMDbot {
 }
 
 #[cfg(test)]
-mod tests {
-    //use super::*;
-    //use wikibase::mediawiki::api::Api;
-
-    /*
-    TODO:
-    pub fn new(
-    pub fn start(&self) -> Result<(), String> {
-    pub fn run(self: &mut Self) -> Result<bool, String> {
-    fn execute_command(self: &mut Self, command: &mut SourceMDcommand) -> Result<bool, String> {
-    fn process_paper(self: &mut Self, command: &mut SourceMDcommand) -> Result<bool, String> {
-    fn set_command_status(
-    fn get_next_command(&self) -> Result<Option<SourceMDcommand>, String> {
-    fn new_wdp(&self, command: &SourceMDcommand) -> WikidataPapers {
-    */
-}
+mod tests {}

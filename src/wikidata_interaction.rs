@@ -1,3 +1,4 @@
+use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,11 +9,7 @@ use wikibase::*;
 
 #[async_trait]
 pub trait WikidataInteraction {
-    async fn search_wikibase(
-        &self,
-        query: &str,
-        mw_api: Arc<RwLock<Api>>,
-    ) -> Result<Vec<String>, String> {
+    async fn search_wikibase(&self, query: &str, mw_api: Arc<RwLock<Api>>) -> Result<Vec<String>> {
         let params: HashMap<_, _> = vec![
             ("action", "query"),
             ("list", "search"),
@@ -22,12 +19,7 @@ pub trait WikidataInteraction {
         .into_iter()
         .map(|(x, y)| (x.to_string(), y.to_string()))
         .collect();
-        let res = mw_api
-            .read()
-            .await
-            .get_query_api_json(&params)
-            .await
-            .map_err(|e| format!("{}", e))?;
+        let res = mw_api.read().await.get_query_api_json(&params).await?;
         match res["query"]["search"].as_array() {
             Some(items) => Ok(items
                 .iter()
@@ -52,15 +44,4 @@ pub trait WikidataInteraction {
 }
 
 #[cfg(test)]
-mod tests {
-    //use super::*;
-    //use wikibase::mediawiki::api::Api;
-
-    /*
-    TODO:
-    fn search_wikibase(
-    fn create_item(&self, item: &Entity, mw_api: &mut Api) -> Option<String> {
-    pub fn new_prop(prop: &str, id: &str) -> Self {
-    pub fn is_legit(&self) -> bool {
-    */
-}
+mod tests {}

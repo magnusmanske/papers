@@ -1,6 +1,7 @@
 use crate::wikidata_interaction::WikidataInteraction;
 use crate::wikidata_string_cache::WikidataStringCache;
 use crate::*;
+use anyhow::{anyhow, Result};
 use deunicode::deunicode;
 use regex::Regex;
 use std::collections::HashMap;
@@ -257,7 +258,7 @@ impl GenericAuthorInfo {
         ret
     }
 
-    pub fn merge_from(&mut self, author2: &GenericAuthorInfo) -> Result<(), String> {
+    pub fn merge_from(&mut self, author2: &GenericAuthorInfo) -> Result<()> {
         if self.name.is_none() {
             self.name = author2.name.clone();
         } else if let Some(name) = &author2.name {
@@ -267,9 +268,10 @@ impl GenericAuthorInfo {
             self.wikidata_item = author2.wikidata_item.clone();
         } else if author2.wikidata_item.is_none() {
         } else if self.wikidata_item != author2.wikidata_item {
-            return Err(format!(
+            return Err(anyhow!(
                 "GenericAuthorInfo::merge_from: Different items {:?} and {:?}, skipping",
-                self.wikidata_item, author2.wikidata_item
+                self.wikidata_item,
+                author2.wikidata_item
             ));
         }
         if self.list_number.is_none() {
@@ -297,7 +299,8 @@ impl GenericAuthorInfo {
                 }
             }
         }
-        self.alternative_names.extend(author2.alternative_names.iter().cloned());
+        self.alternative_names
+            .extend(author2.alternative_names.iter().cloned());
         self.alternative_names.sort();
         self.alternative_names.dedup();
         Ok(())
@@ -355,9 +358,19 @@ impl GenericAuthorInfo {
         // After removing matched long words, if both names still have remaining parts,
         // their initials must overlap. Otherwise the names are for different people
         // (e.g. "Bruce Allen" vs "G. Allen" — shared surname but conflicting first initials).
-        let all1: Vec<String> = RE_ALL.captures_iter(&name1_mod).map(|c| c[1].to_string()).collect();
-        let all2: Vec<String> = RE_ALL.captures_iter(&name2_mod).map(|c| c[1].to_string()).collect();
-        let matched_words: Vec<String> = parts1.iter().filter(|p| parts2.contains(p)).cloned().collect();
+        let all1: Vec<String> = RE_ALL
+            .captures_iter(&name1_mod)
+            .map(|c| c[1].to_string())
+            .collect();
+        let all2: Vec<String> = RE_ALL
+            .captures_iter(&name2_mod)
+            .map(|c| c[1].to_string())
+            .collect();
+        let matched_words: Vec<String> = parts1
+            .iter()
+            .filter(|p| parts2.contains(p))
+            .cloned()
+            .collect();
         let remaining1 = Self::remove_matched_words(&all1, &matched_words);
         let remaining2 = Self::remove_matched_words(&all2, &matched_words);
         if !remaining1.is_empty() && !remaining2.is_empty() {
@@ -1099,7 +1112,10 @@ mod tests {
         let ga = GenericAuthorInfo::new();
         // Cases from the false-positive Wikidata edit:
         assert_eq!(ga.author_names_match("Bruce Allen", "G. Allen"), 0);
-        assert_eq!(ga.author_names_match("Jonathan Anderson", "S. B. Anderson"), 0);
+        assert_eq!(
+            ga.author_names_match("Jonathan Anderson", "S. B. Anderson"),
+            0
+        );
         assert_eq!(ga.author_names_match("Carl Blair", "D. G. Blair"), 0);
         assert_eq!(ga.author_names_match("R Gustafson", "E. K. Gustafson"), 0);
         assert_eq!(ga.author_names_match("Andrew M. Hopkins", "P. Hopkins"), 0);
