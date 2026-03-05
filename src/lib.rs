@@ -33,3 +33,27 @@ pub fn make_edit_summary(base: &str) -> String {
         format!("{base} (automated edit by SourceMD)")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn make_edit_summary_empty_base_returns_note_only() {
+        assert_eq!(make_edit_summary(""), "(automated edit by SourceMD)");
+    }
+
+    #[test]
+    fn make_edit_summary_non_empty_base_appends_note() {
+        assert_eq!(
+            make_edit_summary("SourceMD [rust bot]"),
+            "SourceMD [rust bot] (automated edit by SourceMD)"
+        );
+    }
+
+    #[test]
+    fn make_edit_summary_always_ends_with_attribution() {
+        let result = make_edit_summary("some note");
+        assert!(result.ends_with("(automated edit by SourceMD)"));
+    }
+}

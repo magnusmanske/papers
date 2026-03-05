@@ -422,6 +422,7 @@ mod tests {
 
     /// Helper: creates a PubmedArticle with the given PMID and DOI (in both
     /// pubmed_data.article_ids and article.e_location_ids).
+    /// Optionally sets `title` and `issn` for testing those fields.
     fn make_article(pmid: u64, doi: Option<&str>) -> PubmedArticle {
         let article_ids = doi.map(|d| ArticleIdList {
             ids: vec![ArticleId {
@@ -533,5 +534,80 @@ mod tests {
 
         let result = pm.publication_ids_from_doi(target_doi).await;
         assert_eq!(result, vec!["44444".to_string()]);
+    }
+
+    #[test]
+    fn name_returns_expected_string() {
+        assert_eq!(Pubmed2Wikidata::new().name(), "Pubmed2Wikidata");
+    }
+
+    #[test]
+    fn publication_property_returns_pmid() {
+        assert_eq!(Pubmed2Wikidata::new().publication_property(), Some(IdProp::PMID));
+    }
+
+    #[test]
+    fn get_work_titles_returns_english_title() {
+        let mut pm = Pubmed2Wikidata::new();
+        pm.work_cache.insert(
+            "1".to_string(),
+            PubmedArticle {
+                medline_citation: Some(MedlineCitation {
+                    pmid: 1,
+                    article: Some(Article {
+                        title: Some("A Test Paper Title".to_string()),
+                        ..Article::new()
+                    }),
+                    ..MedlineCitation::new()
+                }),
+                pubmed_data: None,
+            },
+        );
+        let titles = pm.get_work_titles("1");
+        assert_eq!(titles.len(), 1);
+        assert_eq!(titles[0].value(), "A Test Paper Title");
+        assert_eq!(titles[0].language(), "en");
+    }
+
+    #[test]
+    fn get_work_titles_returns_empty_for_missing_publication() {
+        let pm = Pubmed2Wikidata::new();
+        assert!(pm.get_work_titles("nonexistent").is_empty());
+    }
+
+    #[test]
+    fn get_work_titles_returns_empty_when_title_is_none() {
+        let mut pm = Pubmed2Wikidata::new();
+        pm.work_cache.insert("2".to_string(), make_article(2, None));
+        assert!(pm.get_work_titles("2").is_empty());
+    }
+
+    #[test]
+    fn get_work_issn_extracts_issn() {
+        let mut pm = Pubmed2Wikidata::new();
+        pm.work_cache.insert(
+            "3".to_string(),
+            PubmedArticle {
+                medline_citation: Some(MedlineCitation {
+                    pmid: 3,
+                    article: Some(Article {
+                        journal: Some(Journal {
+                            issn: Some("1234-5678".to_string()),
+                            ..Journal::new()
+                        }),
+                        ..Article::new()
+                    }),
+                    ..MedlineCitation::new()
+                }),
+                pubmed_data: None,
+            },
+        );
+        assert_eq!(pm.get_work_issn("3"), Some("1234-5678".to_string()));
+    }
+
+    #[test]
+    fn get_work_issn_returns_none_for_missing_publication() {
+        let pm = Pubmed2Wikidata::new();
+        assert_eq!(pm.get_work_issn("nonexistent"), None);
     }
 }
