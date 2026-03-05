@@ -191,6 +191,10 @@ impl GenericAuthorInfo {
         (Some(label), all_names)
     }
 
+    const fn add_aliases() -> bool {
+        false // Seems to go wrong more than it goes right
+    }
+
     pub fn amend_author_item(&self, item: &mut Entity) {
         let (best_label, aliases) = self.pick_best_label();
 
@@ -198,7 +202,7 @@ impl GenericAuthorInfo {
         if let Some(name) = &best_label {
             match item.label_in_locale("en") {
                 Some(s) => {
-                    if s != name {
+                    if s != name && Self::add_aliases() {
                         item.add_alias(LocaleString::new("en", name));
                     }
                 }
@@ -213,12 +217,14 @@ impl GenericAuthorInfo {
         for n in &aliases {
             match item.label_in_locale("en") {
                 Some(s) => {
-                    if s != n {
+                    if s != n && Self::add_aliases() {
                         item.add_alias(LocaleString::new("en", n));
                     }
                 }
                 None => {
-                    item.add_alias(LocaleString::new("en", n));
+                    if Self::add_aliases() {
+                        item.add_alias(LocaleString::new("en", n));
+                    }
                 }
             }
         }
@@ -670,7 +676,10 @@ mod tests {
         let mut item = Entity::new_empty_item();
         ga.amend_author_item(&mut item);
         assert_eq!(item.label_in_locale("en"), Some("Magnus Manske"));
-        assert_eq!(*item.aliases(), vec![LocaleString::new("en", "HM Manske")]);
+        if GenericAuthorInfo::add_aliases() {
+            // Only test if this is switched on
+            assert_eq!(*item.aliases(), vec![LocaleString::new("en", "HM Manske")]);
+        }
         assert_eq!(*item.claims()[0].main_snak(), Snak::new_item("P31", "Q5"));
         assert_eq!(
             *item.claims()[1].main_snak(),
