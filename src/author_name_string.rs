@@ -37,13 +37,13 @@ impl AuthorNameString {
         mw_api: &Arc<RwLock<Api>>,
         paper_qs: &Vec<String>,
         name2author_qs: &HashMap<String, Vec<String>>,
-    ) {
+    ) -> Result<()> {
         let author_q = match self
             .get_or_create_author(ans, cache, mw_api, name2author_qs)
             .await
         {
             Some(q) => q,
-            None => return,
+            None => return Ok(()),
         };
 
         let mut author = GenericAuthorInfo::new();
@@ -51,12 +51,32 @@ impl AuthorNameString {
         author.wikidata_item = Some(author_q.clone());
         let mut papers = WikidataPapers::new(cache.clone());
         let api = mw_api.read().await;
-        if let Err(e) = papers.entities_mut().load_entities(&api, paper_qs).await {
-            eprintln!("Could not load paper items {paper_qs:?}: {e}");
-            return;
-        }
+        papers.entities_mut().load_entities(&api, paper_qs).await?;
         drop(api);
 
+        let edited_qs = self
+            .create_p50_statements(ans, mw_api, paper_qs, author_q, author, &mut papers)
+            .await;
+        if !edited_qs.is_empty() {
+            let api = mw_api.read().await;
+            papers
+                .entities_mut()
+                .reload_entities(&api, &edited_qs)
+                .await?;
+            drop(api);
+        }
+        Ok(())
+    }
+
+    async fn create_p50_statements(
+        &self,
+        ans: &String,
+        mw_api: &Arc<RwLock<Api>>,
+        paper_qs: &Vec<String>,
+        author_q: String,
+        author: GenericAuthorInfo,
+        papers: &mut WikidataPapers,
+    ) -> Vec<String> {
         // Create P50 statements
         let mut edited_qs = vec![];
         for paper_q in paper_qs {
@@ -94,15 +114,7 @@ impl AuthorNameString {
             // papers.set_edit_summary(None);
             // save_item_changes(&mut papers, mw_api.clone(), paper_q).await;
         }
-
-        if !edited_qs.is_empty() {
-            let api = mw_api.read().await;
-            let _ = papers
-                .entities_mut()
-                .reload_entities(&api, &edited_qs)
-                .await;
-            drop(api);
-        }
+        edited_qs
     }
 
     async fn get_or_create_author(
@@ -166,11 +178,11 @@ impl AuthorNameString {
             let future = self.process_papers_for_ans(ans, cache, mw_api, paper_qs, &name2author_qs);
             futures.push(future);
         }
-        // futures::future::join_all(futures).await;
 
-        let stream =
-            futures::stream::iter(futures).buffer_unordered(MAX_PROCESS_PAPERS_CONCURRENCY);
-        stream.collect::<Vec<_>>().await;
+        let _ = futures::stream::iter(futures)
+            .buffer_unordered(MAX_PROCESS_PAPERS_CONCURRENCY)
+            .collect::<Vec<_>>()
+            .await;
         Ok(())
     }
 
