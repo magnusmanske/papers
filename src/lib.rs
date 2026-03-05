@@ -25,3 +25,11 @@ pub mod sourcemd_config;
 pub mod wikidata_interaction;
 pub mod wikidata_papers;
 pub mod wikidata_string_cache;
+
+pub fn make_edit_summary(base: &str) -> String {
+    if base.is_empty() {
+        "(automated edit by SourceMD)".to_string()
+    } else {
+        format!("{base} (automated edit by SourceMD)")
+    }
+}

@@ -39,7 +39,8 @@ pub trait WikidataInteraction {
 
     async fn create_item(&self, item: &Entity, mw_api: Arc<RwLock<Api>>) -> Option<String> {
         let params = EntityDiffParams::all();
-        let diff = EntityDiff::new(&Entity::new_empty_item(), item, &params);
+        let mut diff = EntityDiff::new(&Entity::new_empty_item(), item, &params);
+        diff.set_edit_summary(Some(crate::make_edit_summary("")));
         if diff.is_empty() {
             return None;
         }

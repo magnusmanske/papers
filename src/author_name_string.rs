@@ -67,10 +67,10 @@ impl AuthorNameString {
             let original_item = item.clone();
             papers.update_author_name_statement(ans, &author, &mut item);
             self.log(3, format!("EDITING PAPER {paper_q}: {ans} => {author_q}"));
-            papers.set_edit_summary(Some(format!(
+            papers.set_edit_summary(Some(crate::make_edit_summary(&format!(
                 "Changing {ans} to {} [#Papers ANS (was: SourceMD)]",
                 "[[".to_string() + &author_q + "]]"
-            )));
+            ))));
             match papers
                 .apply_diff_for_item(original_item, item, mw_api.clone())
                 .await
