@@ -1,0 +1,49 @@
+{
+  "batchcomplete": "",
+  "query": {
+    "general": {
+      "mainpage": "Main Page",
+      "base": "https://www.wikidata.org/wiki/Wikidata:Main_Page",
+      "sitename": "Wikidata",
+      "logo": "",
+      "generator": "MediaWiki 1.42.0",
+      "phpversion": "8.1.0",
+      "phpsapi": "apache2handler",
+      "dbtype": "mysql",
+      "dbversion": "10.4.0",
+      "case": "first-letter",
+      "lang": "en",
+      "fallback": [],
+      "variants": ["en"],
+      "rtl": false,
+      "timezone": "UTC",
+      "timeoffset": 0,
+      "articlepath": "/wiki/$1",
+      "scriptpath": "/w",
+      "script": "/w/index.php",
+      "server": "https://www.wikidata.org",
+      "servername": "www.wikidata.org",
+      "wikiid": "wikidatawiki",
+      "time": "2024-01-01T00:00:00Z"
+    },
+    "namespaces": {
+      "0": {"id": 0, "case": "first-letter", "content": "", "*": "", "canonical": ""},
+      "1": {"id": 1, "case": "first-letter", "*": "Talk", "canonical": "Talk"},
+      "-1": {"id": -1, "case": "first-letter", "*": "Special", "canonical": "Special"},
+      "-2": {"id": -2, "case": "first-letter", "*": "Media", "canonical": "Media"}
+    },
+    "namespacealiases": [],
+    "libraries": [],
+    "extensions": [],
+    "statistics": {
+      "pages": 1000,
+      "articles": 500,
+      "edits": 10000,
+      "images": 100,
+      "users": 50,
+      "activeusers": 10,
+      "admins": 5,
+      "jobs": 0
+    }
+  }
+}

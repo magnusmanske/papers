@@ -168,19 +168,49 @@ mod tests {
     use super::*;
     use std::thread;
     use std::time::Duration;
-    use tokio;
     use wikibase::mediawiki::api::Api;
+    use wiremock::matchers::{method, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    async fn api() -> Arc<tokio::sync::RwLock<Api>> {
-        // lazy_static! {
-        // static ref API: Arc<RwLock<Api>> =
+    const SITEINFO: &str = include_str!("../test_data/api_siteinfo.json");
+    const SEARCH_Q46664291: &str = include_str!("../test_data/search_found_q46664291.json");
+    const SEARCH_Q15757256: &str = include_str!("../test_data/search_found_q15757256.json");
+    const SEARCH_EMPTY: &str = include_str!("../test_data/search_empty.json");
+
+    /// Starts a wiremock server with the MediaWiki siteinfo response pre-registered.
+    /// The returned server must be kept alive for the duration of the test.
+    async fn start_mock_server() -> MockServer {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(query_param("meta", "siteinfo"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/json; charset=utf-8")
+                    .set_body_string(SITEINFO),
+            )
+            .mount(&mock_server)
+            .await;
+        mock_server
+    }
+
+    /// Registers a search mock for a specific `srsearch` value.
+    async fn add_search_mock(mock_server: &MockServer, srsearch: &str, body: &'static str) {
+        Mock::given(method("GET"))
+            .and(query_param("srsearch", srsearch))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/json; charset=utf-8")
+                    .set_body_string(body),
+            )
+            .mount(mock_server)
+            .await;
+    }
+
+    /// Creates an `Api` connected to the mock server.
+    async fn mock_api(mock_server: &MockServer) -> Arc<tokio::sync::RwLock<Api>> {
         Arc::new(tokio::sync::RwLock::new(
-            Api::new("https://www.wikidata.org/w/api.php")
-                .await
-                .unwrap(),
+            Api::new(&mock_server.uri()).await.unwrap(),
         ))
-        // }
-        // API.clone()
     }
 
     #[test]
@@ -203,13 +233,15 @@ mod tests {
 
     #[tokio::test]
     async fn fix_key() {
-        let wsc = WikidataStringCache::new(api().await);
+        let mock_server = start_mock_server().await;
+        let wsc = WikidataStringCache::new(mock_api(&mock_server).await);
         assert_eq!(wsc.fix_key(" fOoBAr  "), "foobar".to_string());
     }
 
     #[tokio::test]
     async fn ensure_property() {
-        let wsc = WikidataStringCache::new(api().await);
+        let mock_server = start_mock_server().await;
+        let wsc = WikidataStringCache::new(mock_api(&mock_server).await);
         assert!(!wsc.cache.read().await.contains_key("P123"));
         wsc.ensure_property("P123").await;
         assert!(wsc.cache.read().await.contains_key("P123"));
@@ -217,7 +249,20 @@ mod tests {
 
     #[tokio::test]
     async fn search() {
-        let wsc = WikidataStringCache::new(api().await);
+        let mock_server = start_mock_server().await;
+        add_search_mock(
+            &mock_server,
+            "haswbstatement:P698=16116339",
+            SEARCH_Q46664291,
+        )
+        .await;
+        add_search_mock(
+            &mock_server,
+            "haswbstatement:P698=not_a_valid_id",
+            SEARCH_EMPTY,
+        )
+        .await;
+        let wsc = WikidataStringCache::new(mock_api(&mock_server).await);
         assert_eq!(
             wsc.search("P698", "16116339").await,
             Some("Q46664291".to_string())
@@ -227,7 +272,20 @@ mod tests {
 
     #[tokio::test]
     async fn get_set() {
-        let wsc = WikidataStringCache::new(api().await);
+        let mock_server = start_mock_server().await;
+        add_search_mock(
+            &mock_server,
+            "haswbstatement:P698=16116339",
+            SEARCH_Q46664291,
+        )
+        .await;
+        add_search_mock(
+            &mock_server,
+            "haswbstatement:P698=not_a_valid_id",
+            SEARCH_EMPTY,
+        )
+        .await;
+        let wsc = WikidataStringCache::new(mock_api(&mock_server).await);
         assert_eq!(
             wsc.get("P698", "16116339").await,
             Some("Q46664291".to_string())
@@ -245,14 +303,28 @@ mod tests {
 
     #[tokio::test]
     async fn issn2q() {
-        let wsc = WikidataStringCache::new(api().await);
+        let mock_server = start_mock_server().await;
+        add_search_mock(
+            &mock_server,
+            "haswbstatement:P236=1351-5101",
+            SEARCH_Q15757256,
+        )
+        .await;
+        add_search_mock(
+            &mock_server,
+            "haswbstatement:P236=nope-di-dope",
+            SEARCH_EMPTY,
+        )
+        .await;
+        let wsc = WikidataStringCache::new(mock_api(&mock_server).await);
         assert_eq!(wsc.issn2q("1351-5101").await, Some("Q15757256".to_string()));
         assert_eq!(wsc.issn2q("nope-di-dope").await, None);
     }
 
     #[tokio::test]
     async fn prune() {
-        let mut wsc = WikidataStringCache::new(api().await);
+        let mock_server = start_mock_server().await;
+        let mut wsc = WikidataStringCache::new(mock_api(&mock_server).await);
         for num in 1..10 {
             wsc.set(
                 "P123",
@@ -269,7 +341,8 @@ mod tests {
 
     #[tokio::test]
     async fn property_needs_pruning() {
-        let mut wsc = WikidataStringCache::new(api().await);
+        let mock_server = start_mock_server().await;
+        let mut wsc = WikidataStringCache::new(mock_api(&mock_server).await);
         assert!(!wsc.property_needs_pruning("P123").await);
         for num in 1..10 {
             wsc.set(
@@ -285,7 +358,8 @@ mod tests {
 
     #[tokio::test]
     async fn prune_empty_property() {
-        let mut wsc = WikidataStringCache::new(api().await);
+        let mock_server = start_mock_server().await;
+        let mut wsc = WikidataStringCache::new(mock_api(&mock_server).await);
         wsc.max_cache_size_per_property = 0; // Force pruning to trigger
         wsc.ensure_property("P999").await;
         // This should not panic even though the property has zero entries
@@ -295,7 +369,8 @@ mod tests {
 
     #[tokio::test]
     async fn has_property() {
-        let wsc = WikidataStringCache::new(api().await);
+        let mock_server = start_mock_server().await;
+        let wsc = WikidataStringCache::new(mock_api(&mock_server).await);
         assert!(!wsc.has_property("P123").await);
         wsc.ensure_property("P123").await;
         assert!(wsc.has_property("P123").await);
@@ -303,15 +378,29 @@ mod tests {
 
     #[tokio::test]
     async fn search_wikibase() {
-        let wsc = WikidataStringCache::new(api().await);
+        let mock_server = start_mock_server().await;
+        add_search_mock(
+            &mock_server,
+            "haswbstatement:P698=16116339",
+            SEARCH_Q46664291,
+        )
+        .await;
+        add_search_mock(
+            &mock_server,
+            "haswbstatement:P698=not_a_valid_id",
+            SEARCH_EMPTY,
+        )
+        .await;
+        let api = mock_api(&mock_server).await;
+        let wsc = WikidataStringCache::new(api.clone());
         assert_eq!(
-            wsc.search_wikibase("haswbstatement:P698=16116339", api().await)
+            wsc.search_wikibase("haswbstatement:P698=16116339", api.clone())
                 .await
                 .unwrap(),
             vec!["Q46664291".to_string()]
         );
         assert_eq!(
-            wsc.search_wikibase("haswbstatement:P698=not_a_valid_id", api().await)
+            wsc.search_wikibase("haswbstatement:P698=not_a_valid_id", api.clone())
                 .await
                 .unwrap()
                 .len(),

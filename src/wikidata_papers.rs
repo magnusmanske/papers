@@ -564,14 +564,33 @@ mod tests {
         )
     }
 
-    /// Helper: create a WikidataPapers with no adapters (for unit testing)
+    /// Helper: create a WikidataPapers with no adapters (for unit testing).
+    /// Uses a wiremock server for the MediaWiki API so no real network calls are made.
     async fn make_wdp() -> WikidataPapers {
+        use wiremock::matchers::{method, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        const SITEINFO: &str = include_str!("../test_data/api_siteinfo.json");
+
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(query_param("meta", "siteinfo"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/json; charset=utf-8")
+                    .set_body_string(SITEINFO),
+            )
+            .mount(&mock_server)
+            .await;
+
         let mw_api = Arc::new(tokio::sync::RwLock::new(
-            wikibase::mediawiki::api::Api::new("https://www.wikidata.org/w/api.php")
+            wikibase::mediawiki::api::Api::new(&mock_server.uri())
                 .await
                 .unwrap(),
         ));
         let cache = Arc::new(WikidataStringCache::new(mw_api));
+        // mock_server is intentionally dropped here: the tests below do not
+        // make any further HTTP calls, so the server is no longer needed.
         WikidataPapers::new(cache)
     }
 

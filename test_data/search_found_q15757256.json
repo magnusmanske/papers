@@ -1,0 +1,17 @@
+{
+  "batchcomplete": "",
+  "query": {
+    "searchinfo": {"totalhits": 1},
+    "search": [
+      {
+        "ns": 0,
+        "title": "Q15757256",
+        "pageid": 15757256,
+        "size": 5000,
+        "wordcount": 50,
+        "snippet": "",
+        "timestamp": "2024-01-01T00:00:00Z"
+      }
+    ]
+  }
+}
