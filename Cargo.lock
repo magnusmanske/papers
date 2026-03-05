@@ -1982,11 +1982,10 @@ dependencies = [
 
 [[package]]
 name = "orcid"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ee8965c221af6b18d1e6ef36dcf11bbc0639dfef10a8c7d873b9acd60310100"
+checksum = "c8aa3e1d1bbe83f60401f0ede6cb6c91c484e18cd5d45db626f51c45d4efb95b"
 dependencies = [
- "anyhow",
  "reqwest 0.13.2",
  "serde_json",
  "tokio",
@@ -2166,7 +2165,7 @@ version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
 dependencies = [
- "toml_edit 0.25.3+spec-1.1.0",
+ "toml_edit 0.25.4+spec-1.1.0",
 ]
 
 [[package]]
@@ -2216,12 +2215,12 @@ dependencies = [
 
 [[package]]
 name = "pubmed"
-version = "0.1.4"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a36a64ed1638465b09ca266bba1ceba8c519b2bfab3e65b123d390438ce1fba"
+checksum = "28d66e5e280fa1b50f1607ac485483e18fae8d4344dccc5d271dad84210d12ef"
 dependencies = [
- "rand 0.9.2",
- "reqwest 0.12.28",
+ "rand 0.10.0",
+ "reqwest 0.13.2",
  "roxmltree",
  "serde",
  "serde_json",
@@ -2693,9 +2692,12 @@ dependencies = [
 
 [[package]]
 name = "roxmltree"
-version = "0.20.0"
+version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "rust-ini"
@@ -3551,9 +3553,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.25.3+spec-1.1.0"
+version = "0.25.4+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0a07913e63758bc95142d9863a5a45173b71515e68b690cad70cf99c3255ce1"
+checksum = "7193cbd0ce53dc966037f54351dbbcf0d5a642c7f0038c382ef9e677ce8c13f2"
 dependencies = [
  "indexmap",
  "toml_datetime 1.0.0+spec-1.1.0",

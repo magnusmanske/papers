@@ -1,4 +1,5 @@
 use crate::sourcemd_command::SourceMDcommand;
+use anyhow::{anyhow, Result};
 use chrono::prelude::*;
 use config::{Config, File};
 use dashmap::DashSet;
@@ -18,7 +19,7 @@ pub struct SourceMD {
 }
 
 impl SourceMD {
-    pub async fn new(ini_file: &str) -> Result<Self, String> {
+    pub async fn new(ini_file: &str) -> Result<Self> {
         Ok(Self {
             params: json!({}),
             running_batch_ids: DashSet::new(),
@@ -106,20 +107,18 @@ impl SourceMD {
         self.set_batch_status("DONE", batch_id)
     }
 
-    pub fn check_batch_not_stopped(&self, batch_id: i64) -> Result<(), String> {
+    pub fn check_batch_not_stopped(&self, batch_id: i64) -> Result<()> {
         let pool = self.pool.as_ref().ok_or_else(|| {
-            "QuickStatementsConfig::check_batch_not_stopped: Can't get DB handle".to_string()
+            anyhow!("QuickStatementsConfig::check_batch_not_stopped: Can't get DB handle")
         })?;
         let sql: String = format!(
             "SELECT * FROM batch WHERE id={} AND `status` NOT IN ('RUNNING','TODO')",
             batch_id
         );
-        let mut result = pool
-            .prep_exec(sql, ())
-            .map_err(|e| format!("Error: {}", e))?;
+        let mut result = pool.prep_exec(sql, ())?;
         /* trunk-ignore(clippy/never_loop) */
         if result.next().is_some() {
-            return Err(format!(
+            return Err(anyhow!(
                 "QuickStatementsConfig::check_batch_not_stopped: batch #{} is not RUNNING or TODO",
                 batch_id
             ));
@@ -268,21 +267,15 @@ impl SourceMD {
         self.pool = my::Pool::new_manual(2, 7, builder).ok()
     }
 
-    pub async fn create_mw_api(ini_file: &str) -> Result<Api, String> {
-        let mut mw_api = Api::new("https://www.wikidata.org/w/api.php")
-            .await
-            .map_err(|e| format!("{:?}", e))?;
+    pub async fn create_mw_api(ini_file: &str) -> Result<Api> {
+        let mut mw_api = Api::new("https://www.wikidata.org/w/api.php").await?;
         // File::with_name(..) is shorthand for File::from(Path::new(..))
         let settings = Config::builder()
             .add_source(File::with_name(ini_file))
-            .build()
-            .unwrap_or_else(|_| panic!("Replica file '{}' can't be opened", ini_file));
-        let lgname = settings.get_string("user.user").expect("No user.name");
-        let lgpass = settings.get_string("user.pass").expect("No user.pass");
-        mw_api
-            .login(lgname, lgpass)
-            .await
-            .map_err(|e| format!("{:?}", e))?;
+            .build()?;
+        let lgname = settings.get_string("user.user")?;
+        let lgpass = settings.get_string("user.pass")?;
+        mw_api.login(lgname, lgpass).await?;
         Ok(mw_api)
     }
 }
