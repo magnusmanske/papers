@@ -25,6 +25,7 @@ futures = "*"
 async-trait = "*"
 anyhow = "*"
 rand = "*"
+pico-args = "0.5"
 deunicode = "1"
 
 #crossref = "*"

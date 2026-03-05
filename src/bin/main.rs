@@ -21,7 +21,7 @@ use papers::wikidata_papers::WikidataPapers;
 use papers::*;
 use rand::seq::SliceRandom;
 use regex::Regex;
-use std::env;
+use pico_args::Arguments;
 use std::io;
 use std::io::prelude::*;
 use std::sync::Arc;
@@ -162,8 +162,10 @@ async fn save_item_changes(wdp: &mut WikidataPapers, mw_api: Arc<RwLock<Api>>, q
     }
 }
 
-fn usage(command_name: &str) {
-    println!("USAGE: {} [papers]", command_name);
+fn usage(prog: &str) {
+    println!("USAGE: {} [--config <file>] <subcommand>", prog);
+    println!("Subcommands: papers, authors, bot, ans");
+    println!("  --config <file>  Configuration file (default: {})", INI_FILE);
 }
 
 /// Returns true if a new batch was started, false otherwise
@@ -219,16 +221,19 @@ ssh magnus@tools-login.wmflabs.org -L 3307:tools-db:3306 -N &
 
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        usage(&args[0]);
-        return;
-    }
-    match args[1].as_str() {
-        "papers" => command_papers(INI_FILE).await,
-        "authors" => command_authors(INI_FILE).await,
-        "bot" => command_bot(INI_FILE).await,
-        "ans" => command_ans(INI_FILE).await,
-        _ => usage(&args[0]),
+    let prog = std::env::args().next().unwrap_or_else(|| "papers".to_string());
+    let mut pargs = Arguments::from_env();
+
+    let config: String = pargs
+        .opt_value_from_str("--config")
+        .unwrap_or(None)
+        .unwrap_or_else(|| INI_FILE.to_string());
+
+    match pargs.subcommand().unwrap_or_default().as_deref() {
+        Some("papers") => command_papers(&config).await,
+        Some("authors") => command_authors(&config).await,
+        Some("bot") => command_bot(&config).await,
+        Some("ans") => command_ans(&config).await,
+        _ => usage(&prog),
     }
 }
