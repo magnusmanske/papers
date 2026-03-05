@@ -88,7 +88,7 @@ impl AuthorNameString {
             papers.update_author_name_statement(ans, &author, &mut item);
             self.log(3, format!("EDITING PAPER {paper_q}: {ans} => {author_q}"));
             papers.set_edit_summary(Some(format!(
-                "Changing {ans} to {} [#Papers ANS (was: SourceMD)] (automated edit by SourceMD)",
+                "Changing {ans} to {} [#Papers ANS (was: SourceMD)]",
                 "[[".to_string() + &author_q + "]]"
             )));
             match papers
@@ -99,7 +99,10 @@ impl AuthorNameString {
                     if er.edited() {
                         self.log(
                             1,
-                            format!("Created or updated https://www.wikidata.org/wiki/{}", er.q()),
+                            format!(
+                                "Created or updated https://www.wikidata.org/wiki/{}",
+                                er.q()
+                            ),
                         );
                         edited_qs.push(er.q().to_string());
                     } else {
