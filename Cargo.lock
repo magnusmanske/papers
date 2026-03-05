@@ -622,7 +622,7 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 [[package]]
 name = "crossref"
 version = "0.2.2"
-source = "git+https://github.com/magnusmanske/crossref-rs?branch=async#3db43b13957a343f5bb8e066030e9b65a396d9b3"
+source = "git+https://github.com/magnusmanske/crossref-rs?branch=async#70865e68755408f3e8c2831b8ae47217cb1b1d3a"
 dependencies = [
  "chrono",
  "reqwest 0.12.28",

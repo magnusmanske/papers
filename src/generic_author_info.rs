@@ -152,36 +152,73 @@ impl GenericAuthorInfo {
         }
     }
 
-    pub fn amend_author_item(&self, item: &mut Entity) {
-        // Set label, unless already set (then try alias)
+    /// Scores how human-readable a name is. Higher is better.
+    /// Prefers names with more fully spelled-out words (not initials).
+    fn name_readability_score(name: &str) -> usize {
+        name.split_whitespace()
+            .filter(|w| {
+                let trimmed = w.trim_matches('.');
+                trimmed.len() >= 2
+            })
+            .count()
+    }
+
+    /// From all available names, pick the most human-readable one as label,
+    /// and return the rest as aliases.
+    fn pick_best_label(&self) -> (Option<String>, Vec<String>) {
+        let mut all_names: Vec<String> = Vec::new();
         if let Some(name) = &self.name {
             if !name.is_empty() {
-                match item.label_in_locale("en") {
-                    Some(s) => {
-                        if s != name {
-                            item.add_alias(LocaleString::new("en", name));
-                        }
+                all_names.push(name.clone());
+            }
+        }
+        for n in &self.alternative_names {
+            if !n.is_empty() && !all_names.contains(n) {
+                all_names.push(n.clone());
+            }
+        }
+        if all_names.is_empty() {
+            return (None, vec![]);
+        }
+        // Pick the name with the highest readability score; break ties by length
+        let best_idx = all_names
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, n)| (Self::name_readability_score(n), n.len()))
+            .map(|(i, _)| i)
+            .unwrap();
+        let label = all_names.remove(best_idx);
+        (Some(label), all_names)
+    }
+
+    pub fn amend_author_item(&self, item: &mut Entity) {
+        let (best_label, aliases) = self.pick_best_label();
+
+        // Set the best name as label, unless already set (then try alias)
+        if let Some(name) = &best_label {
+            match item.label_in_locale("en") {
+                Some(s) => {
+                    if s != name {
+                        item.add_alias(LocaleString::new("en", name));
                     }
-                    None => item.set_label(LocaleString::new("en", name)),
                 }
+                None => item.set_label(LocaleString::new("en", name)),
             }
         }
 
         item.descriptions_mut()
             .push(LocaleString::new("en", "researcher"));
 
-        // Alternative names
-        for n in &self.alternative_names {
-            if !n.is_empty() {
-                match item.label_in_locale("en") {
-                    Some(s) => {
-                        if s != n {
-                            item.add_alias(LocaleString::new("en", n));
-                        }
-                    }
-                    None => {
+        // Remaining names as aliases
+        for n in &aliases {
+            match item.label_in_locale("en") {
+                Some(s) => {
+                    if s != n {
                         item.add_alias(LocaleString::new("en", n));
                     }
+                }
+                None => {
+                    item.add_alias(LocaleString::new("en", n));
                 }
             }
         }
