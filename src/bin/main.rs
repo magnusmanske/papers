@@ -136,12 +136,12 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
 
     match wdp.create_or_update_item_from_ids(mw_api, &ids).await {
         Some(er) => {
-            if er.edited {
-                println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
+            if er.edited() {
+                println!("Created or updated https://www.wikidata.org/wiki/{}", er.q())
             } else {
                 println!(
                     "Exists as https://www.wikidata.org/wiki/{}, no changes ",
-                    &er.q
+                    er.q()
                 )
             }
         }
@@ -152,10 +152,10 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
 async fn save_item_changes(wdp: &mut WikidataPapers, mw_api: Arc<RwLock<Api>>, q: &str) {
     match wdp.create_or_update_item_from_q(mw_api, q).await {
         Some(er) => {
-            if er.edited {
-                println!("Created or updated https://www.wikidata.org/wiki/{}", &er.q)
+            if er.edited() {
+                println!("Created or updated https://www.wikidata.org/wiki/{}", er.q())
             } else {
-                println!("https://www.wikidata.org/wiki/{}, no changes ", &er.q)
+                println!("https://www.wikidata.org/wiki/{}, no changes ", er.q())
             }
         }
         None => println!("No item ID!"),

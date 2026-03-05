@@ -1,3 +1,6 @@
+use self::identifiers::GenericWorkIdentifier;
+use self::identifiers::GenericWorkType;
+use self::wikidata_interaction::WikidataInteraction;
 use crate::generic_author_info::GenericAuthorInfo;
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::wikidata_string_cache::WikidataStringCache;
@@ -10,10 +13,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 
-use self::identifiers::GenericWorkIdentifier;
-use self::identifiers::GenericWorkType;
-use self::wikidata_interaction::WikidataInteraction;
-
 pub type Spas = Box<dyn ScientificPublicationAdapter + Sync>;
 
 lazy_static! {
@@ -21,15 +20,25 @@ lazy_static! {
 }
 
 pub struct EditResult {
-    pub q: String,
-    pub edited: bool,
+    q: String,
+    edited: bool,
+}
+
+impl EditResult {
+    pub fn q(&self) -> &str {
+        &self.q
+    }
+
+    pub fn edited(&self) -> bool {
+        self.edited
+    }
 }
 
 pub struct WikidataPapers {
     adapters: Vec<Spas>,
     cache: Arc<WikidataStringCache>,
     edit_summary: Option<String>,
-    pub testing: bool,
+    testing: bool,
     entities: entity_container::EntityContainer,
 }
 
@@ -54,6 +63,10 @@ impl WikidataPapers {
 
     pub fn add_adapter(&mut self, adapter_box: Spas) {
         self.adapters.push(adapter_box);
+    }
+
+    pub fn set_testing(&mut self, testing: bool) {
+        self.testing = testing;
     }
 
     pub fn edit_summary(&self) -> &Option<String> {
@@ -487,12 +500,12 @@ impl WikidataPapers {
         item.claims()
             .par_iter()
             .filter(|statement| statement.property() == "P50")
-            .filter_map(|statement| {
-                match statement.main_snak().data_value().as_ref()?.value() {
+            .filter_map(
+                |statement| match statement.main_snak().data_value().as_ref()?.value() {
                     Value::Entity(entity) => Some(entity.id().to_string()),
                     _ => None,
-                }
-            })
+                },
+            )
             .collect()
     }
 

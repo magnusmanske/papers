@@ -221,7 +221,7 @@ impl SourceMDbot {
         {
             Some(er) => {
                 if command.q.is_empty() {
-                    command.q = er.q;
+                    command.q = er.q().to_string();
                 }
                 Ok(true)
             }

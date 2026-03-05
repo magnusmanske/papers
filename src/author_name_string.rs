@@ -96,16 +96,16 @@ impl AuthorNameString {
                 .await
             {
                 Some(er) => {
-                    if er.edited {
+                    if er.edited() {
                         self.log(
                             1,
-                            format!("Created or updated https://www.wikidata.org/wiki/{}", &er.q),
+                            format!("Created or updated https://www.wikidata.org/wiki/{}", er.q()),
                         );
-                        edited_qs.push(er.q.clone());
+                        edited_qs.push(er.q().to_string());
                     } else {
                         self.log(
                             3,
-                            format!("https://www.wikidata.org/wiki/{}, no changes ", &er.q),
+                            format!("https://www.wikidata.org/wiki/{}, no changes ", er.q()),
                         );
                     }
                 }
