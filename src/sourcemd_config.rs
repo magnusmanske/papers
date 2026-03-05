@@ -270,6 +270,7 @@ impl SourceMD {
     pub async fn create_mw_api(ini_file: &str) -> Result<Api> {
         let mut mw_api = Api::new("https://www.wikidata.org/w/api.php").await?;
         // File::with_name(..) is shorthand for File::from(Path::new(..))
+        println!("Using ini file {ini_file}");
         let settings = Config::builder()
             .add_source(File::with_name(ini_file))
             .build()?;
