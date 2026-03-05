@@ -1,7 +1,8 @@
-use crate::scientific_publication_adapter::ScientificPublicationAdapter;
+use crate::scientific_publication_adapter::{crossref_work_type_to_q, ScientificPublicationAdapter};
 use crate::*;
 use async_trait::async_trait;
 use chrono::prelude::*;
+use crossref::response::work::PartialDate;
 use crossref::Crossref;
 use std::collections::HashMap;
 
@@ -57,25 +58,18 @@ impl Crossref2Wikidata {
         }
         true
     }
+}
 
-    /// Maps a Crossref work type string to a Wikidata Q-item for P31 (instance of).
-    fn crossref_type_to_q(type_: &str) -> Option<&'static str> {
-        match type_ {
-            "journal-article" => Some("Q13442814"),       // scientific article
-            "book" | "edited-book" | "reference-book" => Some("Q571"), // book
-            "monograph" => Some("Q193495"),                // monograph
-            "book-chapter" | "book-section" => Some("Q1980247"), // chapter
-            "proceedings-article" => Some("Q23927052"),    // conference paper
-            "proceedings" => Some("Q1143604"),              // proceedings
-            "dissertation" => Some("Q187685"),             // doctoral thesis
-            "posted-content" => Some("Q580922"),           // preprint
-            "dataset" => Some("Q1172284"),                 // dataset
-            "report" | "report-series" => Some("Q10870555"), // report
-            "standard" => Some("Q317623"),                 // standard
-            "peer-review" => Some("Q7161778"),             // peer review (the article)
-            _ => None,
-        }
+fn parse_crossref_date(issued: &PartialDate) -> Option<(u32, Option<u8>, Option<u8>)> {
+    let j = json!(issued);
+    let dp = j["date-parts"][0].as_array()?;
+    if dp.is_empty() {
+        return None;
     }
+    let year = dp[0].as_u64()? as u32;
+    let month = if dp.len() >= 2 { dp[1].as_u64().map(|x| x as u8) } else { None };
+    let day = if dp.len() >= 3 { dp[2].as_u64().map(|x| x as u8) } else { None };
+    Some((year, month, day))
 }
 
 #[async_trait(?Send)]
@@ -86,7 +80,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 
     fn get_work_type(&self, publication_id: &str) -> Option<String> {
         let work = self.get_cached_publication_from_id(publication_id)?;
-        Self::crossref_type_to_q(&work.type_).map(|s| s.to_string())
+        crossref_work_type_to_q(&work.type_).map(|s| s.to_string())
     }
 
     fn get_work_issn(&self, publication_id: &str) -> Option<String> {
@@ -165,6 +159,11 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         }
     }
 
+    fn get_publication_date(&self, publication_id: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
+        let work = self.get_cached_publication_from_id(publication_id)?;
+        parse_crossref_date(&work.issued)
+    }
+
     async fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity) {
         let work = match self.get_cached_publication_from_id(publication_id) {
             Some(w) => w,
@@ -173,27 +172,10 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 
         // Date
         if !item.has_claims_with_property("P577") {
-            let j = json!(work.issued);
-            if let Some(dp) = j["date-parts"][0].as_array() {
-                if !dp.is_empty() {
-                    if let Some(year) = dp[0].as_u64() {
-                        let month: Option<u8> = match dp.len() {
-                            1 => None,
-                            _ => dp[1].as_u64().map(|x| x as u8),
-                        };
-                        let day: Option<u8> = match dp.len() {
-                            3 => dp[2].as_u64().map(|x| x as u8),
-                            _ => None,
-                        };
-                        let statement = self.get_wb_time_from_partial(
-                            "P577".to_string(),
-                            year as u32,
-                            month,
-                            day,
-                        );
-                        item.add_claim(statement);
-                    }
-                }
+            if let Some((year, month, day)) = self.get_publication_date(publication_id) {
+                let statement =
+                    self.get_wb_time_from_partial("P577".to_string(), year, month, day);
+                item.add_claim(statement);
             }
         }
 
@@ -233,24 +215,22 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scientific_publication_adapter::crossref_work_type_to_q;
 
     #[test]
     fn test_crossref_type_to_q_journal_article() {
-        assert_eq!(
-            Crossref2Wikidata::crossref_type_to_q("journal-article"),
-            Some("Q13442814")
-        );
+        assert_eq!(crossref_work_type_to_q("journal-article"), Some("Q13442814"));
     }
 
     #[test]
     fn test_crossref_type_to_q_book() {
-        assert_eq!(Crossref2Wikidata::crossref_type_to_q("book"), Some("Q571"));
+        assert_eq!(crossref_work_type_to_q("book"), Some("Q571"));
         assert_eq!(
-            Crossref2Wikidata::crossref_type_to_q("edited-book"),
+            crossref_work_type_to_q("edited-book"),
             Some("Q571")
         );
         assert_eq!(
-            Crossref2Wikidata::crossref_type_to_q("reference-book"),
+            crossref_work_type_to_q("reference-book"),
             Some("Q571")
         );
     }
@@ -258,7 +238,7 @@ mod tests {
     #[test]
     fn test_crossref_type_to_q_monograph() {
         assert_eq!(
-            Crossref2Wikidata::crossref_type_to_q("monograph"),
+            crossref_work_type_to_q("monograph"),
             Some("Q193495")
         );
     }
@@ -266,11 +246,11 @@ mod tests {
     #[test]
     fn test_crossref_type_to_q_chapter() {
         assert_eq!(
-            Crossref2Wikidata::crossref_type_to_q("book-chapter"),
+            crossref_work_type_to_q("book-chapter"),
             Some("Q1980247")
         );
         assert_eq!(
-            Crossref2Wikidata::crossref_type_to_q("book-section"),
+            crossref_work_type_to_q("book-section"),
             Some("Q1980247")
         );
     }
@@ -278,7 +258,7 @@ mod tests {
     #[test]
     fn test_crossref_type_to_q_unknown_returns_none() {
         assert_eq!(
-            Crossref2Wikidata::crossref_type_to_q("unknown-type"),
+            crossref_work_type_to_q("unknown-type"),
             None
         );
     }
@@ -309,11 +289,11 @@ mod tests {
     #[test]
     fn test_crossref_type_to_q_proceedings() {
         assert_eq!(
-            Crossref2Wikidata::crossref_type_to_q("proceedings-article"),
+            crossref_work_type_to_q("proceedings-article"),
             Some("Q23927052")
         );
         assert_eq!(
-            Crossref2Wikidata::crossref_type_to_q("proceedings"),
+            crossref_work_type_to_q("proceedings"),
             Some("Q1143604")
         );
     }

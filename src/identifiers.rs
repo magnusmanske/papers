@@ -132,6 +132,11 @@ impl GenericWorkIdentifier {
     }
 }
 
+/// Returns `true` if `id` consists entirely of ASCII digits (i.e. is a raw PubMed ID).
+pub fn is_pubmed_id(id: &str) -> bool {
+    !id.is_empty() && id.chars().all(|c| c.is_ascii_digit())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

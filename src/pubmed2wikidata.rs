@@ -1,10 +1,9 @@
 use crate::generic_author_info::GenericAuthorInfo;
-use crate::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
+use crate::identifiers::{is_pubmed_id, GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::scientific_publication_adapter::ScientificPublicationAdapter;
 use crate::*;
 use async_trait::async_trait;
 use pubmed::*;
-use regex::Regex;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -51,16 +50,8 @@ impl Pubmed2Wikidata {
         Some(self.sanitize_author_name(&ret))
     }
 
-    fn is_pubmed_id(&self, id: &str) -> bool {
-        lazy_static! {
-            static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#)
-                .expect("Pubmed2Wikidata::is_pubmed_id: RE_PMID does not compile");
-        }
-        RE_PMID.is_match(id)
-    }
-
     async fn publication_id_from_pubmed(&mut self, publication_id: &str) -> Option<String> {
-        if !self.is_pubmed_id(publication_id) {
+        if !is_pubmed_id(publication_id) {
             return None;
         }
         if !self.work_cache.contains_key(publication_id) {

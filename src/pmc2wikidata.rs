@@ -6,7 +6,7 @@ use regex::Regex;
 use reqwest;
 use std::collections::HashMap;
 
-use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
+use self::identifiers::{is_pubmed_id, GenericWorkIdentifier, GenericWorkType, IdProp};
 //use wikibase::mediawiki::api::Api;
 
 /*
@@ -27,16 +27,8 @@ impl PMC2Wikidata {
         Self::default()
     }
 
-    fn is_pubmed_id(&self, id: &str) -> bool {
-        lazy_static! {
-            static ref RE_PMID: Regex = Regex::new(r#"^(\d+)$"#)
-                .expect("PMC2Wikidata::is_pubmed_id: RE_PMID does not compile");
-        }
-        RE_PMID.is_match(id)
-    }
-
     async fn publication_id_from_pubmed(&mut self, pubmed_id: &str) -> Option<String> {
-        if !self.is_pubmed_id(pubmed_id) {
+        if !is_pubmed_id(pubmed_id) {
             return None;
         }
         let mut publication_id = pubmed_id.to_string(); // Fallback
@@ -218,22 +210,12 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
     }
 
     fn get_publication_date(&self, publication_id: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
-        let year = match self.get_cached_publication_from_id(publication_id)?["journalInfo"]
-            ["yearOfPublication"]
-            .as_u64()
-        {
-            Some(year) => year as u32,
-            None => return None,
-        };
+        let journal_info = &self.get_cached_publication_from_id(publication_id)?["journalInfo"];
+        let year = journal_info["yearOfPublication"].as_u64()? as u32;
         Some((
             year,
-            self.get_cached_publication_from_id(publication_id)?["journalInfo"]
-                ["monthOfPublication"]
-                .as_u64()
-                .map(|x| x as u8),
-            self.get_cached_publication_from_id(publication_id)?["journalInfo"]["dayOfPublication"]
-                .as_u64()
-                .map(|x| x as u8),
+            journal_info["monthOfPublication"].as_u64().map(|x| x as u8),
+            journal_info["dayOfPublication"].as_u64().map(|x| x as u8),
         ))
     }
 
@@ -312,19 +294,17 @@ mod tests {
 
     #[test]
     fn is_pubmed_id_accepts_digits() {
-        let pmc = PMC2Wikidata::new();
-        assert!(pmc.is_pubmed_id("12345"));
-        assert!(pmc.is_pubmed_id("1"));
+        assert!(is_pubmed_id("12345"));
+        assert!(is_pubmed_id("1"));
     }
 
     #[test]
     fn is_pubmed_id_rejects_non_digits() {
-        let pmc = PMC2Wikidata::new();
-        assert!(!pmc.is_pubmed_id("PMC123"));
-        assert!(!pmc.is_pubmed_id("abc"));
-        assert!(!pmc.is_pubmed_id(""));
-        assert!(!pmc.is_pubmed_id("12 34"));
-        assert!(!pmc.is_pubmed_id("12.34"));
+        assert!(!is_pubmed_id("PMC123"));
+        assert!(!is_pubmed_id("abc"));
+        assert!(!is_pubmed_id(""));
+        assert!(!is_pubmed_id("12 34"));
+        assert!(!is_pubmed_id("12.34"));
     }
 
     // === is_pmcid ===

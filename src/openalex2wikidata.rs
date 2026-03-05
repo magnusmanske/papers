@@ -1,5 +1,5 @@
 use crate::generic_author_info::GenericAuthorInfo;
-use crate::scientific_publication_adapter::ScientificPublicationAdapter;
+use crate::scientific_publication_adapter::{crossref_work_type_to_q, ScientificPublicationAdapter};
 use crate::*;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -82,25 +82,6 @@ impl OpenAlex2Wikidata {
         }
     }
 
-    /// Maps an OpenAlex type_crossref value to a Wikidata Q-item.
-    fn openalex_type_to_q(type_crossref: &str) -> Option<&'static str> {
-        match type_crossref {
-            "journal-article" => Some("Q13442814"),
-            "book" | "edited-book" | "reference-book" => Some("Q571"),
-            "monograph" => Some("Q193495"),
-            "book-chapter" | "book-section" => Some("Q1980247"),
-            "proceedings-article" => Some("Q23927052"),
-            "proceedings" => Some("Q1143604"),
-            "dissertation" => Some("Q187685"),
-            "posted-content" => Some("Q580922"),
-            "dataset" => Some("Q1172284"),
-            "report" | "report-series" => Some("Q10870555"),
-            "standard" => Some("Q317623"),
-            "peer-review" => Some("Q7161778"),
-            _ => None,
-        }
-    }
-
 }
 
 #[async_trait(?Send)]
@@ -174,7 +155,7 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
     fn get_work_type(&self, publication_id: &str) -> Option<String> {
         let work = self.get_cached_publication_from_id(publication_id)?;
         let type_crossref = work["type_crossref"].as_str()?;
-        Self::openalex_type_to_q(type_crossref).map(|s| s.to_string())
+        crossref_work_type_to_q(type_crossref).map(|s| s.to_string())
     }
 
     fn get_publication_date(&self, publication_id: &str) -> Option<(u32, Option<u8>, Option<u8>)> {

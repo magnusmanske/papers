@@ -8,6 +8,26 @@ use wikibase::mediawiki::api::Api;
 
 use self::identifiers::{GenericWorkIdentifier, IdProp};
 
+/// Maps a Crossref/OpenAlex work-type string to a Wikidata Q-item for P31 (instance of).
+/// Both APIs use the same Crossref type vocabulary, so a single function serves both.
+pub fn crossref_work_type_to_q(type_: &str) -> Option<&'static str> {
+    match type_ {
+        "journal-article" => Some("Q13442814"),
+        "book" | "edited-book" | "reference-book" => Some("Q571"),
+        "monograph" => Some("Q193495"),
+        "book-chapter" | "book-section" => Some("Q1980247"),
+        "proceedings-article" => Some("Q23927052"),
+        "proceedings" => Some("Q1143604"),
+        "dissertation" => Some("Q187685"),
+        "posted-content" => Some("Q580922"),
+        "dataset" => Some("Q1172284"),
+        "report" | "report-series" => Some("Q10870555"),
+        "standard" => Some("Q317623"),
+        "peer-review" => Some("Q7161778"),
+        _ => None,
+    }
+}
+
 /// Parses a date string like "2023-01-15" or "2023-01-15T00:00:00Z" into (year, month, day).
 pub fn parse_date(date_str: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
     let date_part = date_str.split('T').next()?;
