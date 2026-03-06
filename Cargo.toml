@@ -27,26 +27,15 @@ anyhow = "*"
 rand = "*"
 pico-args = "0.5"
 deunicode = "1"
+semanticscholar = "*"
+orcid="*"
+pubmed = "*"
+wikibase = { git = "https://gitlab.com/tobias47n9e/wikibase_rs" }
+arxiv-rs = "*"
 
 #crossref = "*"
 #crossref = { git = "https://github.com/MattsSe/crossref-rs" }
 crossref = { git = "https://github.com/magnusmanske/crossref-rs", branch = "async" }
-
-#semanticscholar = "*"
-semanticscholar = { git = "https://github.com/magnusmanske/semanticscholar" }
-
-orcid="*"
-# orcid = { git = "https://github.com/magnusmanske/orcid_rs" }
-
-pubmed = "*"
-#pubmed = { git = "https://github.com/magnusmanske/pubmed_rs" }
-#pubmed = { path='../pubmed' }
-
-#wikibase = { path='../wikibase_rs' }
-#wikibase = { git="https://gitlab.com/tobias47n9e/wikibase_rs",branch = "rayon"}
-wikibase = { git = "https://gitlab.com/tobias47n9e/wikibase_rs" }
-arxiv-rs = "0.2.0"
-#wikibase = "*"
 
 [dev-dependencies]
 wiremock = "0.6"
