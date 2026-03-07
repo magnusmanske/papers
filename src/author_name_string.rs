@@ -30,6 +30,62 @@ impl AuthorNameString {
         }
     }
 
+    /// Splits a name into atomic parts, handling dots as separators.
+    /// E.g., "C.K. Clarke" → ["C", "K", "Clarke"], "Ck Clarke" → ["Ck", "Clarke"]
+    fn split_name_parts(name: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        for word in name.split_whitespace() {
+            for sub in word.split('.') {
+                let trimmed = sub.trim();
+                if !trimmed.is_empty() {
+                    parts.push(trimmed.to_string());
+                }
+            }
+        }
+        parts
+    }
+
+    /// Returns true if the name contains any word-parts shorter than 3 characters
+    /// (i.e., initials or two-letter abbreviations that `simplify_name` would drop).
+    pub fn has_short_name_parts(name: &str) -> bool {
+        Self::split_name_parts(name)
+            .iter()
+            .any(|p| p.len() < 3)
+    }
+
+    /// Converts a name like "Ck Clarke" or "C K Clarke" or "C.K. Clarke"
+    /// into the format expected by the initial_search API: "C.K.Clarke"
+    pub fn format_name_for_initial_search(name: &str) -> String {
+        let mut result = Vec::new();
+        for part in Self::split_name_parts(name) {
+            if part.len() < 3 {
+                // Treat as initials: each character becomes a separate initial
+                for c in part.chars() {
+                    result.push(format!("{}.", c.to_uppercase()));
+                }
+            } else {
+                result.push(part.to_string());
+            }
+        }
+        result.join("")
+    }
+
+    /// Calls the wd-infernal initial_search API to find Wikidata items
+    /// matching a name with initials. Returns Q-IDs on success, None on error.
+    async fn search_by_initials(name: &str) -> Option<Vec<String>> {
+        let formatted = Self::format_name_for_initial_search(name);
+        if formatted.is_empty() {
+            return None;
+        }
+        let url = format!(
+            "https://wd-infernal.toolforge.org/initial_search/{}",
+            formatted
+        );
+        let response = reqwest::get(&url).await.ok()?;
+        let results: Vec<String> = response.json().await.ok()?;
+        Some(results)
+    }
+
     async fn process_papers_for_ans(
         &self,
         ans: &String,
@@ -127,6 +183,26 @@ impl AuthorNameString {
         mw_api: &Arc<RwLock<Api>>,
         name2author_qs: &HashMap<String, Vec<String>>,
     ) -> Option<String> {
+        // If the name has initials, try the specialized initial_search API first
+        if Self::has_short_name_parts(ans) {
+            if let Some(initial_results) = Self::search_by_initials(ans).await {
+                if initial_results.len() == 1 {
+                    let candidate = &initial_results[0];
+                    // Cross-check: the candidate must be a known coauthor
+                    for (_name, qs) in name2author_qs.iter() {
+                        if qs.contains(candidate) {
+                            self.log(
+                                1,
+                                format!("MATCHED AUTHOR VIA INITIALS {ans}: => {candidate}"),
+                            );
+                            return Some(candidate.clone());
+                        }
+                    }
+                }
+                // Multiple results or no coauthor match: fall through to existing logic
+            }
+        }
+
         let simple_name = GenericAuthorInfo::simplify_name(ans);
         let res = cache
             .search_wikibase(
@@ -271,5 +347,67 @@ impl AuthorNameString {
             .await;
         self.log(1, format!("CREATED AUTHOR {ans} => {author:?}"));
         Some(author.wikidata_item()?.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn has_short_name_parts_detects_initials() {
+        assert!(AuthorNameString::has_short_name_parts("Ck Clarke"));
+        assert!(AuthorNameString::has_short_name_parts("C K Clarke"));
+        assert!(AuthorNameString::has_short_name_parts("C.K. Clarke"));
+        assert!(AuthorNameString::has_short_name_parts("J Smith"));
+        assert!(AuthorNameString::has_short_name_parts("H.M. Manske"));
+    }
+
+    #[test]
+    fn has_short_name_parts_false_for_full_names() {
+        assert!(!AuthorNameString::has_short_name_parts("Jenny Clarke"));
+        assert!(!AuthorNameString::has_short_name_parts("John Smith"));
+        assert!(!AuthorNameString::has_short_name_parts("Heinrich Magnus Manske"));
+    }
+
+    #[test]
+    fn format_name_for_initial_search_basic() {
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("Ck Clarke"),
+            "C.K.Clarke"
+        );
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("C K Clarke"),
+            "C.K.Clarke"
+        );
+    }
+
+    #[test]
+    fn format_name_for_initial_search_dotted() {
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("C.K. Clarke"),
+            "C.K.Clarke"
+        );
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("H.M. Manske"),
+            "H.M.Manske"
+        );
+    }
+
+    #[test]
+    fn format_name_for_initial_search_single_initial() {
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("J Smith"),
+            "J.Smith"
+        );
+    }
+
+    #[test]
+    fn format_name_for_initial_search_full_name() {
+        // Full names without initials: no dots added
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("Jenny Clarke"),
+            "JennyClarke"
+        );
     }
 }
