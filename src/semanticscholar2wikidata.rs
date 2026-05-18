@@ -1,11 +1,13 @@
-use crate::generic_author_info::GenericAuthorInfo;
-use crate::scientific_publication_adapter::ScientificPublicationAdapter;
-use crate::*;
-use async_trait::async_trait;
-use semanticscholar::*;
 use std::collections::HashMap;
 
+use async_trait::async_trait;
+use semanticscholar::*;
+
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
+use crate::{
+    generic_author_info::GenericAuthorInfo,
+    scientific_publication_adapter::ScientificPublicationAdapter, *,
+};
 
 pub struct Semanticscholar2Wikidata {
     author_cache: HashMap<String, String>,
@@ -68,18 +70,16 @@ impl Semanticscholar2Wikidata {
             ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id));
         }
 
-        /*
-        This works, but might somehow merge separate items for "reviewed publication" and arxiv version
-        match &work.arxiv_id {
-            Some(id) => {
-                ret.push(GenericWorkIdentifier {
-                    work_type: GenericWorkType::Property(PROP_ARXIV.to_string()),
-                    id: id.clone(),
-                });
-            }
-            None => {}
-        }
-        */
+        // This works, but might somehow merge separate items for "reviewed
+        // publication" and arxiv version match &work.arxiv_id {
+        // Some(id) => {
+        // ret.push(GenericWorkIdentifier {
+        // work_type: GenericWorkType::Property(PROP_ARXIV.to_string()),
+        // id: id.clone(),
+        // });
+        // }
+        // None => {}
+        // }
     }
 }
 
@@ -97,18 +97,16 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         Some(IdProp::SemanticScholar)
     }
 
-    /*
     // TODO load direct from SS via own ID
-    fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        let publication_id = match self
-            .get_external_identifier_from_item(item, &self.publication_property().unwrap())
-        {
-            Some(s) => s,
-            None => return None,
-        };
-        self.publication_id_from_pubmed(&publication_id)
-    }
-    */
+    // fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
+    // let publication_id = match self
+    // .get_external_identifier_from_item(item,
+    // &self.publication_property().unwrap()) {
+    // Some(s) => s,
+    // None => return None,
+    // };
+    // self.publication_id_from_pubmed(&publication_id)
+    // }
 
     fn topic_property(&self) -> Option<String> {
         Some("P6611".to_string())
@@ -196,9 +194,7 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
             entry.set_name(author.name.clone());
             entry.set_list_number(Some((num + 1).to_string()));
             if let Some(id) = &author.author_id {
-                entry
-                    .prop2id_mut()
-                    .insert(author_property.to_owned(), id.to_string());
+                entry.prop2id_mut().insert(author_property.to_owned(), id.to_string());
             }
             ret.push(entry);
         }
@@ -291,10 +287,9 @@ mod tests {
         let mut ss = make_ss("abc123", make_work(None, None, None));
         let mut ret = vec![];
         ss.add_identifiers_from_cached_publication("abc123", &mut ret);
-        assert!(ret
-            .iter()
-            .any(|id| id.work_type() == &identifiers::GenericWorkType::Property(IdProp::SemanticScholar)
-                && id.id() == "abc123"));
+        assert!(ret.iter().any(|id| id.work_type()
+            == &identifiers::GenericWorkType::Property(IdProp::SemanticScholar)
+            && id.id() == "abc123"));
     }
 
     #[test]
@@ -366,10 +361,7 @@ mod tests {
         let mut ss = make_ss("abc123", work);
         let authors = ss.get_author_list("abc123").await;
         assert_eq!(authors.len(), 1);
-        assert_eq!(
-            authors[0].prop2id().get("P4012"),
-            Some(&"ss_auth_42".to_string())
-        );
+        assert_eq!(authors[0].prop2id().get("P4012"), Some(&"ss_auth_42".to_string()));
     }
 
     #[tokio::test]

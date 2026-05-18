@@ -1,13 +1,15 @@
-use crate::wikidata_interaction::WikidataInteraction;
-use crate::wikidata_papers::WikidataPapers;
-use crate::{generic_author_info::GenericAuthorInfo, wikidata_string_cache::WikidataStringCache};
+use std::{collections::HashMap, sync::Arc};
+
 use anyhow::Result;
 use futures::prelude::*;
 use regex::Regex;
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
+
+use crate::{
+    generic_author_info::GenericAuthorInfo, wikidata_interaction::WikidataInteraction,
+    wikidata_papers::WikidataPapers, wikidata_string_cache::WikidataStringCache,
+};
 
 lazy_static! {
     static ref RE_WD: Regex =
@@ -31,7 +33,8 @@ impl AuthorNameString {
     }
 
     /// Splits a name into atomic parts, handling dots as separators.
-    /// E.g., "C.K. Clarke" → ["C", "K", "Clarke"], "Ck Clarke" → ["Ck", "Clarke"]
+    /// E.g., "C.K. Clarke" → ["C", "K", "Clarke"], "Ck Clarke" → ["Ck",
+    /// "Clarke"]
     fn split_name_parts(name: &str) -> Vec<String> {
         let mut parts = Vec::new();
         for word in name.split_whitespace() {
@@ -45,12 +48,11 @@ impl AuthorNameString {
         parts
     }
 
-    /// Returns true if the name contains any word-parts shorter than 3 characters
-    /// (i.e., initials or two-letter abbreviations that `simplify_name` would drop).
+    /// Returns true if the name contains any word-parts shorter than 3
+    /// characters (i.e., initials or two-letter abbreviations that
+    /// `simplify_name` would drop).
     pub fn has_short_name_parts(name: &str) -> bool {
-        Self::split_name_parts(name)
-            .iter()
-            .any(|p| p.len() < 3)
+        Self::split_name_parts(name).iter().any(|p| p.len() < 3)
     }
 
     /// Converts a name like "Ck Clarke" or "C K Clarke" or "C.K. Clarke"
@@ -77,10 +79,7 @@ impl AuthorNameString {
         if formatted.is_empty() {
             return None;
         }
-        let url = format!(
-            "https://wd-infernal.toolforge.org/initial_search/{}",
-            formatted
-        );
+        let url = format!("https://wd-infernal.toolforge.org/initial_search/{}", formatted);
         let response = reqwest::get(&url).await.ok()?;
         let results: Vec<String> = response.json().await.ok()?;
         Some(results)
@@ -94,10 +93,7 @@ impl AuthorNameString {
         paper_qs: &Vec<String>,
         name2author_qs: &HashMap<String, Vec<String>>,
     ) -> Result<()> {
-        let author_q = match self
-            .get_or_create_author(ans, cache, mw_api, name2author_qs)
-            .await
-        {
+        let author_q = match self.get_or_create_author(ans, cache, mw_api, name2author_qs).await {
             Some(q) => q,
             None => return Ok(()),
         };
@@ -115,10 +111,7 @@ impl AuthorNameString {
             .await;
         if !edited_qs.is_empty() {
             let api = mw_api.read().await;
-            papers
-                .entities_mut()
-                .reload_entities(&api, &edited_qs)
-                .await?;
+            papers.entities_mut().reload_entities(&api, &edited_qs).await?;
             drop(api);
         }
         Ok(())
@@ -147,18 +140,12 @@ impl AuthorNameString {
                 "Changing {ans} to {} [#Papers ANS (was: SourceMD)]",
                 "[[".to_string() + &author_q + "]]"
             )));
-            match papers
-                .apply_diff_for_item(original_item, item, mw_api.clone())
-                .await
-            {
+            match papers.apply_diff_for_item(original_item, item, mw_api.clone()).await {
                 Some(er) => {
                     if er.edited() {
                         self.log(
                             1,
-                            format!(
-                                "Created or updated https://www.wikidata.org/wiki/{}",
-                                er.q()
-                            ),
+                            format!("Created or updated https://www.wikidata.org/wiki/{}", er.q()),
                         );
                         edited_qs.push(er.q().to_string());
                     } else {
@@ -167,7 +154,7 @@ impl AuthorNameString {
                             format!("https://www.wikidata.org/wiki/{}, no changes ", er.q()),
                         );
                     }
-                }
+                },
                 None => self.log(1, "No paper item ID!"),
             }
             // papers.set_edit_summary(None);
@@ -189,7 +176,7 @@ impl AuthorNameString {
                 if initial_results.len() == 1 {
                     let candidate = &initial_results[0];
                     // Cross-check: the candidate must be a known coauthor
-                    for (_name, qs) in name2author_qs.iter() {
+                    for qs in name2author_qs.values() {
                         if qs.contains(candidate) {
                             self.log(
                                 1,
@@ -199,16 +186,14 @@ impl AuthorNameString {
                         }
                     }
                 }
-                // Multiple results or no coauthor match: fall through to existing logic
+                // Multiple results or no coauthor match: fall through to
+                // existing logic
             }
         }
 
         let simple_name = GenericAuthorInfo::simplify_name(ans);
         let res = cache
-            .search_wikibase(
-                &format!("{simple_name} haswbstatement:P31=Q5"),
-                mw_api.clone(),
-            )
+            .search_wikibase(&format!("{simple_name} haswbstatement:P31=Q5"), mw_api.clone())
             .await
             .ok()?;
         let author_q = if res.is_empty() {
@@ -217,10 +202,7 @@ impl AuthorNameString {
             if let Some(author_qs) = name2author_qs.get(ans) {
                 if author_qs.len() == 1 {
                     let author_q = &author_qs[0];
-                    self.log(
-                        1,
-                        format!("MATCHED AUTHOR {ans}: {simple_name} => {author_q}"),
-                    );
+                    self.log(1, format!("MATCHED AUTHOR {ans}: {simple_name} => {author_q}"));
                     Some(author_q.to_owned())
                 } else {
                     None
@@ -229,10 +211,7 @@ impl AuthorNameString {
                 None
             }
         } else {
-            self.log(
-                2,
-                format!("MULTIPLE POSSIBLE MATCHES FOR {ans}: {simple_name} => {res:?}"),
-            );
+            self.log(2, format!("MULTIPLE POSSIBLE MATCHES FOR {ans}: {simple_name} => {res:?}"));
             None
         };
         author_q
@@ -244,7 +223,7 @@ impl AuthorNameString {
         mw_api: &Arc<RwLock<Api>>,
         cache: &Arc<WikidataStringCache>,
     ) -> Result<()> {
-        self.log(1, format!("Processing {}", &root_author_q));
+        self.log(1, format!("Processing {}", root_author_q));
         let mut author = GenericAuthorInfo::new();
         author.set_wikidata_item(Some(root_author_q.to_owned()));
         let api = mw_api.read().await;
@@ -282,9 +261,7 @@ impl AuthorNameString {
             .iter()
             .filter_map(|j| {
                 let ans = j["ans"]["value"].as_str()?;
-                let q = api
-                    .extract_entity_from_uri(j["paper"]["value"].as_str()?)
-                    .ok()?;
+                let q = api.extract_entity_from_uri(j["paper"]["value"].as_str()?).ok()?;
                 Some((q.to_string(), ans.to_string()))
             })
             .collect();
@@ -342,9 +319,7 @@ impl AuthorNameString {
         self.log(1, format!("CREATING AUTHOR {ans}"));
         let mut author = GenericAuthorInfo::new();
         author.set_name(Some(ans.clone()));
-        let author = author
-            .get_or_create_author_item(mw_api.clone(), cache.clone(), true)
-            .await;
+        let author = author.get_or_create_author_item(mw_api.clone(), cache.clone(), true).await;
         self.log(1, format!("CREATED AUTHOR {ans} => {author:?}"));
         Some(author.wikidata_item()?.to_string())
     }
@@ -372,42 +347,24 @@ mod tests {
 
     #[test]
     fn format_name_for_initial_search_basic() {
-        assert_eq!(
-            AuthorNameString::format_name_for_initial_search("Ck Clarke"),
-            "C.K.Clarke"
-        );
-        assert_eq!(
-            AuthorNameString::format_name_for_initial_search("C K Clarke"),
-            "C.K.Clarke"
-        );
+        assert_eq!(AuthorNameString::format_name_for_initial_search("Ck Clarke"), "C.K.Clarke");
+        assert_eq!(AuthorNameString::format_name_for_initial_search("C K Clarke"), "C.K.Clarke");
     }
 
     #[test]
     fn format_name_for_initial_search_dotted() {
-        assert_eq!(
-            AuthorNameString::format_name_for_initial_search("C.K. Clarke"),
-            "C.K.Clarke"
-        );
-        assert_eq!(
-            AuthorNameString::format_name_for_initial_search("H.M. Manske"),
-            "H.M.Manske"
-        );
+        assert_eq!(AuthorNameString::format_name_for_initial_search("C.K. Clarke"), "C.K.Clarke");
+        assert_eq!(AuthorNameString::format_name_for_initial_search("H.M. Manske"), "H.M.Manske");
     }
 
     #[test]
     fn format_name_for_initial_search_single_initial() {
-        assert_eq!(
-            AuthorNameString::format_name_for_initial_search("J Smith"),
-            "J.Smith"
-        );
+        assert_eq!(AuthorNameString::format_name_for_initial_search("J Smith"), "J.Smith");
     }
 
     #[test]
     fn format_name_for_initial_search_full_name() {
         // Full names without initials: no dots added
-        assert_eq!(
-            AuthorNameString::format_name_for_initial_search("Jenny Clarke"),
-            "JennyClarke"
-        );
+        assert_eq!(AuthorNameString::format_name_for_initial_search("Jenny Clarke"), "JennyClarke");
     }
 }

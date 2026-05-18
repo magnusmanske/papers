@@ -1,15 +1,16 @@
-use crate::generic_author_info::GenericAuthorInfo;
-use crate::*;
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use regex::Regex;
-use std::collections::HashMap;
 use tokio::sync::OnceCell;
 use wikibase::mediawiki::api::Api;
 
 use self::identifiers::{GenericWorkIdentifier, IdProp};
+use crate::{generic_author_info::GenericAuthorInfo, *};
 
-/// Maps a Crossref/OpenAlex work-type string to a Wikidata Q-item for P31 (instance of).
-/// Both APIs use the same Crossref type vocabulary, so a single function serves both.
+/// Maps a Crossref/OpenAlex work-type string to a Wikidata Q-item for P31
+/// (instance of). Both APIs use the same Crossref type vocabulary, so a single
+/// function serves both.
 pub fn crossref_work_type_to_q(type_: &str) -> Option<&'static str> {
     match type_ {
         "journal-article" => Some("Q13442814"),
@@ -28,7 +29,8 @@ pub fn crossref_work_type_to_q(type_: &str) -> Option<&'static str> {
     }
 }
 
-/// Parses a date string like "2023-01-15" or "2023-01-15T00:00:00Z" into (year, month, day).
+/// Parses a date string like "2023-01-15" or "2023-01-15T00:00:00Z" into (year,
+/// month, day).
 pub fn parse_date(date_str: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
     let date_part = date_str.split('T').next()?;
     let parts: Vec<&str> = date_part.split('-').collect();
@@ -45,13 +47,16 @@ pub trait ScientificPublicationAdapter {
     /// Returns the name of the resource; internal/debugging use only
     fn name(&self) -> &str;
 
-    /// Returns a cache object reference for the author_id => wikidata_item mapping; this is handled automatically
+    /// Returns a cache object reference for the author_id => wikidata_item
+    /// mapping; this is handled automatically
     fn author_cache(&self) -> &HashMap<String, String>;
 
-    /// Returns a mutable cache object reference for the author_id => wikidata_item mapping; this is handled automatically
+    /// Returns a mutable cache object reference for the author_id =>
+    /// wikidata_item mapping; this is handled automatically
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String>;
 
-    /// Tries to determine the publication ID of the resource, from a Wikidata item
+    /// Tries to determine the publication ID of the resource, from a Wikidata
+    /// item
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         match self.publication_property() {
             Some(self_prop) => match self.get_external_identifier_from_item(item, &self_prop) {
@@ -72,13 +77,16 @@ pub trait ScientificPublicationAdapter {
         // Do nothing
     }
 
-    /// Adds/updates "special" statements of an item from the resource, given the publication ID.
-    /// Many common statements, title, aliases etc are automatically handeled via `update_statements_for_publication_id_default`
+    /// Adds/updates "special" statements of an item from the resource, given
+    /// the publication ID. Many common statements, title, aliases etc are
+    /// automatically handeled via
+    /// `update_statements_for_publication_id_default`
     async fn update_statements_for_publication_id(&self, publication_id: &str, item: &mut Entity);
 
     // You should implement these yourself, where applicable
 
-    /// Returns a list of the authors, if available, with list number, name, catalog-specific author ID, and WIkidata ID, as available
+    /// Returns a list of the authors, if available, with list number, name,
+    /// catalog-specific author ID, and WIkidata ID, as available
     async fn get_author_list(&mut self, _publication_id: &str) -> Vec<GenericAuthorInfo> {
         vec![]
     }
@@ -111,17 +119,20 @@ pub trait ScientificPublicationAdapter {
         None
     }
 
-    /// Returns the property for an author ID of the resource as a `String`, e.g. P4012 for Semantic Scholar
+    /// Returns the property for an author ID of the resource as a `String`,
+    /// e.g. P4012 for Semantic Scholar
     fn author_property(&self) -> Option<String> {
         None
     }
 
-    /// Returns the property for a publication ID of the resource as a `String`, e.g. P4011 for Semantic Scholar
+    /// Returns the property for a publication ID of the resource as a `String`,
+    /// e.g. P4011 for Semantic Scholar
     fn publication_property(&self) -> Option<IdProp> {
         None
     }
 
-    /// Returns the property for a topic ID of the resource as a `String`, e.g. P6611 for Semantic Scholar
+    /// Returns the property for a topic ID of the resource as a `String`, e.g.
+    /// P6611 for Semantic Scholar
     fn topic_property(&self) -> Option<String> {
         None
     }
@@ -137,7 +148,8 @@ pub trait ScientificPublicationAdapter {
         None
     }
 
-    // For a publication ID, return all known titles as a `Vec<LocaleString>`, main title first (per language)
+    // For a publication ID, return all known titles as a `Vec<LocaleString>`, main
+    // title first (per language)
     fn get_work_titles(&self, _publication_id: &str) -> Vec<LocaleString> {
         vec![]
     }
@@ -163,7 +175,8 @@ pub trait ScientificPublicationAdapter {
     }
 
     /// Strips HTML/XML tags from a string, preserving text content.
-    /// E.g. "Correction: <i>Accidental aspiration</i>" → "Correction: Accidental aspiration"
+    /// E.g. "Correction: <i>Accidental aspiration</i>" → "Correction:
+    /// Accidental aspiration"
     fn strip_html_tags(&self, s: &str) -> String {
         lazy_static! {
             static ref RE_HTML: Regex =
@@ -182,13 +195,11 @@ pub trait ScientificPublicationAdapter {
     ) {
         self.update_work_item_with_title(publication_id, item);
         self.update_work_item_with_property(publication_id, item);
-        self.update_work_item_with_journal(publication_id, item)
-            .await;
+        self.update_work_item_with_journal(publication_id, item).await;
         self.update_work_item_with_volume(publication_id, item);
         self.update_work_item_with_issue(publication_id, item);
         self.update_work_item_with_publication_date(publication_id, item);
-        self.update_work_item_with_language(publication_id, item)
-            .await;
+        self.update_work_item_with_language(publication_id, item).await;
     }
 
     async fn update_work_item_with_language(&self, publication_id: &str, item: &mut Entity) {
@@ -271,8 +282,10 @@ pub trait ScientificPublicationAdapter {
             let mut titles = titles.clone();
             // Add title
             match item.label_in_locale(language) {
-                Some(t) => titles.retain(|x| !self.titles_are_equal(x, t)), // Title exists, remove from title list
-                None => item.set_label(LocaleString::new("en", &titles.swap_remove(0))), // No title, add and remove from title list
+                Some(t) => titles.retain(|x| !self.titles_are_equal(x, t)), /* Title exists,
+                                                                              * remove from title
+                                                                              * list */
+                None => item.set_label(LocaleString::new("en", &titles.swap_remove(0))), /* No title, add and remove from title list */
             }
 
             // Add other potential titles as aliases
@@ -281,8 +294,8 @@ pub trait ScientificPublicationAdapter {
             //     .iter()
             //     .filter(|t| !self.titles_are_equal(t, &main_title))
             //     .for_each(|t| {
-            //         item.add_alias(LocaleString::new(language.to_string(), t.to_string()))
-            //     });
+            //         item.add_alias(LocaleString::new(language.to_string(),
+            // t.to_string()))     });
 
             // Add P1476 (title)
             if !item.has_claims_with_property("P1476") {
@@ -308,7 +321,7 @@ pub trait ScientificPublicationAdapter {
             return;
         }
         if let Some(_issn) = self.get_work_issn(publication_id) {
-            let r = Some("".to_string()); //cache.issn2q(&issn).await;
+            let r = Some("".to_string()); // cache.issn2q(&issn).await;
             if let Some(q) = r {
                 item.add_claim(Statement::new_normal(
                     Snak::new_item("P1433", &q),
@@ -349,11 +362,7 @@ pub trait ScientificPublicationAdapter {
             None => ("-01".to_string(), precision),
         };
         let time = format!("+{year}{month_str}{day_str}T00:00:00Z");
-        Statement::new_normal(
-            Snak::new_time(property, time, precision),
-            vec![],
-            self.reference(),
-        )
+        Statement::new_normal(Snak::new_time(property, time, precision), vec![], self.reference())
     }
 
     fn get_external_identifier_from_item(
@@ -367,17 +376,14 @@ pub trait ScientificPublicationAdapter {
                 claim.main_snak().property() == property.as_str()
                     && *claim.main_snak().snak_type() == SnakType::Value
             })
-            .find_map(
-                |claim| match claim.main_snak().data_value().as_ref()?.value() {
-                    Value::StringValue(s) => Some(s.to_string()),
-                    _ => None,
-                },
-            )
+            .find_map(|claim| match claim.main_snak().data_value().as_ref()?.value() {
+                Value::StringValue(s) => Some(s.to_string()),
+                _ => None,
+            })
     }
 
     fn set_author_cache_entry(&mut self, catalog_author_id: &str, q: &str) {
-        self.author_cache_mut()
-            .insert(catalog_author_id.to_string(), q.to_string());
+        self.author_cache_mut().insert(catalog_author_id.to_string(), q.to_string());
     }
 
     fn get_author_item_from_cache(&self, catalog_author_id: &str) -> Option<&String> {
@@ -432,10 +438,7 @@ mod tests {
     impl TestAdapter {
         fn with_titles(titles: Vec<&str>) -> Self {
             Self {
-                titles: titles
-                    .into_iter()
-                    .map(|t| LocaleString::new("en", t))
-                    .collect(),
+                titles: titles.into_iter().map(|t| LocaleString::new("en", t)).collect(),
                 author_cache: HashMap::new(),
             }
         }
@@ -488,14 +491,8 @@ mod tests {
     #[test]
     fn strip_html_tags_handles_sub_sup() {
         let adapter = TestAdapter::with_titles(vec![]);
-        assert_eq!(
-            adapter.strip_html_tags("H<sub>2</sub>O and CO<sub>2</sub>"),
-            "H2O and CO2"
-        );
-        assert_eq!(
-            adapter.strip_html_tags("x<sup>2</sup> + y<sup>2</sup>"),
-            "x2 + y2"
-        );
+        assert_eq!(adapter.strip_html_tags("H<sub>2</sub>O and CO<sub>2</sub>"), "H2O and CO2");
+        assert_eq!(adapter.strip_html_tags("x<sup>2</sup> + y<sup>2</sup>"), "x2 + y2");
     }
 
     #[test]

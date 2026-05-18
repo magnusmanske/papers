@@ -1,12 +1,14 @@
-use self::identifiers::IdProp;
-use crate::generic_author_info::GenericAuthorInfo;
-use crate::scientific_publication_adapter::ScientificPublicationAdapter;
-use crate::*;
+use std::{collections::HashMap, sync::Arc};
+
 use async_trait::async_trait;
 use orcid::*;
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::Mutex;
+
+use self::identifiers::IdProp;
+use crate::{
+    generic_author_info::GenericAuthorInfo,
+    scientific_publication_adapter::ScientificPublicationAdapter, *,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct PseudoWork {
@@ -50,16 +52,9 @@ impl Orcid2Wikidata {
     pub async fn get_or_load_author_data(&self, orcid_author_id: &str) -> Option<Author> {
         if !self.author_data.lock().await.contains_key(orcid_author_id) {
             let data = self.client.author(orcid_author_id).await.ok();
-            self.author_data
-                .lock()
-                .await
-                .insert(orcid_author_id.to_string(), data);
+            self.author_data.lock().await.insert(orcid_author_id.to_string(), data);
         }
-        self.author_data
-            .lock()
-            .await
-            .get(orcid_author_id)
-            .and_then(|r| r.clone())
+        self.author_data.lock().await.get(orcid_author_id).and_then(|r| r.clone())
     }
 
     async fn get_author_data(
@@ -76,56 +71,51 @@ impl Orcid2Wikidata {
                     let last_name = j["person"]["name"]["family-name"]["value"].as_str();
                     let given_names = j["person"]["name"]["given-names"]["value"].as_str();
                     match (given_names, last_name) {
-                        (Some(f), Some(l)) => gai.set_name(Some(format!("{} {}", &f, &l))),
+                        (Some(f), Some(l)) => gai.set_name(Some(format!("{} {}", f, l))),
                         (None, Some(l)) => gai.set_name(Some(l.to_string())),
-                        _ => {}
+                        _ => {},
                     }
-                }
+                },
             }
             if let Some(id) = author.orcid_id() {
-                gai.prop2id_mut()
-                    .insert(author_property.to_string(), id.to_string());
+                gai.prop2id_mut().insert(author_property.to_string(), id.to_string());
             }
             let ext_ids = author.external_ids();
             for id in ext_ids {
                 match id.0.as_str() {
                     "ResearcherID" => {
                         gai.prop2id_mut().insert("P1053".to_string(), id.1);
-                    }
+                    },
                     "Researcher ID" => {
                         gai.prop2id_mut().insert("P1053".to_string(), id.1);
-                    }
+                    },
                     "Scopus Author ID" => {
                         gai.prop2id_mut().insert("P1153".to_string(), id.1);
-                    }
+                    },
                     "Scopus ID" => {
                         gai.prop2id_mut().insert("P1153".to_string(), id.1);
-                    }
+                    },
                     "Loop profile" => {
                         gai.prop2id_mut().insert("P2798".to_string(), id.1);
-                    }
+                    },
                     "SciProfiles" => {
                         gai.prop2id_mut().insert("P8159".to_string(), id.1);
-                    }
+                    },
                     "GitHub" => {
                         gai.prop2id_mut().insert("P2037".to_string(), id.1);
-                    }
+                    },
                     "Ciência ID" => {
                         gai.prop2id_mut().insert("P7893".to_string(), id.1);
-                    }
+                    },
                     // "Researcher Name Resolver ID" => {
                     //     gai.prop2id.insert("P9776".to_string(), id.1);
                     // }
                     "ISNI" => {
-                        gai.prop2id_mut()
-                            .insert("P213".to_string(), id.1.replace("-", ""));
-                    }
+                        gai.prop2id_mut().insert("P213".to_string(), id.1.replace("-", ""));
+                    },
                     other => {
-                        self.warn(&format!(
-                            "orcid2wikidata: Unknown ID '{}':'{}'",
-                            &other, &id.1
-                        ));
-                    }
+                        self.warn(&format!("orcid2wikidata: Unknown ID '{}':'{}'", other, id.1));
+                    },
                 }
             }
             return Some(gai);
@@ -185,11 +175,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
             let future = self.get_author_data(orcid_author_id, &author_property);
             futures.push(future);
         }
-        futures::future::join_all(futures)
-            .await
-            .into_iter()
-            .flatten()
-            .collect()
+        futures::future::join_all(futures).await.into_iter().flatten().collect()
     }
 }
 

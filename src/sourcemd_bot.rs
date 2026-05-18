@@ -1,25 +1,28 @@
-use crate::arxiv2wikidata::Arxiv2Wikidata;
-use crate::crossref2wikidata::Crossref2Wikidata;
-use crate::datacite2wikidata::DataCite2Wikidata;
-use crate::europepmc2wikidata::EuropePMC2Wikidata;
-use crate::generic_author_info::GenericAuthorInfo;
-use crate::identifiers::{GenericWorkIdentifier, IdProp};
-use crate::openalex2wikidata::OpenAlex2Wikidata;
-use crate::orcid2wikidata::Orcid2Wikidata;
-use crate::pmc2wikidata::PMC2Wikidata;
-use crate::pubmed2wikidata::Pubmed2Wikidata;
-use crate::semanticscholar2wikidata::Semanticscholar2Wikidata;
-use crate::sourcemd_command::SourceMDcommand;
-use crate::sourcemd_config::SourceMD;
-use crate::wikidata_papers::WikidataPapers;
-use crate::wikidata_string_cache::WikidataStringCache;
-use crate::*;
+use std::sync::Arc;
+
 use anyhow::{anyhow, Result};
 use regex::Regex;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use self::sourcemd_command::SourceMDcommandMode;
+use crate::{
+    arxiv2wikidata::Arxiv2Wikidata,
+    crossref2wikidata::Crossref2Wikidata,
+    datacite2wikidata::DataCite2Wikidata,
+    europepmc2wikidata::EuropePMC2Wikidata,
+    generic_author_info::GenericAuthorInfo,
+    identifiers::{GenericWorkIdentifier, IdProp},
+    openalex2wikidata::OpenAlex2Wikidata,
+    orcid2wikidata::Orcid2Wikidata,
+    pmc2wikidata::PMC2Wikidata,
+    pubmed2wikidata::Pubmed2Wikidata,
+    semanticscholar2wikidata::Semanticscholar2Wikidata,
+    sourcemd_command::SourceMDcommand,
+    sourcemd_config::SourceMD,
+    wikidata_papers::WikidataPapers,
+    wikidata_string_cache::WikidataStringCache,
+    *,
+};
 
 #[derive(Debug, Clone)]
 pub struct SourceMDbot {
@@ -34,26 +37,20 @@ impl SourceMDbot {
         cache: Arc<WikidataStringCache>,
         batch_id: i64,
     ) -> Result<Self> {
-        let ret = Self {
-            config,
-            batch_id,
-            cache,
-        };
+        let ret = Self { config, batch_id, cache };
         ret.start().await?;
         Ok(ret)
     }
 
     pub async fn start(&self) -> Result<()> {
         let config = self.config.read().await;
-        config
-            .restart_batch(self.batch_id)
-            .ok_or(anyhow!("Can't (re)start batch"))?;
+        config.restart_batch(self.batch_id).ok_or(anyhow!("Can't (re)start batch"))?;
         config.set_batch_running(self.batch_id).await;
         Ok(())
     }
 
     pub async fn run(&self) -> Result<bool> {
-        //Check if batch is still valid (STOP etc)
+        // Check if batch is still valid (STOP etc)
         let command = self.get_next_command().await;
         let mut command = match command {
             Some(c) => c,
@@ -65,11 +62,10 @@ impl SourceMDbot {
                     .await
                     .ok_or(anyhow!("Can't set batch as stopped"))?;
                 return Ok(false);
-            }
+            },
         };
 
-        self.set_command_status("RUNNING", None, &mut command)
-            .await?;
+        self.set_command_status("RUNNING", None, &mut command).await?;
         match self.execute_command(&mut command).await {
             Ok(b) => {
                 if b {
@@ -78,12 +74,11 @@ impl SourceMDbot {
                     self.set_command_status("DUNNO", None, &mut command).await?;
                 }
                 Ok(b)
-            }
+            },
             Err(e) => {
-                self.set_command_status("FAILED", Some(&e.to_string()), &mut command)
-                    .await?;
+                self.set_command_status("FAILED", Some(&e.to_string()), &mut command).await?;
                 Err(e)
-            }
+            },
         }
     }
 
@@ -98,14 +93,10 @@ impl SourceMDbot {
                 } else {
                     self.process_author_metadata(command).await
                 }
-            }
+            },
             SourceMDcommandMode::EditPaperForOrcidAuthor => Ok(false), // TODO
             SourceMDcommandMode::CreateBookFromIsbn => Ok(false),      // TODO
-            other => Err(anyhow!(
-                "Unrecognized command '{}' on command #{}",
-                &other,
-                &command.id
-            )),
+            other => Err(anyhow!("Unrecognized command '{}' on command #{}", other, command.id)),
         }
     }
 
@@ -121,9 +112,7 @@ impl SourceMDbot {
         if RE_WD.is_match(identifier) {
             author.set_wikidata_item(Some(identifier.to_owned()));
         } else if RE_ORCID.is_match(identifier) {
-            author
-                .prop2id_mut()
-                .insert("P496".to_string(), identifier.to_owned());
+            author.prop2id_mut().insert("P496".to_string(), identifier.to_owned());
             author = author
                 .get_or_create_author_item(
                     self.config.read().await.mw_api(),
@@ -132,18 +121,12 @@ impl SourceMDbot {
                 )
                 .await
         } else {
-            return Err(anyhow!(
-                "Not a Wikidata item, nor an ORCID ID {}",
-                identifier
-            ));
+            return Err(anyhow!("Not a Wikidata item, nor an ORCID ID {}", identifier));
         }
 
         // Paranoia
         if author.wikidata_item().is_none() {
-            return Err(anyhow!(
-                "Failed to get/create author item for {}",
-                identifier
-            ));
+            return Err(anyhow!("Failed to get/create author item for {}", identifier));
         }
 
         Ok(author)
@@ -159,8 +142,7 @@ impl SourceMDbot {
             self.batch_id, self.batch_id, command.serial_number
         )));
         let config = self.config.read().await;
-        wdp.update_author_items(&vec![author], config.mw_api())
-            .await;
+        wdp.update_author_items(&vec![author], config.mw_api()).await;
         Ok(true)
     }
 
@@ -185,7 +167,7 @@ impl SourceMDbot {
                 )
                 .await
                 .map(|_x| true)
-                .ok_or(anyhow!("Can't update {}", &command.identifier));
+                .ok_or(anyhow!("Can't update {}", command.identifier));
         }
 
         // Others: regex-recognised formats
@@ -224,7 +206,7 @@ impl SourceMDbot {
                     command.q = er.q().to_string();
                 }
                 Ok(true)
-            }
+            },
             None => Ok(false),
         }
     }
@@ -239,10 +221,7 @@ impl SourceMDbot {
             .read()
             .await
             .set_command_status(command, status, message.map(|s| s.to_string()))
-            .ok_or(anyhow!(
-                "Can't config.set_command_status for batch #{}",
-                self.batch_id
-            ))?;
+            .ok_or(anyhow!("Can't config.set_command_status for batch #{}", self.batch_id))?;
         Ok(())
     }
 

@@ -1,11 +1,9 @@
+use std::{collections::HashMap, sync::Arc};
+
 use anyhow::Result;
 use async_trait::async_trait;
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
-use wikibase::entity_diff::*;
-use wikibase::mediawiki::api::Api;
-use wikibase::*;
+use wikibase::{entity_diff::*, mediawiki::api::Api, *};
 
 #[async_trait]
 pub trait WikidataInteraction {

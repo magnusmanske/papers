@@ -1,17 +1,22 @@
-use self::identifiers::GenericWorkIdentifier;
-use self::identifiers::GenericWorkType;
-use self::wikidata_interaction::WikidataInteraction;
-use crate::generic_author_info::GenericAuthorInfo;
-use crate::scientific_publication_adapter::ScientificPublicationAdapter;
-use crate::wikidata_string_cache::WikidataStringCache;
-use crate::*;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+
 use anyhow::Result;
 use rayon::prelude::*;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
+
+use self::{
+    identifiers::{GenericWorkIdentifier, GenericWorkType},
+    wikidata_interaction::WikidataInteraction,
+};
+use crate::{
+    generic_author_info::GenericAuthorInfo,
+    scientific_publication_adapter::ScientificPublicationAdapter,
+    wikidata_string_cache::WikidataStringCache, *,
+};
 
 pub type Spas = Box<dyn ScientificPublicationAdapter + Sync>;
 
@@ -191,8 +196,8 @@ impl WikidataPapers {
         for author in authors2.iter() {
             match author.find_best_match(authors) {
                 Some((candidate, _points)) => match authors[candidate].merge_from(author) {
-                    Ok(_) => {}
-                    Err(e) => eprintln!("{:?}: {}", &author, e),
+                    Ok(_) => {},
+                    Err(e) => eprintln!("{:?}: {}", author, e),
                 },
                 None => {
                     // Only add if there's truly no overlap with any existing author.
@@ -200,7 +205,7 @@ impl WikidataPapers {
                     if !author.has_partial_match(authors) {
                         authors.push(author.clone());
                     }
-                }
+                },
             }
         }
     }
@@ -213,13 +218,11 @@ impl WikidataPapers {
     ) -> Result<()> {
         let mut authors: Vec<GenericAuthorInfo> = vec![];
         for adapter_id in 0..self.adapters.len() {
-            let publication_id = match self.adapters[adapter_id]
-                .publication_id_from_item(item)
-                .await
-            {
-                Some(id) => id,
-                _ => continue,
-            };
+            let publication_id =
+                match self.adapters[adapter_id].publication_id_from_item(item).await {
+                    Some(id) => id,
+                    _ => continue,
+                };
 
             let adapter = &mut self.adapters[adapter_id];
             adapter2work_id.insert(adapter_id, publication_id.clone());
@@ -230,9 +233,7 @@ impl WikidataPapers {
                     // self.cache.clone(),
                 )
                 .await;
-            adapter
-                .update_statements_for_publication_id(&publication_id, item)
-                .await;
+            adapter.update_statements_for_publication_id(&publication_id, item).await;
 
             // Authors
             let authors2 = adapter.get_author_list(&publication_id).await;
@@ -279,10 +280,8 @@ impl WikidataPapers {
         authors: &Vec<GenericAuthorInfo>,
         mw_api: Arc<RwLock<Api>>,
     ) {
-        let qs: Vec<String> = authors
-            .iter()
-            .filter_map(|a| a.wikidata_item().map(str::to_string))
-            .collect();
+        let qs: Vec<String> =
+            authors.iter().filter_map(|a| a.wikidata_item().map(str::to_string)).collect();
         if qs.is_empty() {
             return;
         }
@@ -294,9 +293,7 @@ impl WikidataPapers {
         drop(api);
 
         for author in authors {
-            author
-                .update_author_item(&mut self.entities, mw_api.clone())
-                .await;
+            author.update_author_item(&mut self.entities, mw_api.clone()).await;
         }
     }
 
@@ -337,8 +334,7 @@ impl WikidataPapers {
             true => vec![],
             false => self.get_items_for_ids(ids).await,
         };
-        self.create_or_update_item_from_items(mw_api, ids, &items)
-            .await
+        self.create_or_update_item_from_items(mw_api, ids, &items).await
     }
 
     pub async fn create_or_update_item_from_q(
@@ -347,8 +343,7 @@ impl WikidataPapers {
         q: &str,
     ) -> Option<EditResult> {
         let items = vec![q.to_owned()];
-        self.create_or_update_item_from_items(mw_api, &vec![], &items)
-            .await
+        self.create_or_update_item_from_items(mw_api, &vec![], &items).await
     }
 
     fn new_publication_item(&self) -> Entity {
@@ -366,15 +361,10 @@ impl WikidataPapers {
         match items.first() {
             Some(q) => {
                 let api = mw_api.read().await;
-                item = self
-                    .entities
-                    .load_entity(&api, q.clone())
-                    .await
-                    .ok()?
-                    .to_owned();
+                item = self.entities.load_entity(&api, q.clone()).await.ok()?.to_owned();
                 drop(api);
                 original_item = item.clone();
-            }
+            },
             None => item = self.new_publication_item(),
         }
 
@@ -387,7 +377,7 @@ impl WikidataPapers {
 
         // Paranoia
         if item.claims().len() < 4 {
-            println!("Skipping {:?}", &ids);
+            println!("Skipping {:?}", ids);
             return None;
         }
 
@@ -405,20 +395,15 @@ impl WikidataPapers {
         params.aliases.add = EntityDiffParamState::All;
         params.claims.add = EntityDiffParamState::All;
         params.claims.remove = EntityDiffParamState::some(&vec!["P2093"]);
-        params.references.list = vec![(
-            EntityDiffParamState::All,
-            EntityDiffParamState::except(&vec!["P813"]),
-        )];
+        params.references.list =
+            vec![(EntityDiffParamState::All, EntityDiffParamState::except(&vec!["P813"]))];
         let mut diff = EntityDiff::new(&original_item, &item, &params);
         diff.set_edit_summary(self.edit_summary.to_owned());
 
         if diff.is_empty() {
             return match original_item.id().as_str() {
                 "" => None,
-                id => Some(EditResult {
-                    q: id.to_string(),
-                    edited: false,
-                }),
+                id => Some(EditResult { q: id.to_string(), edited: false }),
             };
         }
 
@@ -429,10 +414,7 @@ impl WikidataPapers {
             let mut api = mw_api.write().await;
             let new_json = diff.apply_diff(&mut api, &diff).await.ok()?;
             let q = EntityDiff::get_entity_id(&new_json)?;
-            Some(EditResult {
-                q: q.to_string(),
-                edited: true,
-            })
+            Some(EditResult { q: q.to_string(), edited: true })
         }
     }
 
@@ -441,19 +423,17 @@ impl WikidataPapers {
         original_ids: &[GenericWorkIdentifier],
     ) -> Vec<GenericWorkIdentifier> {
         let mut ids: HashSet<GenericWorkIdentifier> = HashSet::new();
-        original_ids
-            .iter()
-            .filter(|id| id.is_legit())
-            .for_each(|id| {
-                ids.insert(id.to_owned());
-            });
+        original_ids.iter().filter(|id| id.is_legit()).for_each(|id| {
+            ids.insert(id.to_owned());
+        });
         loop {
             let last_id_size = ids.len();
             for adapter_id in 0..self.adapters.len() {
                 let adapter = &mut self.adapters[adapter_id];
-                // TODO: CPU work — par_iter blocks the async runtime thread; consider spawn_blocking
+                // TODO: CPU work — par_iter blocks the async runtime thread; consider
+                // spawn_blocking
                 let vids: Vec<GenericWorkIdentifier> = ids.par_iter().cloned().collect();
-                //println!("Adapter {}", adapter.name());
+                // println!("Adapter {}", adapter.name());
                 adapter
                     .get_identifier_list(&vids)
                     .await
@@ -467,7 +447,8 @@ impl WikidataPapers {
                 break;
             }
         }
-        // TODO: CPU work — par_iter blocks the async runtime thread; consider spawn_blocking
+        // TODO: CPU work — par_iter blocks the async runtime thread; consider
+        // spawn_blocking
         ids.par_iter().filter(|id| id.is_legit()).cloned().collect()
     }
 
@@ -500,12 +481,10 @@ impl WikidataPapers {
         item.claims()
             .par_iter()
             .filter(|statement| statement.property() == "P50")
-            .filter_map(
-                |statement| match statement.main_snak().data_value().as_ref()?.value() {
-                    Value::Entity(entity) => Some(entity.id().to_string()),
-                    _ => None,
-                },
-            )
+            .filter_map(|statement| match statement.main_snak().data_value().as_ref()?.value() {
+                Value::Entity(entity) => Some(entity.id().to_string()),
+                _ => None,
+            })
             .collect()
     }
 
@@ -515,14 +494,11 @@ impl WikidataPapers {
         // Preserve qualifiers from the existing P2093 statement (e.g. P1545 ordinal).
         // P2093 qualifiers take precedence over the generated P50's qualifiers,
         // because the P2093 reflects what's already on Wikidata.
-        let p2093_properties: HashSet<String> = p2093_statement
-            .qualifiers()
-            .iter()
-            .map(|q| q.property().to_string())
-            .collect();
-        // Build merged qualifiers: start with P2093's, then add non-conflicting P50 ones.
-        // Always exclude P1932 from the P50's qualifiers — we'll add the correct one
-        // from the P2093's actual name string below.
+        let p2093_properties: HashSet<String> =
+            p2093_statement.qualifiers().iter().map(|q| q.property().to_string()).collect();
+        // Build merged qualifiers: start with P2093's, then add non-conflicting P50
+        // ones. Always exclude P1932 from the P50's qualifiers — we'll add the
+        // correct one from the P2093's actual name string below.
         let mut merged_qualifiers: Vec<Snak> = p2093_statement.qualifiers().to_vec();
         for q in p50_statement.qualifiers() {
             if q.property() != "P1932" && !p2093_properties.contains(q.property()) {
@@ -578,10 +554,13 @@ mod tests {
     }
 
     /// Helper: create a WikidataPapers with no adapters (for unit testing).
-    /// Uses a wiremock server for the MediaWiki API so no real network calls are made.
+    /// Uses a wiremock server for the MediaWiki API so no real network calls
+    /// are made.
     async fn make_wdp() -> WikidataPapers {
-        use wiremock::matchers::{method, query_param};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::{
+            matchers::{method, query_param},
+            Mock, MockServer, ResponseTemplate,
+        };
 
         const SITEINFO: &str = include_str!("../test_data/api_siteinfo.json");
 
@@ -597,9 +576,7 @@ mod tests {
             .await;
 
         let mw_api = Arc::new(tokio::sync::RwLock::new(
-            wikibase::mediawiki::api::Api::new(&mock_server.uri())
-                .await
-                .unwrap(),
+            wikibase::mediawiki::api::Api::new(&mock_server.uri()).await.unwrap(),
         ));
         let cache = Arc::new(WikidataStringCache::new(mw_api));
         // mock_server is intentionally dropped here: the tests below do not
@@ -649,7 +626,8 @@ mod tests {
         let claim = &item.claims()[0];
         assert_eq!(claim.main_snak().property(), "P50", "Should be P50");
 
-        // The ordinal should be #42 (from the original P2093), NOT #44 (from the adapter)
+        // The ordinal should be #42 (from the original P2093), NOT #44 (from the
+        // adapter)
         let ordinal = get_ordinal(claim);
         assert_eq!(
             ordinal,
@@ -743,7 +721,8 @@ mod tests {
         get_string_qualifier(statement, "P1932")
     }
 
-    // === Bug reproduction: P1932 uses adapter name instead of P2093 name (issue #5) ===
+    // === Bug reproduction: P1932 uses adapter name instead of P2093 name (issue
+    // #5) ===
     //
     // When converting P2093 "José García" to P50, the P1932 ("object named as")
     // qualifier should preserve the original P2093 name, not the adapter's
@@ -778,7 +757,8 @@ mod tests {
         );
     }
 
-    // Same issue but with a completely different adapter name (e.g. transliteration)
+    // Same issue but with a completely different adapter name (e.g.
+    // transliteration)
     #[tokio::test]
     async fn update_author_statements_p1932_preserves_original_name_transliteration() {
         let wdp = make_wdp().await;
