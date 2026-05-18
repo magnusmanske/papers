@@ -1,20 +1,20 @@
-use crate::generic_author_info::GenericAuthorInfo;
-use crate::scientific_publication_adapter::ScientificPublicationAdapter;
-use crate::*;
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use regex::Regex;
 use reqwest;
-use std::collections::HashMap;
 
 use self::identifiers::{is_pubmed_id, GenericWorkIdentifier, GenericWorkType, IdProp};
-//use wikibase::mediawiki::api::Api;
+use crate::{
+    generic_author_info::GenericAuthorInfo,
+    scientific_publication_adapter::ScientificPublicationAdapter, *,
+};
+// use wikibase::mediawiki::api::Api;
 
-/*
-Examples:
-https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:13777676%20AND%20SRC:MED&resulttype=core&format=json (no PMCID)
-https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:17246615%20AND%20SRC:MED&resulttype=core&format=json (with PMCID)
-https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=PMC1201091&resulttype=core&format=json (same as line above)
-*/
+// Examples:
+// https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:13777676%20AND%20SRC:MED&resulttype=core&format=json (no PMCID)
+// https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:17246615%20AND%20SRC:MED&resulttype=core&format=json (with PMCID)
+// https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=PMC1201091&resulttype=core&format=json (same as line above)
 
 #[derive(Debug, Clone, Default)]
 pub struct PMC2Wikidata {
@@ -44,7 +44,7 @@ impl PMC2Wikidata {
                             publication_id = pmc_id.to_string()
                         }
                         self.work_cache.insert(publication_id.clone(), json.clone());
-                    }
+                    },
                     None => return None,
                 }
             }
@@ -73,7 +73,7 @@ impl PMC2Wikidata {
                 match results.first() {
                     Some(json) => {
                         self.work_cache.insert(pmc_id.to_string(), json.clone());
-                    }
+                    },
                     None => return None,
                 }
             }
@@ -176,7 +176,7 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
                         Some(pmid) => self.publication_id_from_pubmed(&pmid).await,
                         None => None,
                     };
-                }
+                },
             };
         self.publication_id_from_pmcid(&pmcid).await
     }
@@ -237,14 +237,14 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
                         {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
-                    }
+                    },
                     IdProp::PMCID => {
                         if let Some(publication_id) = self.publication_id_from_pmcid(id.id()).await
                         {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             }
         }
@@ -281,8 +281,9 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     fn make_pmc(id: &str, work: serde_json::Value) -> PMC2Wikidata {
         let mut pmc = PMC2Wikidata::new();
@@ -321,7 +322,7 @@ mod tests {
         let pmc = PMC2Wikidata::new();
         assert!(!pmc.is_pmcid("12345"));
         assert!(!pmc.is_pmcid("pmc123")); // lowercase
-        assert!(!pmc.is_pmcid("PMC"));    // no digits
+        assert!(!pmc.is_pmcid("PMC")); // no digits
         assert!(!pmc.is_pmcid(""));
         assert!(!pmc.is_pmcid("PMC12 34"));
     }
@@ -331,10 +332,7 @@ mod tests {
     #[test]
     fn publication_id_for_statement_strips_pmc_prefix() {
         let pmc = PMC2Wikidata::new();
-        assert_eq!(
-            pmc.publication_id_for_statement("PMC12345"),
-            Some("12345".to_string())
-        );
+        assert_eq!(pmc.publication_id_for_statement("PMC12345"), Some("12345".to_string()));
     }
 
     #[test]
@@ -402,10 +400,7 @@ mod tests {
 
     #[test]
     fn get_volume_extracts_from_journal_info() {
-        let pmc = make_pmc(
-            "PMC1",
-            json!({"journalInfo": {"volume": "12"}}),
-        );
+        let pmc = make_pmc("PMC1", json!({"journalInfo": {"volume": "12"}}));
         assert_eq!(pmc.get_volume("PMC1"), Some("12".to_string()));
     }
 
@@ -417,19 +412,13 @@ mod tests {
 
     #[test]
     fn get_issue_extracts_from_journal_info() {
-        let pmc = make_pmc(
-            "PMC1",
-            json!({"journalInfo": {"issue": "3"}}),
-        );
+        let pmc = make_pmc("PMC1", json!({"journalInfo": {"issue": "3"}}));
         assert_eq!(pmc.get_issue("PMC1"), Some("3".to_string()));
     }
 
     #[test]
     fn get_work_issn_extracts_from_journal_info() {
-        let pmc = make_pmc(
-            "PMC1",
-            json!({"journalInfo": {"journal": {"issn": "1234-5678"}}}),
-        );
+        let pmc = make_pmc("PMC1", json!({"journalInfo": {"journal": {"issn": "1234-5678"}}}));
         assert_eq!(pmc.get_work_issn("PMC1"), Some("1234-5678".to_string()));
     }
 
@@ -443,10 +432,7 @@ mod tests {
 
     #[test]
     fn get_publication_date_year_only() {
-        let pmc = make_pmc(
-            "PMC1",
-            json!({"journalInfo": {"yearOfPublication": 2021}}),
-        );
+        let pmc = make_pmc("PMC1", json!({"journalInfo": {"yearOfPublication": 2021}}));
         assert_eq!(pmc.get_publication_date("PMC1"), Some((2021, None, None)));
     }
 
@@ -456,10 +442,7 @@ mod tests {
             "PMC1",
             json!({"journalInfo": {"yearOfPublication": 2021, "monthOfPublication": 6}}),
         );
-        assert_eq!(
-            pmc.get_publication_date("PMC1"),
-            Some((2021, Some(6), None))
-        );
+        assert_eq!(pmc.get_publication_date("PMC1"), Some((2021, Some(6), None)));
     }
 
     #[test]
@@ -472,10 +455,7 @@ mod tests {
                 "dayOfPublication": 15
             }}),
         );
-        assert_eq!(
-            pmc.get_publication_date("PMC1"),
-            Some((2021, Some(3), Some(15)))
-        );
+        assert_eq!(pmc.get_publication_date("PMC1"), Some((2021, Some(3), Some(15))));
     }
 
     #[test]

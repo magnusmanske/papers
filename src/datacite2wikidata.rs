@@ -1,10 +1,12 @@
-use crate::generic_author_info::GenericAuthorInfo;
-use crate::scientific_publication_adapter::ScientificPublicationAdapter;
-use crate::*;
-use async_trait::async_trait;
 use std::collections::HashMap;
 
+use async_trait::async_trait;
+
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
+use crate::{
+    generic_author_info::GenericAuthorInfo,
+    scientific_publication_adapter::ScientificPublicationAdapter, *,
+};
 
 pub struct DataCite2Wikidata {
     author_cache: HashMap<String, String>,
@@ -35,9 +37,7 @@ impl DataCite2Wikidata {
     /// Returns the `data.attributes` object from the cached JSON:API response.
     fn get_attributes(&self, publication_id: &str) -> Option<&serde_json::Value> {
         let work = self.get_cached_publication_from_id(publication_id)?;
-        work["data"]["attributes"]
-            .as_object()
-            .map(|_| &work["data"]["attributes"])
+        work["data"]["attributes"].as_object().map(|_| &work["data"]["attributes"])
     }
 
     async fn fetch_doi_data(doi: &str) -> Option<(String, serde_json::Value)> {
@@ -134,7 +134,7 @@ impl ScientificPublicationAdapter for DataCite2Wikidata {
                     }
                 }
                 vec![]
-            }
+            },
             _ => vec![],
         }
     }
@@ -181,10 +181,7 @@ impl ScientificPublicationAdapter for DataCite2Wikidata {
             .enumerate()
             .filter_map(|(num, creator)| {
                 // Try familyName + givenName, fall back to name
-                let name = match (
-                    creator["givenName"].as_str(),
-                    creator["familyName"].as_str(),
-                ) {
+                let name = match (creator["givenName"].as_str(), creator["familyName"].as_str()) {
                     (Some(given), Some(family)) => format!("{} {}", given, family),
                     _ => creator["name"].as_str()?.to_string(),
                 };
@@ -201,7 +198,9 @@ impl ScientificPublicationAdapter for DataCite2Wikidata {
                                 let orcid =
                                     orcid.strip_prefix("https://orcid.org/").unwrap_or(orcid);
                                 if !orcid.is_empty() {
-                                    entry.prop2id_mut().insert("P496".to_string(), orcid.to_string());
+                                    entry
+                                        .prop2id_mut()
+                                        .insert("P496".to_string(), orcid.to_string());
                                 }
                             }
                         }
@@ -294,9 +293,7 @@ mod tests {
         let mut adapter = DataCite2Wikidata::new();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["titles"] = json!([]);
-        adapter
-            .work_cache
-            .insert("10.5281/ZENODO.1234567".to_string(), work);
+        adapter.work_cache.insert("10.5281/ZENODO.1234567".to_string(), work);
         assert!(adapter.get_work_titles("10.5281/ZENODO.1234567").is_empty());
     }
 
@@ -306,10 +303,7 @@ mod tests {
         adapter
             .work_cache
             .insert("10.5281/ZENODO.1234567".to_string(), make_datacite_work());
-        assert_eq!(
-            adapter.get_work_type("10.5281/ZENODO.1234567"),
-            Some("Q1172284".to_string())
-        );
+        assert_eq!(adapter.get_work_type("10.5281/ZENODO.1234567"), Some("Q1172284".to_string()));
     }
 
     #[test]
@@ -317,26 +311,15 @@ mod tests {
         let mut adapter = DataCite2Wikidata::new();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["types"]["resourceTypeGeneral"] = json!("Software");
-        adapter
-            .work_cache
-            .insert("10.5281/ZENODO.1234567".to_string(), work);
-        assert_eq!(
-            adapter.get_work_type("10.5281/ZENODO.1234567"),
-            Some("Q7397".to_string())
-        );
+        adapter.work_cache.insert("10.5281/ZENODO.1234567".to_string(), work);
+        assert_eq!(adapter.get_work_type("10.5281/ZENODO.1234567"), Some("Q7397".to_string()));
     }
 
     #[test]
     fn test_datacite_type_to_q() {
         assert_eq!(DataCite2Wikidata::datacite_type_to_q("Book"), Some("Q571"));
-        assert_eq!(
-            DataCite2Wikidata::datacite_type_to_q("Dataset"),
-            Some("Q1172284")
-        );
-        assert_eq!(
-            DataCite2Wikidata::datacite_type_to_q("JournalArticle"),
-            Some("Q13442814")
-        );
+        assert_eq!(DataCite2Wikidata::datacite_type_to_q("Dataset"), Some("Q1172284"));
+        assert_eq!(DataCite2Wikidata::datacite_type_to_q("JournalArticle"), Some("Q13442814"));
         assert_eq!(DataCite2Wikidata::datacite_type_to_q("Unknown"), None);
     }
 
@@ -357,9 +340,7 @@ mod tests {
         let mut adapter = DataCite2Wikidata::new();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["dates"] = json!([]);
-        adapter
-            .work_cache
-            .insert("10.5281/ZENODO.1234567".to_string(), work);
+        adapter.work_cache.insert("10.5281/ZENODO.1234567".to_string(), work);
         assert_eq!(
             adapter.get_publication_date("10.5281/ZENODO.1234567"),
             Some((2023, None, None))
@@ -376,10 +357,7 @@ mod tests {
         assert_eq!(authors.len(), 2);
         assert_eq!(authors[0].name(), Some("Alice Smith"));
         assert_eq!(authors[0].list_number(), Some("1"));
-        assert_eq!(
-            authors[0].prop2id().get("P496"),
-            Some(&"0000-0001-2345-6789".to_string())
-        );
+        assert_eq!(authors[0].prop2id().get("P496"), Some(&"0000-0001-2345-6789".to_string()));
         assert_eq!(authors[1].name(), Some("Bob Jones"));
         assert_eq!(authors[1].list_number(), Some("2"));
         assert!(!authors[1].prop2id().contains_key("P496"));
@@ -395,9 +373,7 @@ mod tests {
                 "nameIdentifiers": []
             }
         ]);
-        adapter
-            .work_cache
-            .insert("10.5281/ZENODO.1234567".to_string(), work);
+        adapter.work_cache.insert("10.5281/ZENODO.1234567".to_string(), work);
         let authors = adapter.get_author_list("10.5281/ZENODO.1234567").await;
         assert_eq!(authors.len(), 1);
         assert_eq!(authors[0].name(), Some("CERN Data Team"));
@@ -408,12 +384,7 @@ mod tests {
         let mut adapter = DataCite2Wikidata::new();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["creators"] = json!([]);
-        adapter
-            .work_cache
-            .insert("10.5281/ZENODO.1234567".to_string(), work);
-        assert!(adapter
-            .get_author_list("10.5281/ZENODO.1234567")
-            .await
-            .is_empty());
+        adapter.work_cache.insert("10.5281/ZENODO.1234567".to_string(), work);
+        assert!(adapter.get_author_list("10.5281/ZENODO.1234567").await.is_empty());
     }
 }

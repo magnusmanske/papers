@@ -3,8 +3,7 @@ extern crate serde_json;
 #[macro_use]
 extern crate lazy_static;
 
-use wikibase::entity_diff::*;
-use wikibase::*;
+use wikibase::{entity_diff::*, *};
 
 pub mod arxiv2wikidata;
 pub mod author_name_string;
@@ -25,4 +24,3 @@ pub mod sourcemd_config;
 pub mod wikidata_interaction;
 pub mod wikidata_papers;
 pub mod wikidata_string_cache;
-

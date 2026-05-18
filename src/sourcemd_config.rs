@@ -1,13 +1,15 @@
-use crate::sourcemd_command::SourceMDcommand;
+use std::sync::Arc;
+
 use anyhow::{anyhow, Result};
 use chrono::prelude::*;
 use config::{Config, File};
 use dashmap::DashSet;
 use mysql as my;
 use serde_json::Value;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
+
+use crate::sourcemd_command::SourceMDcommand;
 
 #[derive(Debug, Clone)]
 pub struct SourceMD {
@@ -55,10 +57,7 @@ impl SourceMD {
     pub async fn set_batch_running(&self, batch_id: i64) {
         println!("set_batch_running: Starting batch #{}", batch_id);
         self.running_batch_ids.insert(batch_id);
-        println!(
-            "Currently {} bots running",
-            self.number_of_bots_running().await
-        );
+        println!("Currently {} bots running", self.number_of_bots_running().await);
     }
 
     pub async fn number_of_bots_running(&self) -> usize {
@@ -74,7 +73,8 @@ impl SourceMD {
         let pool = self.pool.as_ref()?;
 
         let sql: String = r#"SELECT * FROM batch WHERE `status` ='TODO' AND NOT EXISTS (SELECT * FROM command WHERE batch_id=batch.id AND `status` IN ("RUNNING","TODO") AND `mode` NOT IN ("CREATE_PAPER_BY_ID","ADD_AUTHOR_TO_PUBLICATION")) ORDER BY `last_action`"#.into();
-        //let sql: String = "SELECT * FROM batch WHERE id=8117".into(); // TESTING (also 551)
+        // let sql: String = "SELECT * FROM batch WHERE id=8117".into(); // TESTING
+        // (also 551)
         for row in pool.prep_exec(sql, ()).ok()? {
             let row = row.ok()?;
             let id = match &row["id"] {
@@ -95,10 +95,7 @@ impl SourceMD {
         {
             self.running_batch_ids.remove(&batch_id);
         }
-        println!(
-            "Currently {} bots running",
-            self.number_of_bots_running().await
-        );
+        println!("Currently {} bots running", self.number_of_bots_running().await);
         Some(())
     }
 
@@ -116,7 +113,7 @@ impl SourceMD {
             batch_id
         );
         let mut result = pool.prep_exec(sql, ())?;
-        /* trunk-ignore(clippy/never_loop) */
+        // trunk-ignore(clippy/never_loop)
         if result.next().is_some() {
             return Err(anyhow!(
                 "QuickStatementsConfig::check_batch_not_stopped: batch #{} is not RUNNING or TODO",
@@ -131,21 +128,17 @@ impl SourceMD {
         // TODO stats
         pool.prep_exec(
             r#"UPDATE `batch` SET `status`=?,`last_action`=? WHERE id=?"#,
-            (
-                my::Value::from(status),
-                my::Value::from(self.timestamp()),
-                my::Value::Int(batch_id),
-            ),
+            (my::Value::from(status), my::Value::from(self.timestamp()), my::Value::Int(batch_id)),
         )
         .ok()?;
         self.update_batch_stats(batch_id, pool)
-        //self.deactivate_batch_run(batch_id)
+        // self.deactivate_batch_run(batch_id)
     }
 
     pub fn get_next_command(&self, batch_id: i64) -> Option<SourceMDcommand> {
         let pool = self.pool.as_ref()?;
         let sql = r#"SELECT * FROM command FORCE INDEX (batch_id_4) WHERE `batch_id`=? AND `status`='TODO' ORDER BY `serial_number` LIMIT 1"#;
-        /* trunk-ignore(clippy/never_loop) */
+        // trunk-ignore(clippy/never_loop)
         if let Some(row) = (pool.prep_exec(sql, (my::Value::Int(batch_id),)).ok()?).next() {
             let row = row.ok()?;
             return SourceMDcommand::new_from_row(row);
@@ -195,10 +188,7 @@ impl SourceMD {
         }
         pool.prep_exec(
             r#"UPDATE `batch` SET `overview`=? WHERE `id`=?"#,
-            (
-                my::Value::from(format!("{}", &j)),
-                my::Value::from(batch_id),
-            ),
+            (my::Value::from(format!("{}", j)), my::Value::from(batch_id)),
         )
         .ok()?;
         Some(())
@@ -213,9 +203,8 @@ impl SourceMD {
             .unwrap_or_else(|_| panic!("Replica file '{}' can't be opened", ini_file));
         self.params["mysql"]["user"] =
             json!(settings.get_string("client.user").expect("No client.name"));
-        self.params["mysql"]["pass"] = json!(settings
-            .get_string("client.password")
-            .expect("No client.password"));
+        self.params["mysql"]["pass"] =
+            json!(settings.get_string("client.password").expect("No client.password"));
         self.params["mysql"]["schema"] = json!("s52680__sourcemd_batches_p");
 
         // On Labs
@@ -242,18 +231,15 @@ impl SourceMD {
             None => {
                 println!("{settings:?}");
                 panic!("Can't establish DB connection!");
-            }
+            },
         };
-        pool.prep_exec(
-            r#"UPDATE `batch` SET `status`='TODO' WHERE status='RUNNING'"#,
-            (),
-        )
-        .expect("SourceMD::init: Resetting old running batches to TODO has failed");
+        pool.prep_exec(r#"UPDATE `batch` SET `status`='TODO' WHERE status='RUNNING'"#, ())
+            .expect("SourceMD::init: Resetting old running batches to TODO has failed");
     }
 
     fn create_mysql_pool(&mut self) {
         let mut builder = my::OptsBuilder::new();
-        //println!("{}", &self.params);
+        // println!("{}", &self.params);
         builder
             .ip_or_hostname(self.params["mysql"]["host"].as_str())
             .db_name(self.params["mysql"]["schema"].as_str())
@@ -270,21 +256,19 @@ impl SourceMD {
     pub async fn create_mw_api(ini_file: &str) -> Result<Api> {
         let mut mw_api = Api::new("https://www.wikidata.org/w/api.php").await?;
         // File::with_name(..) is shorthand for File::from(Path::new(..))
-        let settings = Config::builder()
-            .add_source(File::with_name(ini_file))
-            .build()?;
+        let settings = Config::builder().add_source(File::with_name(ini_file)).build()?;
         match settings.get_string("user.token") {
             Ok(token) => {
                 // Use OAuth2 token
                 mw_api.set_oauth2(&token);
-            }
+            },
             Err(_) => {
                 // Use username/password login
                 let lgname = settings.get_string("user.user")?;
                 let lgpass = settings.get_string("user.pass")?;
                 println!("LOGIN {lgname}/{lgpass}");
                 mw_api.login(lgname, lgpass).await?;
-            }
+            },
         }
         Ok(mw_api)
     }

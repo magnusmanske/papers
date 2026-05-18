@@ -1,12 +1,14 @@
-use crate::scientific_publication_adapter::{crossref_work_type_to_q, ScientificPublicationAdapter};
-use crate::*;
-use async_trait::async_trait;
-use chrono::prelude::*;
-use crossref::response::work::PartialDate;
-use crossref::Crossref;
 use std::collections::HashMap;
 
+use async_trait::async_trait;
+use chrono::prelude::*;
+use crossref::{response::work::PartialDate, Crossref};
+
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
+use crate::{
+    scientific_publication_adapter::{crossref_work_type_to_q, ScientificPublicationAdapter},
+    *,
+};
 
 pub struct Crossref2Wikidata {
     author_cache: HashMap<String, String>,
@@ -67,8 +69,16 @@ fn parse_crossref_date(issued: &PartialDate) -> Option<(u32, Option<u8>, Option<
         return None;
     }
     let year = dp[0].as_u64()? as u32;
-    let month = if dp.len() >= 2 { dp[1].as_u64().map(|x| x as u8) } else { None };
-    let day = if dp.len() >= 3 { dp[2].as_u64().map(|x| x as u8) } else { None };
+    let month = if dp.len() >= 2 {
+        dp[1].as_u64().map(|x| x as u8)
+    } else {
+        None
+    };
+    let day = if dp.len() >= 3 {
+        dp[2].as_u64().map(|x| x as u8)
+    } else {
+        None
+    };
     Some((year, month, day))
 }
 
@@ -150,11 +160,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 
     fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
         match self.get_cached_publication_from_id(publication_id) {
-            Some(work) => work
-                .title
-                .iter()
-                .map(|t| LocaleString::new("en", t))
-                .collect(),
+            Some(work) => work.title.iter().map(|t| LocaleString::new("en", t)).collect(),
             None => vec![],
         }
     }
@@ -173,18 +179,14 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         // Date
         if !item.has_claims_with_property("P577") {
             if let Some((year, month, day)) = self.get_publication_date(publication_id) {
-                let statement =
-                    self.get_wb_time_from_partial("P577".to_string(), year, month, day);
+                let statement = self.get_wb_time_from_partial("P577".to_string(), year, month, day);
                 item.add_claim(statement);
             }
         }
 
         // Issue/volume/page
-        let string_options = vec![
-            ("P433", &work.issue),
-            ("P478", &work.volume),
-            ("P304", &work.page),
-        ];
+        let string_options =
+            vec![("P433", &work.issue), ("P478", &work.volume), ("P304", &work.page)];
         for option in string_options {
             if !item.has_claims_with_property(option.0) {
                 if let Some(v) = option.1 {
@@ -201,7 +203,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 
         if let Some(subjects) = &work.subject {
             for _subject in subjects {
-                //println!("Subject:{}", &subject);
+                // println!("Subject:{}", &subject);
                 // TODO
             }
         }
@@ -225,42 +227,24 @@ mod tests {
     #[test]
     fn test_crossref_type_to_q_book() {
         assert_eq!(crossref_work_type_to_q("book"), Some("Q571"));
-        assert_eq!(
-            crossref_work_type_to_q("edited-book"),
-            Some("Q571")
-        );
-        assert_eq!(
-            crossref_work_type_to_q("reference-book"),
-            Some("Q571")
-        );
+        assert_eq!(crossref_work_type_to_q("edited-book"), Some("Q571"));
+        assert_eq!(crossref_work_type_to_q("reference-book"), Some("Q571"));
     }
 
     #[test]
     fn test_crossref_type_to_q_monograph() {
-        assert_eq!(
-            crossref_work_type_to_q("monograph"),
-            Some("Q193495")
-        );
+        assert_eq!(crossref_work_type_to_q("monograph"), Some("Q193495"));
     }
 
     #[test]
     fn test_crossref_type_to_q_chapter() {
-        assert_eq!(
-            crossref_work_type_to_q("book-chapter"),
-            Some("Q1980247")
-        );
-        assert_eq!(
-            crossref_work_type_to_q("book-section"),
-            Some("Q1980247")
-        );
+        assert_eq!(crossref_work_type_to_q("book-chapter"), Some("Q1980247"));
+        assert_eq!(crossref_work_type_to_q("book-section"), Some("Q1980247"));
     }
 
     #[test]
     fn test_crossref_type_to_q_unknown_returns_none() {
-        assert_eq!(
-            crossref_work_type_to_q("unknown-type"),
-            None
-        );
+        assert_eq!(crossref_work_type_to_q("unknown-type"), None);
     }
 
     // === should_add_string ===
@@ -277,7 +261,8 @@ mod tests {
         let c = Crossref2Wikidata::new();
         assert!(c.should_add_string("1"));
         assert!(c.should_add_string("some-value"));
-        assert!(c.should_add_string("N/A")); // case-sensitive: uppercase is accepted
+        assert!(c.should_add_string("N/A")); // case-sensitive: uppercase is
+                                             // accepted
     }
 
     #[test]
@@ -288,13 +273,7 @@ mod tests {
 
     #[test]
     fn test_crossref_type_to_q_proceedings() {
-        assert_eq!(
-            crossref_work_type_to_q("proceedings-article"),
-            Some("Q23927052")
-        );
-        assert_eq!(
-            crossref_work_type_to_q("proceedings"),
-            Some("Q1143604")
-        );
+        assert_eq!(crossref_work_type_to_q("proceedings-article"), Some("Q23927052"));
+        assert_eq!(crossref_work_type_to_q("proceedings"), Some("Q1143604"));
     }
 }

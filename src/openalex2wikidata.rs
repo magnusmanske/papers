@@ -1,10 +1,13 @@
-use crate::generic_author_info::GenericAuthorInfo;
-use crate::scientific_publication_adapter::{crossref_work_type_to_q, ScientificPublicationAdapter};
-use crate::*;
-use async_trait::async_trait;
 use std::collections::HashMap;
 
+use async_trait::async_trait;
+
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
+use crate::{
+    generic_author_info::GenericAuthorInfo,
+    scientific_publication_adapter::{crossref_work_type_to_q, ScientificPublicationAdapter},
+    *,
+};
 
 pub struct OpenAlex2Wikidata {
     author_cache: HashMap<String, String>,
@@ -81,7 +84,6 @@ impl OpenAlex2Wikidata {
             }
         }
     }
-
 }
 
 #[async_trait(?Send)]
@@ -147,7 +149,7 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
                     }
                 }
                 vec![]
-            }
+            },
             None => vec![],
         }
     }
@@ -179,9 +181,7 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
     fn get_work_issn(&self, publication_id: &str) -> Option<String> {
         let work = self.get_cached_publication_from_id(publication_id)?;
         // Primary location's source has ISSN
-        work["primary_location"]["source"]["issn_l"]
-            .as_str()
-            .map(|s| s.to_string())
+        work["primary_location"]["source"]["issn_l"].as_str().map(|s| s.to_string())
     }
 
     async fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
@@ -277,9 +277,7 @@ mod tests {
     #[test]
     fn test_get_work_titles() {
         let mut adapter = OpenAlex2Wikidata::new();
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), make_work());
+        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
         let titles = adapter.get_work_titles("10.1234/TEST");
         assert_eq!(titles.len(), 1);
         assert_eq!(titles[0].value(), "Test Paper Title");
@@ -305,13 +303,8 @@ mod tests {
     #[test]
     fn test_get_work_type() {
         let mut adapter = OpenAlex2Wikidata::new();
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), make_work());
-        assert_eq!(
-            adapter.get_work_type("10.1234/TEST"),
-            Some("Q13442814".to_string())
-        );
+        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
+        assert_eq!(adapter.get_work_type("10.1234/TEST"), Some("Q13442814".to_string()));
     }
 
     #[test]
@@ -320,30 +313,20 @@ mod tests {
         let mut work = make_work();
         work["type_crossref"] = json!("book");
         adapter.work_cache.insert("10.1234/TEST".to_string(), work);
-        assert_eq!(
-            adapter.get_work_type("10.1234/TEST"),
-            Some("Q571".to_string())
-        );
+        assert_eq!(adapter.get_work_type("10.1234/TEST"), Some("Q571".to_string()));
     }
 
     #[test]
     fn test_get_publication_date() {
         let mut adapter = OpenAlex2Wikidata::new();
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), make_work());
-        assert_eq!(
-            adapter.get_publication_date("10.1234/TEST"),
-            Some((2023, Some(6), Some(15)))
-        );
+        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
+        assert_eq!(adapter.get_publication_date("10.1234/TEST"), Some((2023, Some(6), Some(15))));
     }
 
     #[test]
     fn test_get_volume_and_issue() {
         let mut adapter = OpenAlex2Wikidata::new();
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), make_work());
+        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
         assert_eq!(adapter.get_volume("10.1234/TEST"), Some("42".to_string()));
         assert_eq!(adapter.get_issue("10.1234/TEST"), Some("3".to_string()));
     }
@@ -351,29 +334,19 @@ mod tests {
     #[test]
     fn test_get_work_issn() {
         let mut adapter = OpenAlex2Wikidata::new();
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), make_work());
-        assert_eq!(
-            adapter.get_work_issn("10.1234/TEST"),
-            Some("1234-5678".to_string())
-        );
+        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
+        assert_eq!(adapter.get_work_issn("10.1234/TEST"), Some("1234-5678".to_string()));
     }
 
     #[tokio::test]
     async fn test_get_author_list() {
         let mut adapter = OpenAlex2Wikidata::new();
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), make_work());
+        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
         let authors = adapter.get_author_list("10.1234/TEST").await;
         assert_eq!(authors.len(), 2);
         assert_eq!(authors[0].name(), Some("Alice Smith"));
         assert_eq!(authors[0].list_number(), Some("1"));
-        assert_eq!(
-            authors[0].prop2id().get("P496"),
-            Some(&"0000-0001-2345-6789".to_string())
-        );
+        assert_eq!(authors[0].prop2id().get("P496"), Some(&"0000-0001-2345-6789".to_string()));
         assert_eq!(authors[1].name(), Some("Bob Jones"));
         assert_eq!(authors[1].list_number(), Some("2"));
         assert!(!authors[1].prop2id().contains_key("P496"));
@@ -391,23 +364,15 @@ mod tests {
     #[test]
     fn test_add_identifiers_from_cached_publication() {
         let mut adapter = OpenAlex2Wikidata::new();
-        adapter
-            .work_cache
-            .insert("10.1234/TEST".to_string(), make_work());
+        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
         let mut ret = vec![];
         adapter.add_identifiers_from_cached_publication("10.1234/TEST", &mut ret);
-        assert!(ret.iter().any(
-            |id| *id.work_type() == GenericWorkType::Property(IdProp::DOI)
-                && id.id() == "10.1234/TEST"
-        ));
-        assert!(ret.iter().any(
-            |id| *id.work_type() == GenericWorkType::Property(IdProp::PMID)
-                && id.id() == "12345678"
-        ));
-        assert!(ret.iter().any(
-            |id| *id.work_type() == GenericWorkType::Property(IdProp::PMCID)
-                && id.id() == "PMC9876543"
-        ));
+        assert!(ret.iter().any(|id| *id.work_type() == GenericWorkType::Property(IdProp::DOI)
+            && id.id() == "10.1234/TEST"));
+        assert!(ret.iter().any(|id| *id.work_type() == GenericWorkType::Property(IdProp::PMID)
+            && id.id() == "12345678"));
+        assert!(ret.iter().any(|id| *id.work_type() == GenericWorkType::Property(IdProp::PMCID)
+            && id.id() == "PMC9876543"));
     }
 
     #[test]

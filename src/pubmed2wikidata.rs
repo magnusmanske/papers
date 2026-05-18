@@ -1,10 +1,14 @@
-use crate::generic_author_info::GenericAuthorInfo;
-use crate::identifiers::{is_pubmed_id, GenericWorkIdentifier, GenericWorkType, IdProp};
-use crate::scientific_publication_adapter::ScientificPublicationAdapter;
-use crate::*;
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use pubmed::*;
-use std::collections::HashMap;
+
+use crate::{
+    generic_author_info::GenericAuthorInfo,
+    identifiers::{is_pubmed_id, GenericWorkIdentifier, GenericWorkType, IdProp},
+    scientific_publication_adapter::ScientificPublicationAdapter,
+    *,
+};
 
 #[derive(Debug, Clone)]
 pub struct Pubmed2Wikidata {
@@ -35,19 +39,13 @@ impl Pubmed2Wikidata {
     }
 
     fn get_author_name_string(&self, author: &Author) -> Option<String> {
-        let mut ret: String = match &author.last_name {
-            Some(s) => s.to_string(),
-            None => return None,
+        let last_name = author.last_name.as_deref()?;
+        let first_part = author.fore_name.as_deref().or(author.initials.as_deref());
+        let full_name = match first_part {
+            Some(first) => format!("{first} {last_name}"),
+            None => last_name.to_string(),
         };
-        match &author.fore_name {
-            Some(s) => ret = s.to_string() + " " + &ret,
-            None => {
-                if let Some(s) = &author.initials {
-                    ret = s.to_string() + " " + &ret
-                }
-            }
-        }
-        Some(self.sanitize_author_name(&ret))
+        Some(self.sanitize_author_name(&full_name))
     }
 
     async fn publication_id_from_pubmed(&mut self, publication_id: &str) -> Option<String> {
@@ -66,11 +64,7 @@ impl Pubmed2Wikidata {
         let query = doi.to_string();
         let work_ids: Vec<u64> = match self.query_cache.get(&query) {
             Some(work_ids) => work_ids.clone(),
-            None => self
-                .client
-                .article_ids_from_query(&query, 10)
-                .await
-                .unwrap_or_default(),
+            None => self.client.article_ids_from_query(&query, 10).await.unwrap_or_default(),
         };
         self.query_cache.insert(query, work_ids.clone());
         for publication_id in &work_ids {
@@ -80,8 +74,8 @@ impl Pubmed2Wikidata {
                 match self.client.article(*publication_id).await {
                     Ok(work) => {
                         e.insert(work);
-                    }
-                    Err(e) => self.warn(&format!("pubmed::publication_ids_from_doi: {:?}", &e)),
+                    },
+                    Err(e) => self.warn(&format!("pubmed::publication_ids_from_doi: {:?}", e)),
                 }
             }
         }
@@ -92,10 +86,7 @@ impl Pubmed2Wikidata {
         work_ids
             .iter()
             .map(|s| s.to_string())
-            .filter(|pub_id| {
-                self.get_dois_from_cached_publication(pub_id)
-                    .contains(&doi_upper)
-            })
+            .filter(|pub_id| self.get_dois_from_cached_publication(pub_id).contains(&doi_upper))
             .collect()
     }
 
@@ -171,9 +162,9 @@ impl Pubmed2Wikidata {
                         "doi" => ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id)),
                         other => {
                             self.warn(&format!("pubmed2wikidata::get_identifier_list unknown paper ID type '{other}'"));
-                        }
+                        },
                     }
-                }
+                },
                 _ => continue,
             }
         }
@@ -218,9 +209,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
     }
 
     fn get_work_issn(&self, publication_id: &str) -> Option<String> {
-        let work = self
-            .get_cached_publication_from_id(publication_id)?
-            .to_owned();
+        let work = self.get_cached_publication_from_id(publication_id)?.to_owned();
         let medline_citation = work.medline_citation?.to_owned();
         let article = medline_citation.article?.to_owned();
         let journal = article.journal?.to_owned();
@@ -241,13 +230,13 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                         {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
-                    }
+                    },
                     IdProp::DOI => {
                         for publication_id in self.publication_ids_from_doi(id.id()).await {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             }
         }
@@ -377,8 +366,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
             return ret;
         }
 
-        let mut list_num = 1;
-        for author in &author_list.authors {
+        for (list_num, author) in (1..).zip(author_list.authors.iter()) {
             let mut prop2id: HashMap<String, String> = HashMap::new();
             for aid in &author.identifiers {
                 if let (Some(source), Some(id)) = (&aid.source, &aid.id) {
@@ -388,7 +376,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
                             if let Some(id) = id.split('/').next_back() {
                                 prop2id.insert("P496".to_string(), id.to_string());
                             }
-                        }
+                        },
                         other => self.warn(&format!("Unknown author source: {other}:{id}")),
                     }
                 }
@@ -398,7 +386,6 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
             gai.set_list_number(Some(list_num.to_string()));
             *gai.prop2id_mut() = prop2id;
             ret.push(gai);
-            list_num += 1;
         }
 
         ret
@@ -430,10 +417,7 @@ mod tests {
         PubmedArticle {
             medline_citation: Some(MedlineCitation {
                 pmid,
-                article: Some(Article {
-                    e_location_ids,
-                    ..Article::new()
-                }),
+                article: Some(Article { e_location_ids, ..Article::new() }),
                 ..MedlineCitation::new()
             }),
             pubmed_data: Some(PubmedData {
@@ -448,10 +432,8 @@ mod tests {
     #[test]
     fn test_get_dois_from_cached_publication_with_doi() {
         let mut pm = Pubmed2Wikidata::new();
-        pm.work_cache.insert(
-            "12345".to_string(),
-            make_article(12345, Some("10.1234/test")),
-        );
+        pm.work_cache
+            .insert("12345".to_string(), make_article(12345, Some("10.1234/test")));
         let dois = pm.get_dois_from_cached_publication("12345");
         assert!(dois.contains(&"10.1234/TEST".to_string()));
     }
@@ -459,8 +441,7 @@ mod tests {
     #[test]
     fn test_get_dois_from_cached_publication_no_doi() {
         let mut pm = Pubmed2Wikidata::new();
-        pm.work_cache
-            .insert("99999".to_string(), make_article(99999, None));
+        pm.work_cache.insert("99999".to_string(), make_article(99999, None));
         let dois = pm.get_dois_from_cached_publication("99999");
         assert!(dois.is_empty());
     }
@@ -481,14 +462,11 @@ mod tests {
 
         let mut pm = Pubmed2Wikidata::new();
         // Pre-populate query_cache so no network call is made
-        pm.query_cache
-            .insert(target_doi.to_string(), vec![11111, 22222]);
+        pm.query_cache.insert(target_doi.to_string(), vec![11111, 22222]);
         // Pre-populate work_cache: article 11111 has the correct DOI,
         // article 22222 has a different DOI
-        pm.work_cache
-            .insert("11111".to_string(), make_article(11111, Some(target_doi)));
-        pm.work_cache
-            .insert("22222".to_string(), make_article(22222, Some(wrong_doi)));
+        pm.work_cache.insert("11111".to_string(), make_article(11111, Some(target_doi)));
+        pm.work_cache.insert("22222".to_string(), make_article(22222, Some(wrong_doi)));
 
         let result = pm.publication_ids_from_doi(target_doi).await;
         assert_eq!(result, vec!["11111".to_string()]);
@@ -501,10 +479,8 @@ mod tests {
 
         let mut pm = Pubmed2Wikidata::new();
         pm.query_cache.insert(target_doi.to_string(), vec![33333]);
-        pm.work_cache.insert(
-            "33333".to_string(),
-            make_article(33333, Some("10.9999/different")),
-        );
+        pm.work_cache
+            .insert("33333".to_string(), make_article(33333, Some("10.9999/different")));
 
         let result = pm.publication_ids_from_doi(target_doi).await;
         assert!(result.is_empty());
@@ -538,20 +514,17 @@ mod tests {
     #[test]
     fn get_work_titles_returns_english_title() {
         let mut pm = Pubmed2Wikidata::new();
-        pm.work_cache.insert(
-            "1".to_string(),
-            PubmedArticle {
-                medline_citation: Some(MedlineCitation {
-                    pmid: 1,
-                    article: Some(Article {
-                        title: Some("A Test Paper Title".to_string()),
-                        ..Article::new()
-                    }),
-                    ..MedlineCitation::new()
+        pm.work_cache.insert("1".to_string(), PubmedArticle {
+            medline_citation: Some(MedlineCitation {
+                pmid: 1,
+                article: Some(Article {
+                    title: Some("A Test Paper Title".to_string()),
+                    ..Article::new()
                 }),
-                pubmed_data: None,
-            },
-        );
+                ..MedlineCitation::new()
+            }),
+            pubmed_data: None,
+        });
         let titles = pm.get_work_titles("1");
         assert_eq!(titles.len(), 1);
         assert_eq!(titles[0].value(), "A Test Paper Title");
@@ -574,23 +547,20 @@ mod tests {
     #[test]
     fn get_work_issn_extracts_issn() {
         let mut pm = Pubmed2Wikidata::new();
-        pm.work_cache.insert(
-            "3".to_string(),
-            PubmedArticle {
-                medline_citation: Some(MedlineCitation {
-                    pmid: 3,
-                    article: Some(Article {
-                        journal: Some(Journal {
-                            issn: Some("1234-5678".to_string()),
-                            ..Journal::new()
-                        }),
-                        ..Article::new()
+        pm.work_cache.insert("3".to_string(), PubmedArticle {
+            medline_citation: Some(MedlineCitation {
+                pmid: 3,
+                article: Some(Article {
+                    journal: Some(Journal {
+                        issn: Some("1234-5678".to_string()),
+                        ..Journal::new()
                     }),
-                    ..MedlineCitation::new()
+                    ..Article::new()
                 }),
-                pubmed_data: None,
-            },
-        );
+                ..MedlineCitation::new()
+            }),
+            pubmed_data: None,
+        });
         assert_eq!(pm.get_work_issn("3"), Some("1234-5678".to_string()));
     }
 

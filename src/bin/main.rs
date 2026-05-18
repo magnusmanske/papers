@@ -1,33 +1,25 @@
 #[macro_use]
 extern crate lazy_static;
 
-use crate::sourcemd_command::SourceMDcommand;
-use crate::wikidata_string_cache::WikidataStringCache;
+use std::{io, io::prelude::*, sync::Arc, time::Duration};
+
 use futures::prelude::*;
-use papers::arxiv2wikidata::Arxiv2Wikidata;
-use papers::author_name_string::AuthorNameString;
-use papers::crossref2wikidata::Crossref2Wikidata;
-use papers::datacite2wikidata::DataCite2Wikidata;
-use papers::europepmc2wikidata::EuropePMC2Wikidata;
-use papers::identifiers::GenericWorkIdentifier;
-use papers::openalex2wikidata::OpenAlex2Wikidata;
-use papers::orcid2wikidata::Orcid2Wikidata;
-use papers::pmc2wikidata::PMC2Wikidata;
-use papers::pubmed2wikidata::Pubmed2Wikidata;
-use papers::semanticscholar2wikidata::Semanticscholar2Wikidata;
-use papers::sourcemd_bot::SourceMDbot;
-use papers::sourcemd_config::SourceMD;
-use papers::wikidata_papers::WikidataPapers;
-use papers::*;
+use papers::{
+    arxiv2wikidata::Arxiv2Wikidata, author_name_string::AuthorNameString,
+    crossref2wikidata::Crossref2Wikidata, datacite2wikidata::DataCite2Wikidata,
+    europepmc2wikidata::EuropePMC2Wikidata, identifiers::GenericWorkIdentifier,
+    openalex2wikidata::OpenAlex2Wikidata, orcid2wikidata::Orcid2Wikidata,
+    pmc2wikidata::PMC2Wikidata, pubmed2wikidata::Pubmed2Wikidata,
+    semanticscholar2wikidata::Semanticscholar2Wikidata, sourcemd_bot::SourceMDbot,
+    sourcemd_config::SourceMD, wikidata_papers::WikidataPapers, *,
+};
+use pico_args::Arguments;
 use rand::seq::SliceRandom;
 use regex::Regex;
-use pico_args::Arguments;
-use std::io;
-use std::io::prelude::*;
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
+
+use crate::{sourcemd_command::SourceMDcommand, wikidata_string_cache::WikidataStringCache};
 
 const INI_FILE: &str = "bot.ini";
 
@@ -44,16 +36,14 @@ async fn command_authors(ini_file: &str) {
         if line.is_empty() {
             continue;
         }
-        println!("Processing {}", &line);
+        println!("Processing {}", line);
         author_from_id(&line, cache.clone(), smd.clone()).await;
     }
 }
 
 async fn author_from_id(id: &str, cache: Arc<WikidataStringCache>, smd: Arc<RwLock<SourceMD>>) {
     let mut command = SourceMDcommand::new_dummy(id);
-    let bot = SourceMDbot::new(smd.clone(), cache.clone(), 0)
-        .await
-        .unwrap();
+    let bot = SourceMDbot::new(smd.clone(), cache.clone(), 0).await.unwrap();
     bot.process_author_metadata(&mut command).await.unwrap();
 }
 
@@ -67,7 +57,7 @@ async fn command_ans(ini_file: &str) {
     let mut futures: Vec<_> = io::stdin()
         .lock()
         .lines()
-        /* trunk-ignore(clippy/lines_filter_map_ok) */
+        // trunk-ignore(clippy/lines_filter_map_ok)
         .map_while(Result::ok)
         .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty())
@@ -80,9 +70,7 @@ async fn command_ans(ini_file: &str) {
 }
 
 async fn command_papers(ini_file: &str) {
-    let mw_api = Arc::new(RwLock::new(
-        SourceMD::create_mw_api(ini_file).await.unwrap(),
-    ));
+    let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).await.unwrap()));
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         let line = match line {
@@ -92,7 +80,7 @@ async fn command_papers(ini_file: &str) {
         if line.is_empty() {
             continue;
         }
-        //println!("Processing {}", &line);
+        // println!("Processing {}", &line);
         paper_from_id(&line, mw_api.clone()).await;
     }
 }
@@ -106,7 +94,7 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
 
     let mut wdp = WikidataPapers::new(cache.clone());
-    //wdp.testing = true;
+    // wdp.testing = true;
     wdp.add_adapter(Box::new(PMC2Wikidata::new()));
     wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
     wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
@@ -128,10 +116,10 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
     ids.retain(|id| !id.id().is_empty());
 
     if ids.is_empty() {
-        println!("Can't find a valid ID in '{}'", &id);
+        println!("Can't find a valid ID in '{}'", id);
         return;
     }
-    //println!("IDs: {:?}", &ids);
+    // println!("IDs: {:?}", &ids);
     ids = wdp.update_from_paper_ids(&ids).await;
 
     match wdp.create_or_update_item_from_ids(mw_api, &ids).await {
@@ -139,13 +127,10 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
             if er.edited() {
                 println!("Created or updated https://www.wikidata.org/wiki/{}", er.q())
             } else {
-                println!(
-                    "Exists as https://www.wikidata.org/wiki/{}, no changes ",
-                    er.q()
-                )
+                println!("Exists as https://www.wikidata.org/wiki/{}, no changes ", er.q())
             }
-        }
-        None => println!("No item ID for '{}'!", &id),
+        },
+        None => println!("No item ID for '{}'!", id),
     }
 }
 
@@ -157,7 +142,7 @@ async fn save_item_changes(wdp: &mut WikidataPapers, mw_api: Arc<RwLock<Api>>, q
             } else {
                 println!("https://www.wikidata.org/wiki/{}, no changes ", er.q())
             }
-        }
+        },
         None => println!("No item ID!"),
     }
 }
@@ -170,7 +155,7 @@ fn usage(prog: &str) {
 
 /// Returns true if a new batch was started, false otherwise
 async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> bool {
-    //println!("BOT!");
+    // println!("BOT!");
     let batch_id = match config.read().await.get_next_batch().await {
         Some(n) => n,
         None => return false, // Nothing to do
@@ -180,13 +165,10 @@ async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>)
     let bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id).await {
         Ok(bot) => bot,
         Err(error) => {
-            println!(
-                "Error when starting bot for batch #{}: '{}'",
-                &batch_id, &error
-            );
+            println!("Error when starting bot for batch #{}: '{}'", batch_id, error);
             config.read().await.set_batch_failed(batch_id).await;
             return false;
-        }
+        },
     };
 
     println!("Batch #{} spawned", batch_id);
@@ -200,12 +182,10 @@ async fn command_bot(ini_file: &str) {
     let mut smd = SourceMD::new(ini_file).await.unwrap();
     smd.init();
     let smd = Arc::new(RwLock::new(smd));
-    let mw_api = Arc::new(RwLock::new(
-        SourceMD::create_mw_api(ini_file).await.unwrap(),
-    ));
+    let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).await.unwrap()));
     let cache = Arc::new(WikidataStringCache::new(mw_api));
     loop {
-        //println!("BOT!");
+        // println!("BOT!");
         if run_bot(smd.clone(), cache.clone()).await {
             tokio::time::sleep(Duration::from_millis(1000)).await;
         } else {
@@ -214,10 +194,8 @@ async fn command_bot(ini_file: &str) {
     }
 }
 
-/*
-For local testing:
-ssh magnus@tools-login.wmflabs.org -L 3307:tools-db:3306 -N &
-*/
+// For local testing:
+// ssh magnus@tools-login.wmflabs.org -L 3307:tools-db:3306 -N &
 
 #[tokio::main]
 async fn main() {

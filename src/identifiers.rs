@@ -1,5 +1,6 @@
-use regex::Regex;
 use std::str::FromStr;
+
+use regex::Regex;
 
 const PROP_PMID: &str = "P698";
 const PROP_PMCID: &str = "P932";
@@ -33,17 +34,13 @@ impl FromStr for IdProp {
 
 impl std::fmt::Display for IdProp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                IdProp::PMID => PROP_PMID,
-                IdProp::PMCID => PROP_PMCID,
-                IdProp::DOI => PROP_DOI,
-                IdProp::ARXIV => PROP_ARXIV,
-                IdProp::SemanticScholar => PROP_SEMANTIC_SCHOLAR,
-            }
-        )
+        write!(f, "{}", match self {
+            IdProp::PMID => PROP_PMID,
+            IdProp::PMCID => PROP_PMCID,
+            IdProp::DOI => PROP_DOI,
+            IdProp::ARXIV => PROP_ARXIV,
+            IdProp::SemanticScholar => PROP_SEMANTIC_SCHOLAR,
+        })
     }
 }
 
@@ -67,14 +64,10 @@ pub enum GenericWorkType {
 
 impl std::fmt::Display for GenericWorkType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                GenericWorkType::Property(prop) => prop.to_string(),
-                GenericWorkType::Item => "Item".to_string(),
-            }
-        )
+        write!(f, "{}", match self {
+            GenericWorkType::Property(prop) => prop.to_string(),
+            GenericWorkType::Item => "Item".to_string(),
+        })
     }
 }
 
@@ -88,7 +81,8 @@ impl GenericWorkIdentifier {
     pub fn new_prop(prop: IdProp, id: &str) -> Self {
         let id = match &prop {
             IdProp::DOI => id.to_uppercase(), // DOIs are always uppercase
-            IdProp::SemanticScholar => id.to_lowercase(), // Semantic Scholar IDs are always lowercase
+            IdProp::SemanticScholar => id.to_lowercase(), /* Semantic Scholar IDs are always
+                                                            * lowercase */
             _other => id.to_string(),
         };
         Self {
@@ -109,9 +103,10 @@ impl GenericWorkIdentifier {
         &self.work_type
     }
 
-    /// Parses a free-form identifier string into zero or more `GenericWorkIdentifier`s.
-    /// Recognises DOIs (`xx/yy`), PubMed IDs (digits only) and PMC IDs (`PMCnnn`).
-    /// Q-items are intentionally excluded; callers handle those separately.
+    /// Parses a free-form identifier string into zero or more
+    /// `GenericWorkIdentifier`s. Recognises DOIs (`xx/yy`), PubMed IDs
+    /// (digits only) and PMC IDs (`PMCnnn`). Q-items are intentionally
+    /// excluded; callers handle those separately.
     pub fn parse_ids_from_str(s: &str) -> Vec<Self> {
         lazy_static::lazy_static! {
             static ref RE_DOI:   Regex = Regex::new(r#"^(.+/.+)$"#).expect("RE_DOI");
@@ -132,7 +127,8 @@ impl GenericWorkIdentifier {
     }
 }
 
-/// Returns `true` if `id` consists entirely of ASCII digits (i.e. is a raw PubMed ID).
+/// Returns `true` if `id` consists entirely of ASCII digits (i.e. is a raw
+/// PubMed ID).
 pub fn is_pubmed_id(id: &str) -> bool {
     !id.is_empty() && id.chars().all(|c| c.is_ascii_digit())
 }
@@ -147,10 +143,7 @@ mod tests {
         assert_eq!(IdProp::from_str(PROP_PMCID).unwrap(), IdProp::PMCID);
         assert_eq!(IdProp::from_str(PROP_DOI).unwrap(), IdProp::DOI);
         assert_eq!(IdProp::from_str(PROP_ARXIV).unwrap(), IdProp::ARXIV);
-        assert_eq!(
-            IdProp::from_str(PROP_SEMANTIC_SCHOLAR).unwrap(),
-            IdProp::SemanticScholar
-        );
+        assert_eq!(IdProp::from_str(PROP_SEMANTIC_SCHOLAR).unwrap(), IdProp::SemanticScholar);
         assert!(IdProp::from_str("P123").is_err());
     }
 
@@ -216,10 +209,7 @@ mod tests {
         let ids = GenericWorkIdentifier::parse_ids_from_str("10.1234/foobar");
         assert_eq!(ids.len(), 1);
         assert_eq!(ids[0].id(), "10.1234/FOOBAR"); // DOIs are uppercased
-        assert_eq!(
-            ids[0].work_type(),
-            &GenericWorkType::Property(IdProp::DOI)
-        );
+        assert_eq!(ids[0].work_type(), &GenericWorkType::Property(IdProp::DOI));
     }
 
     #[test]
@@ -227,10 +217,7 @@ mod tests {
         let ids = GenericWorkIdentifier::parse_ids_from_str("12345678");
         assert_eq!(ids.len(), 1);
         assert_eq!(ids[0].id(), "12345678");
-        assert_eq!(
-            ids[0].work_type(),
-            &GenericWorkType::Property(IdProp::PMID)
-        );
+        assert_eq!(ids[0].work_type(), &GenericWorkType::Property(IdProp::PMID));
     }
 
     #[test]
@@ -238,10 +225,7 @@ mod tests {
         let ids = GenericWorkIdentifier::parse_ids_from_str("PMC12345");
         assert_eq!(ids.len(), 1);
         assert_eq!(ids[0].id(), "PMC12345");
-        assert_eq!(
-            ids[0].work_type(),
-            &GenericWorkType::Property(IdProp::PMCID)
-        );
+        assert_eq!(ids[0].work_type(), &GenericWorkType::Property(IdProp::PMCID));
     }
 
     #[test]
@@ -267,8 +251,6 @@ mod tests {
     fn parse_ids_from_str_doi_with_slash_only() {
         // A slash-containing string should be recognised as a DOI
         let ids = GenericWorkIdentifier::parse_ids_from_str("a/b");
-        assert!(ids
-            .iter()
-            .any(|id| id.work_type() == &GenericWorkType::Property(IdProp::DOI)));
+        assert!(ids.iter().any(|id| id.work_type() == &GenericWorkType::Property(IdProp::DOI)));
     }
 }

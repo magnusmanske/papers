@@ -1,13 +1,14 @@
-use crate::wikidata_interaction::WikidataInteraction;
-use crate::wikidata_string_cache::WikidataStringCache;
-use crate::*;
+use std::{collections::HashMap, sync::Arc};
+
 use anyhow::{anyhow, Result};
 use deunicode::deunicode;
 use regex::Regex;
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
+
+use crate::{
+    wikidata_interaction::WikidataInteraction, wikidata_string_cache::WikidataStringCache, *,
+};
 
 const SCORE_LIST_NUMBER: u16 = 5;
 const SCORE_LIST_NUMBER_AND_NAME: u16 = 30;
@@ -63,7 +64,7 @@ impl GenericAuthorInfo {
                     match snak.property() {
                         "P1545" => ret.list_number = Some(s.to_string()),
                         "P1932" => ret.name = Some(s.to_string()),
-                        _ => {}
+                        _ => {},
                     }
                 }
             }
@@ -130,9 +131,10 @@ impl GenericAuthorInfo {
         }
     }
 
-    /// Returns true if there's a meaningful partial match with any author in the list.
-    /// Used to detect ambiguous matches that didn't meet the threshold for a definitive match.
-    /// Requires more than just a list number coincidence (score > SCORE_LIST_NUMBER).
+    /// Returns true if there's a meaningful partial match with any author in
+    /// the list. Used to detect ambiguous matches that didn't meet the
+    /// threshold for a definitive match. Requires more than just a list
+    /// number coincidence (score > SCORE_LIST_NUMBER).
     pub fn has_partial_match(&self, authors: &[GenericAuthorInfo]) -> bool {
         authors.iter().any(|a| self.compare(a) > SCORE_LIST_NUMBER)
     }
@@ -167,13 +169,13 @@ impl GenericAuthorInfo {
                     qualifiers.push(Snak::new_string("P1932", &name));
                 }
                 Statement::new_normal(Snak::new_item("P50", q), qualifiers, vec![])
-            }
+            },
             None => {
                 if name.is_empty() && qualifiers.is_empty() {
                     return None; // No addition
                 }
                 Statement::new_normal(Snak::new_string("P2093", &name), qualifiers, vec![])
-            }
+            },
         };
         Some(statement)
     }
@@ -237,13 +239,12 @@ impl GenericAuthorInfo {
                     if s != name && Self::add_aliases() {
                         item.add_alias(LocaleString::new("en", name));
                     }
-                }
+                },
                 None => item.set_label(LocaleString::new("en", name)),
             }
         }
 
-        item.descriptions_mut()
-            .push(LocaleString::new("en", "researcher"));
+        item.descriptions_mut().push(LocaleString::new("en", "researcher"));
 
         // Remaining names as aliases
         for n in &aliases {
@@ -252,22 +253,18 @@ impl GenericAuthorInfo {
                     if s != n && Self::add_aliases() {
                         item.add_alias(LocaleString::new("en", n));
                     }
-                }
+                },
                 None => {
                     if Self::add_aliases() {
                         item.add_alias(LocaleString::new("en", n));
                     }
-                }
+                },
             }
         }
 
         // Human
         if !item.has_target_entity("P31", "Q5") {
-            item.add_claim(Statement::new_normal(
-                Snak::new_item("P31", "Q5"),
-                vec![],
-                vec![],
-            ));
+            item.add_claim(Statement::new_normal(Snak::new_item("P31", "Q5"), vec![], vec![]));
         }
 
         // Researcher
@@ -337,7 +334,8 @@ impl GenericAuthorInfo {
         if self.name.is_none() {
             self.name = author2.name.clone();
         } else if let Some(name) = &author2.name {
-            self.alternative_names.push(name.to_owned()); // Sort/dedup at the end
+            self.alternative_names.push(name.to_owned()); // Sort/dedup at the
+                                                          // end
         }
         if self.wikidata_item.is_none() {
             self.wikidata_item = author2.wikidata_item.clone();
@@ -368,14 +366,13 @@ impl GenericAuthorInfo {
                             k, x, v, self.name, x
                         );
                     }
-                }
+                },
                 None => {
                     self.prop2id.insert(k.to_string(), v.to_string());
-                }
+                },
             }
         }
-        self.alternative_names
-            .extend(author2.alternative_names.iter().cloned());
+        self.alternative_names.extend(author2.alternative_names.iter().cloned());
         self.alternative_names.sort();
         self.alternative_names.dedup();
         Ok(())
@@ -400,15 +397,16 @@ impl GenericAuthorInfo {
         ret.trim().to_string()
     }
 
-    /// Collects all long (3+ char) words from a pre-processed name string, sorted.
+    /// Collects all long (3+ char) words from a pre-processed name string,
+    /// sorted.
     fn sorted_name_parts(re: &Regex, s: &str) -> Vec<String> {
         let mut parts: Vec<String> = re.captures_iter(s).map(|c| c[1].to_string()).collect();
         parts.sort();
         parts
     }
 
-    /// Returns true if two pre-processed (asciified, dots replaced) name strings
-    /// have conflicting initials after removing shared long words.
+    /// Returns true if two pre-processed (asciified, dots replaced) name
+    /// strings have conflicting initials after removing shared long words.
     /// E.g., "ck clarke" vs "jenny clarke" → true (c,k vs j conflict)
     /// "j smith" vs "john smith" → false (j matches j)
     /// "heinrich manske" vs "manske heinrich" → false (no remaining parts)
@@ -419,21 +417,14 @@ impl GenericAuthorInfo {
             static ref RE_ALL_C: Regex = Regex::new(r"\b(\w+)\b")
                 .expect("names_have_conflicting_initials: could not compile RE_ALL_C");
         }
-        let all1: Vec<String> = RE_ALL_C
-            .captures_iter(name1_mod)
-            .map(|c| c[1].to_string())
-            .collect();
-        let all2: Vec<String> = RE_ALL_C
-            .captures_iter(name2_mod)
-            .map(|c| c[1].to_string())
-            .collect();
+        let all1: Vec<String> =
+            RE_ALL_C.captures_iter(name1_mod).map(|c| c[1].to_string()).collect();
+        let all2: Vec<String> =
+            RE_ALL_C.captures_iter(name2_mod).map(|c| c[1].to_string()).collect();
         let parts1 = Self::sorted_name_parts(&RE_LONG_C, name1_mod);
         let parts2 = Self::sorted_name_parts(&RE_LONG_C, name2_mod);
-        let matched_words: Vec<String> = parts1
-            .iter()
-            .filter(|p| parts2.contains(p))
-            .cloned()
-            .collect();
+        let matched_words: Vec<String> =
+            parts1.iter().filter(|p| parts2.contains(p)).cloned().collect();
         let remaining1 = Self::remove_matched_words(&all1, &matched_words);
         let remaining2 = Self::remove_matched_words(&all2, &matched_words);
         if !remaining1.is_empty() && !remaining2.is_empty() {
@@ -444,8 +435,8 @@ impl GenericAuthorInfo {
         false
     }
 
-    /// Compares long (3+ characters) name parts, with initials compatibility check.
-    /// Returns 0 if the non-matching parts have conflicting initials
+    /// Compares long (3+ characters) name parts, with initials compatibility
+    /// check. Returns 0 if the non-matching parts have conflicting initials
     /// (e.g. "Bruce Allen" vs "G. Allen" — shared surname but B ≠ G).
     fn author_names_match(&self, name1: &str, name2: &str) -> u16 {
         lazy_static! {
@@ -483,8 +474,9 @@ impl GenericAuthorInfo {
     }
 
     /// Extracts initials from name parts.
-    /// Short parts (< 3 chars) contribute each character as a potential initial.
-    /// Long parts (>= 3 chars) contribute only their first character.
+    /// Short parts (< 3 chars) contribute each character as a potential
+    /// initial. Long parts (>= 3 chars) contribute only their first
+    /// character.
     fn extract_initials_from_parts(parts: &[String]) -> Vec<char> {
         let mut initials = Vec::new();
         for part in parts {
@@ -532,7 +524,8 @@ impl GenericAuthorInfo {
                 let l1 = self.get_longest_name_part();
                 let l2 = author2.get_longest_name_part();
                 if l1.is_some() && l2.is_some() && l1 == l2 {
-                    // Same longest name part — but only award higher score if initials are compatible
+                    // Same longest name part — but only award higher score if initials are
+                    // compatible
                     if let (Some(name1), Some(name2)) = (&self.name, &author2.name) {
                         let n1_mod = self.asciify_string(name1).replace('.', " ");
                         let n2_mod = self.asciify_string(name2).replace('.', " ");
@@ -604,7 +597,7 @@ impl GenericAuthorInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use wikibase::mediawiki::api::Api;
+    // use wikibase::mediawiki::api::Api;
 
     #[test]
     fn asciify_string() {
@@ -617,14 +610,8 @@ mod tests {
         let ga = GenericAuthorInfo::new();
         assert_eq!(ga.author_names_match("Manske M", "Manske HM"), 1);
         assert_eq!(ga.author_names_match("Manske M", "HM Manske"), 1);
-        assert_eq!(
-            ga.author_names_match("Heinrich M Manske", "manske heinrich"),
-            2
-        );
-        assert_eq!(
-            ga.author_names_match("Notmyname M Manske", "Heinrich M Manske"),
-            1
-        );
+        assert_eq!(ga.author_names_match("Heinrich M Manske", "manske heinrich"), 2);
+        assert_eq!(ga.author_names_match("Notmyname M Manske", "Heinrich M Manske"), 1);
     }
 
     #[test]
@@ -678,10 +665,7 @@ mod tests {
         assert_eq!(ga1.compare(&ga2), SCORE_LIST_NUMBER);
         ga1.name = Some("Foobar Baz".to_string());
         ga2.name = Some("Foobar B.".to_string());
-        assert_eq!(
-            ga1.compare(&ga2),
-            SCORE_LIST_NUMBER_AND_NAME + SCORE_NAME_MATCH
-        );
+        assert_eq!(ga1.compare(&ga2), SCORE_LIST_NUMBER_AND_NAME + SCORE_NAME_MATCH);
         ga1.name = None;
         ga2.name = None;
         ga1.list_number = Some("456".to_string());
@@ -724,8 +708,7 @@ mod tests {
         let mut ga = GenericAuthorInfo::new();
         ga.name = Some("Magnus Manske".to_string());
         ga.alternative_names.push("HM Manske".to_string());
-        ga.prop2id
-            .insert("P496".to_string(), "1234-5678-1234-5678".to_string());
+        ga.prop2id.insert("P496".to_string(), "1234-5678-1234-5678".to_string());
         let mut item = Entity::new_empty_item();
         ga.amend_author_item(&mut item);
         assert_eq!(item.label_in_locale("en"), Some("Magnus Manske"));
@@ -734,10 +717,7 @@ mod tests {
             assert_eq!(*item.aliases(), vec![LocaleString::new("en", "HM Manske")]);
         }
         assert_eq!(*item.claims()[0].main_snak(), Snak::new_item("P31", "Q5"));
-        assert_eq!(
-            *item.claims()[1].main_snak(),
-            Snak::new_item("P106", "Q1650915")
-        );
+        assert_eq!(*item.claims()[1].main_snak(), Snak::new_item("P106", "Q1650915"));
         assert_eq!(
             *item.claims()[2].main_snak(),
             Snak::new_external_id("P496", "1234-5678-1234-5678")
@@ -810,22 +790,19 @@ mod tests {
         let mut ga2 = GenericAuthorInfo::new();
         ga2.name = Some("J Smith".to_string());
         ga2.list_number = Some("1".to_string());
-        ga2.prop2id
-            .insert("P496".to_string(), "0000-1234-5678-9012".to_string());
+        ga2.prop2id.insert("P496".to_string(), "0000-1234-5678-9012".to_string());
 
         assert!(ga1.merge_from(&ga2).is_ok());
         assert_eq!(ga1.name, Some("John Smith".to_string())); // primary name kept
         assert!(ga1.alternative_names.contains(&"J Smith".to_string())); // secondary added as alias
-        assert_eq!(
-            ga1.prop2id.get("P496"),
-            Some(&"0000-1234-5678-9012".to_string())
-        ); // prop absorbed
+        assert_eq!(ga1.prop2id.get("P496"), Some(&"0000-1234-5678-9012".to_string())); // prop absorbed
         assert_eq!(ga1.list_number, Some("1".to_string()));
     }
 
     #[test]
     fn merge_from_conflicting_list_numbers_succeeds() {
-        // Previously this would return Err; now it should succeed and keep existing number.
+        // Previously this would return Err; now it should succeed and keep existing
+        // number.
         let mut ga1 = GenericAuthorInfo::new();
         ga1.name = Some("John Smith".to_string());
         ga1.list_number = Some("1".to_string());
@@ -840,23 +817,18 @@ mod tests {
 
     #[test]
     fn merge_from_conflicting_prop2id_succeeds_keeps_existing() {
-        // Previously this would return Err; now it should succeed and keep existing value.
+        // Previously this would return Err; now it should succeed and keep existing
+        // value.
         let mut ga1 = GenericAuthorInfo::new();
-        ga1.prop2id
-            .insert("P496".to_string(), "0000-1111-2222-3333".to_string());
+        ga1.prop2id.insert("P496".to_string(), "0000-1111-2222-3333".to_string());
 
         let mut ga2 = GenericAuthorInfo::new();
-        ga2.prop2id
-            .insert("P496".to_string(), "9999-8888-7777-6666".to_string()); // Conflict
-        ga2.prop2id
-            .insert("P1053".to_string(), "A-1234-5678".to_string()); // New, no conflict
+        ga2.prop2id.insert("P496".to_string(), "9999-8888-7777-6666".to_string()); // Conflict
+        ga2.prop2id.insert("P1053".to_string(), "A-1234-5678".to_string()); // New, no conflict
 
         assert!(ga1.merge_from(&ga2).is_ok());
         // Conflicting property: keep existing (higher-priority source)
-        assert_eq!(
-            ga1.prop2id.get("P496"),
-            Some(&"0000-1111-2222-3333".to_string())
-        );
+        assert_eq!(ga1.prop2id.get("P496"), Some(&"0000-1111-2222-3333".to_string()));
         // Non-conflicting property: absorbed
         assert_eq!(ga1.prop2id.get("P1053"), Some(&"A-1234-5678".to_string()));
     }
@@ -882,15 +854,11 @@ mod tests {
 
         let mut ga2 = GenericAuthorInfo::new();
         ga2.wikidata_item = Some("Q42".to_string());
-        ga2.prop2id
-            .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+        ga2.prop2id.insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
         assert!(ga1.merge_from(&ga2).is_ok());
         assert_eq!(ga1.wikidata_item, Some("Q42".to_string())); // Adopted from ga2
-        assert_eq!(
-            ga1.prop2id.get("P496"),
-            Some(&"0000-0001-2345-6789".to_string())
-        );
+        assert_eq!(ga1.prop2id.get("P496"), Some(&"0000-0001-2345-6789".to_string()));
     }
 
     #[test]
@@ -923,10 +891,7 @@ mod tests {
 
         let score_exact = ga_ref.compare(&ga_exact);
         let score_partial = ga_ref.compare(&ga_partial);
-        assert!(
-            score_exact > score_partial,
-            "Exact name match must outscore partial"
-        );
+        assert!(score_exact > score_partial, "Exact name match must outscore partial");
         // 101 (2 words × 50 + 1 bonus) vs 50 (1 word match, no bonus)
         assert_eq!(score_exact, SCORE_NAME_MATCH * 2 + 1);
         assert_eq!(score_partial, SCORE_NAME_MATCH);
@@ -934,8 +899,8 @@ mod tests {
 
     #[test]
     fn compare_exact_name_bonus_isolated() {
-        // Names under 3 chars don't trigger word-matching but do trigger the exact bonus,
-        // cleanly isolating the +1 effect.
+        // Names under 3 chars don't trigger word-matching but do trigger the exact
+        // bonus, cleanly isolating the +1 effect.
         let mut ga_ref = GenericAuthorInfo::new();
         ga_ref.name = Some("Li".to_string()); // 2-char word: filtered by \w{3,} regex
 
@@ -945,11 +910,7 @@ mod tests {
         let mut ga_different = GenericAuthorInfo::new();
         ga_different.name = Some("Lo".to_string());
 
-        assert_eq!(
-            ga_ref.compare(&ga_same),
-            1,
-            "Only the +1 exact bonus contributes"
-        );
+        assert_eq!(ga_ref.compare(&ga_same), 1, "Only the +1 exact bonus contributes");
         assert_eq!(ga_ref.compare(&ga_different), 0, "No match, no bonus");
     }
 
@@ -997,9 +958,10 @@ mod tests {
 
     #[test]
     fn find_best_match_still_returns_none_for_ambiguous_different_names() {
-        // "Min Wang" vs ["Li Wang", "Min Wang"]: the exact name bonus distinguishes them.
-        // "min" (3 chars) + "wang" (4 chars) → 2-word match = 100, + 1 bonus = 101 for "Min Wang".
-        // "wang" only (1-word match, no bonus) = 50 for "Li Wang".
+        // "Min Wang" vs ["Li Wang", "Min Wang"]: the exact name bonus distinguishes
+        // them. "min" (3 chars) + "wang" (4 chars) → 2-word match = 100, + 1
+        // bonus = 101 for "Min Wang". "wang" only (1-word match, no bonus) = 50
+        // for "Li Wang".
         let mut ga_new = GenericAuthorInfo::new();
         ga_new.name = Some("Min Wang".to_string());
 
@@ -1056,13 +1018,10 @@ mod tests {
     fn has_partial_match_true_for_prop_match() {
         // A matching external ID (score 90) is a strong partial match.
         let mut ga = GenericAuthorInfo::new();
-        ga.prop2id
-            .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+        ga.prop2id.insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
         let mut other = GenericAuthorInfo::new();
-        other
-            .prop2id
-            .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+        other.prop2id.insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
         assert!(ga.has_partial_match(&[other]));
     }
@@ -1142,60 +1101,46 @@ mod tests {
         GenericAuthorInfo::deduplicate(&mut authors);
         assert_eq!(authors.len(), 1);
         assert_eq!(authors[0].name, Some("John Smith".to_string()));
-        assert!(authors[0]
-            .alternative_names
-            .contains(&"J Smith".to_string()));
+        assert!(authors[0].alternative_names.contains(&"J Smith".to_string()));
     }
 
     #[test]
     fn deduplicate_absorbs_external_ids_from_duplicate() {
-        // The later entry (lower priority) has an ORCID; after dedup it should be on the first.
+        // The later entry (lower priority) has an ORCID; after dedup it should be on
+        // the first.
         let first = GenericAuthorInfo::new_from_name_num("John Smith", 1);
         let mut second = GenericAuthorInfo::new_from_name_num("John Smith", 1);
-        second
-            .prop2id
-            .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+        second.prop2id.insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
         let mut authors = vec![first, second];
         GenericAuthorInfo::deduplicate(&mut authors);
         assert_eq!(authors.len(), 1);
-        assert_eq!(
-            authors[0].prop2id.get("P496"),
-            Some(&"0000-0001-2345-6789".to_string())
-        );
+        assert_eq!(authors[0].prop2id.get("P496"), Some(&"0000-0001-2345-6789".to_string()));
     }
 
     #[test]
     fn deduplicate_preserves_first_entry_data() {
         // First entry's data must win; second entry's conflicting data is discarded.
         let mut first = GenericAuthorInfo::new_from_name_num("John Smith", 1);
-        first
-            .prop2id
-            .insert("P496".to_string(), "FIRST-ORCID".to_string());
+        first.prop2id.insert("P496".to_string(), "FIRST-ORCID".to_string());
 
         let mut second = GenericAuthorInfo::new_from_name_num("John Smith", 1);
-        second
-            .prop2id
-            .insert("P496".to_string(), "SECOND-ORCID".to_string()); // Conflict: first wins
+        second.prop2id.insert("P496".to_string(), "SECOND-ORCID".to_string()); // Conflict: first wins
 
         let mut authors = vec![first, second];
         GenericAuthorInfo::deduplicate(&mut authors);
         assert_eq!(authors.len(), 1);
-        assert_eq!(
-            authors[0].prop2id.get("P496"),
-            Some(&"FIRST-ORCID".to_string())
-        );
+        assert_eq!(authors[0].prop2id.get("P496"), Some(&"FIRST-ORCID".to_string()));
     }
 
     #[test]
     fn deduplicate_tolerates_different_list_numbers_when_names_match_strongly() {
-        // Two authors with the same full name but different list numbers (from sources that
-        // disagree on ordering) should be merged; the first entry's list number is kept.
+        // Two authors with the same full name but different list numbers (from sources
+        // that disagree on ordering) should be merged; the first entry's list
+        // number is kept.
         let first = GenericAuthorInfo::new_from_name_num("Heinrich Manske", 1);
         let mut second = GenericAuthorInfo::new_from_name_num("Heinrich Manske", 3); // shifted position
-        second
-            .prop2id
-            .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+        second.prop2id.insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
         let mut authors = vec![first.clone(), second];
         GenericAuthorInfo::deduplicate(&mut authors);
@@ -1211,10 +1156,7 @@ mod tests {
         let ga = GenericAuthorInfo::new();
         // Cases from the false-positive Wikidata edit:
         assert_eq!(ga.author_names_match("Bruce Allen", "G. Allen"), 0);
-        assert_eq!(
-            ga.author_names_match("Jonathan Anderson", "S. B. Anderson"),
-            0
-        );
+        assert_eq!(ga.author_names_match("Jonathan Anderson", "S. B. Anderson"), 0);
         assert_eq!(ga.author_names_match("Carl Blair", "D. G. Blair"), 0);
         assert_eq!(ga.author_names_match("R Gustafson", "E. K. Gustafson"), 0);
         assert_eq!(ga.author_names_match("Andrew M. Hopkins", "P. Hopkins"), 0);
@@ -1234,16 +1176,15 @@ mod tests {
     #[test]
     fn author_names_match_no_conflict_when_one_side_fully_matched() {
         let ga = GenericAuthorInfo::new();
-        // "Heinrich Manske" vs "manske heinrich" — all long words match, no remaining parts
-        assert_eq!(
-            ga.author_names_match("Heinrich Manske", "manske heinrich"),
-            2
-        );
+        // "Heinrich Manske" vs "manske heinrich" — all long words match, no remaining
+        // parts
+        assert_eq!(ga.author_names_match("Heinrich Manske", "manske heinrich"), 2);
     }
 
     #[test]
     fn conflicting_initials_prevents_false_match_with_list_number() {
-        // "Bruce Allen"(5) vs "G. Allen"(5): should NOT match even with same list number.
+        // "Bruce Allen"(5) vs "G. Allen"(5): should NOT match even with same list
+        // number.
         let mut ga1 = GenericAuthorInfo::new();
         ga1.name = Some("Bruce Allen".to_string());
         ga1.list_number = Some("5".to_string());
@@ -1362,10 +1303,8 @@ mod tests {
         assert!(!ga1.has_partial_match(&[ga2]));
     }
 
-    /*
-    TODO:
-    fn new_from_statement
-    fn get_or_create_author_item(
-    fn update_author_item(
-    */
+    // TODO:
+    // fn new_from_statement
+    // fn get_or_create_author_item(
+    // fn update_author_item(
 }
