@@ -180,4 +180,92 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pseudowork_new_has_empty_author_ids() {
+        let w = PseudoWork::new();
+        assert!(w.author_ids.is_empty());
+    }
+
+    #[test]
+    fn pseudowork_default_matches_new() {
+        let a = PseudoWork::default();
+        let b = PseudoWork::new();
+        assert_eq!(a.author_ids, b.author_ids);
+    }
+
+    #[test]
+    fn orcid2wikidata_new_has_empty_caches() {
+        let o = Orcid2Wikidata::new();
+        assert!(o.author_cache.is_empty());
+        assert!(o.work_cache.is_empty());
+    }
+
+    #[test]
+    fn orcid2wikidata_default_matches_new() {
+        let o = Orcid2Wikidata::default();
+        assert!(o.author_cache.is_empty());
+        assert!(o.work_cache.is_empty());
+    }
+
+    #[test]
+    fn name_is_orcid2wikidata() {
+        let o = Orcid2Wikidata::new();
+        assert_eq!(o.name(), "Orcid2Wikidata");
+    }
+
+    #[test]
+    fn author_property_is_p496() {
+        let o = Orcid2Wikidata::new();
+        assert_eq!(o.author_property(), Some("P496".to_string()));
+    }
+
+    #[test]
+    fn author_cache_starts_empty() {
+        let o = Orcid2Wikidata::new();
+        assert!(o.author_cache().is_empty());
+    }
+
+    #[test]
+    fn author_cache_mut_allows_insertion() {
+        let mut o = Orcid2Wikidata::new();
+        o.author_cache_mut().insert("0000-0001-2345-6789".to_string(), "Q42".to_string());
+        assert_eq!(o.author_cache().get("0000-0001-2345-6789"), Some(&"Q42".to_string()));
+    }
+
+    #[test]
+    fn get_cached_publication_from_id_returns_none_for_unknown() {
+        let o = Orcid2Wikidata::new();
+        assert!(o.get_cached_publication_from_id("10.0/unknown").is_none());
+    }
+
+    #[test]
+    fn get_cached_publication_from_id_returns_inserted_value() {
+        let mut o = Orcid2Wikidata::new();
+        let mut work = PseudoWork::new();
+        work.author_ids.push("0000-0001-2345-6789".to_string());
+        o.work_cache.insert("10.0/test".to_string(), work);
+
+        let got = o.get_cached_publication_from_id("10.0/test").expect("should be cached");
+        assert_eq!(got.author_ids, vec!["0000-0001-2345-6789".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn get_author_list_for_unknown_publication_is_empty() {
+        let mut o = Orcid2Wikidata::new();
+        let authors = o.get_author_list("nonexistent-publication-id").await;
+        assert!(authors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn update_statements_for_unknown_publication_is_a_noop() {
+        let o = Orcid2Wikidata::new();
+        let mut item = wikibase::Entity::new_empty_item();
+        let before = item.claims().len();
+        // Calling on an unknown publication ID should not mutate the item
+        o.update_statements_for_publication_id("nonexistent", &mut item).await;
+        assert_eq!(item.claims().len(), before);
+    }
+}

@@ -42,4 +42,80 @@ pub trait WikidataInteraction {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use wiremock::{
+        matchers::{method, query_param},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    use super::*;
+
+    const SITEINFO: &str = include_str!("../test_data/api_siteinfo.json");
+    const SEARCH_Q46664291: &str = include_str!("../test_data/search_found_q46664291.json");
+    const SEARCH_EMPTY: &str = include_str!("../test_data/search_empty.json");
+
+    /// Bare trait implementor for unit-testing the default trait methods.
+    struct DummyInteractor;
+    impl WikidataInteraction for DummyInteractor {}
+
+    async fn start_mock_server() -> MockServer {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(query_param("meta", "siteinfo"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/json; charset=utf-8")
+                    .set_body_string(SITEINFO),
+            )
+            .mount(&mock_server)
+            .await;
+        mock_server
+    }
+
+    async fn add_search_mock(mock_server: &MockServer, srsearch: &str, body: &'static str) {
+        Mock::given(method("GET"))
+            .and(query_param("srsearch", srsearch))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/json; charset=utf-8")
+                    .set_body_string(body),
+            )
+            .mount(mock_server)
+            .await;
+    }
+
+    async fn mock_api(mock_server: &MockServer) -> Arc<RwLock<Api>> {
+        Arc::new(RwLock::new(Api::new(&mock_server.uri()).await.unwrap()))
+    }
+
+    #[tokio::test]
+    async fn search_wikibase_returns_titles_when_search_has_hits() {
+        let mock_server = start_mock_server().await;
+        add_search_mock(&mock_server, "haswbstatement:P698=16116339", SEARCH_Q46664291).await;
+        let api = mock_api(&mock_server).await;
+        let d = DummyInteractor;
+        let result = d.search_wikibase("haswbstatement:P698=16116339", api).await.unwrap();
+        assert_eq!(result, vec!["Q46664291".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn search_wikibase_returns_empty_vec_when_no_hits() {
+        let mock_server = start_mock_server().await;
+        add_search_mock(&mock_server, "haswbstatement:P698=missing", SEARCH_EMPTY).await;
+        let api = mock_api(&mock_server).await;
+        let d = DummyInteractor;
+        let result = d.search_wikibase("haswbstatement:P698=missing", api).await.unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_item_returns_none_for_empty_diff() {
+        // Two identical empty items produce an empty diff, so create_item should
+        // bail out early without performing any HTTP write.
+        let mock_server = start_mock_server().await;
+        let api = mock_api(&mock_server).await;
+        let d = DummyInteractor;
+        let empty = Entity::new_empty_item();
+        assert!(d.create_item(&empty, api).await.is_none());
+    }
+}

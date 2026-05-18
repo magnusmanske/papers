@@ -245,4 +245,118 @@ impl SourceMDbot {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use wikibase::mediawiki::api::Api;
+    use wiremock::{
+        matchers::{method, query_param},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    use super::*;
+
+    const SITEINFO: &str = include_str!("../test_data/api_siteinfo.json");
+
+    async fn start_mock_server() -> MockServer {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(query_param("meta", "siteinfo"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/json; charset=utf-8")
+                    .set_body_string(SITEINFO),
+            )
+            .mount(&mock_server)
+            .await;
+        mock_server
+    }
+
+    /// Build a SourceMDbot directly from a wiremock-backed SourceMD with no DB
+    /// pool — bypasses the normal `new()` which would call `restart_batch()`
+    /// and fail without a DB.
+    async fn make_bot(mock_server: &MockServer) -> SourceMDbot {
+        let api = Api::new(&mock_server.uri()).await.unwrap();
+        let mw_api = Arc::new(RwLock::new(api));
+        let config = SourceMD::new_for_testing(mw_api.clone());
+        let cache = Arc::new(WikidataStringCache::new(mw_api));
+        SourceMDbot { config: Arc::new(RwLock::new(config)), cache, batch_id: 1 }
+    }
+
+    #[tokio::test]
+    async fn execute_command_create_book_from_isbn_returns_false() {
+        let mock_server = start_mock_server().await;
+        let bot = make_bot(&mock_server).await;
+        let mut cmd = SourceMDcommand::new_dummy("978-3-16-148410-0");
+        cmd.mode = SourceMDcommandMode::CreateBookFromIsbn;
+        let result = bot.execute_command(&mut cmd).await.unwrap();
+        assert!(!result, "CreateBookFromIsbn is unimplemented and should return Ok(false)");
+    }
+
+    #[tokio::test]
+    async fn execute_command_edit_paper_for_orcid_author_returns_false() {
+        let mock_server = start_mock_server().await;
+        let bot = make_bot(&mock_server).await;
+        let mut cmd = SourceMDcommand::new_dummy("0000-0001-2345-6789");
+        cmd.mode = SourceMDcommandMode::EditPaperForOrcidAuthor;
+        let result = bot.execute_command(&mut cmd).await.unwrap();
+        assert!(!result, "EditPaperForOrcidAuthor is unimplemented and should return Ok(false)");
+    }
+
+    #[tokio::test]
+    async fn execute_command_add_orcid_metadata_returns_false() {
+        // The current implementation short-circuits with `if true { Ok(false) }`,
+        // so this should return false without touching the network.
+        let mock_server = start_mock_server().await;
+        let bot = make_bot(&mock_server).await;
+        let mut cmd = SourceMDcommand::new_dummy("0000-0001-2345-6789");
+        cmd.mode = SourceMDcommandMode::AddOrcidMetadataToAuthor;
+        let result = bot.execute_command(&mut cmd).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn execute_command_dummy_mode_errors() {
+        let mock_server = start_mock_server().await;
+        let bot = make_bot(&mock_server).await;
+        let mut cmd = SourceMDcommand::new_dummy("x");
+        // mode defaults to Dummy, which is not a real command
+        let err = bot.execute_command(&mut cmd).await.unwrap_err();
+        assert!(err.to_string().contains("Unrecognized command"));
+    }
+
+    #[tokio::test]
+    async fn get_next_command_with_no_pool_returns_none() {
+        let mock_server = start_mock_server().await;
+        let bot = make_bot(&mock_server).await;
+        assert!(bot.get_next_command().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn new_wdp_attaches_nine_adapters() {
+        let mock_server = start_mock_server().await;
+        let bot = make_bot(&mock_server).await;
+        let cmd = SourceMDcommand::new_dummy("x");
+        let mut wdp = bot.new_wdp(&cmd);
+        // PMC, Pubmed, Crossref, Semanticscholar, Orcid, Arxiv, OpenAlex,
+        // DataCite, EuropePMC = 9 adapters
+        assert_eq!(wdp.adapters_mut().len(), 9);
+    }
+
+    #[tokio::test]
+    async fn get_author_item_rejects_unknown_identifier() {
+        let mock_server = start_mock_server().await;
+        let bot = make_bot(&mock_server).await;
+        // Not a Q-id and not an ORCID -> error
+        let err = bot.get_author_item("not-an-id").await.unwrap_err();
+        assert!(err.to_string().contains("Not a Wikidata item, nor an ORCID ID"));
+    }
+
+    #[tokio::test]
+    async fn get_author_item_accepts_wikidata_qid() {
+        let mock_server = start_mock_server().await;
+        let bot = make_bot(&mock_server).await;
+        // Pure-regex branch: a valid Q-id is set as the wikidata_item without
+        // any further lookups.
+        let author = bot.get_author_item("Q42").await.unwrap();
+        assert_eq!(author.wikidata_item().map(str::to_string), Some("Q42".to_string()));
+    }
+}

@@ -21,6 +21,17 @@ pub struct SourceMD {
 }
 
 impl SourceMD {
+    #[cfg(test)]
+    pub(crate) fn new_for_testing(mw_api: Arc<RwLock<Api>>) -> Self {
+        Self {
+            params: json!({}),
+            running_batch_ids: DashSet::new(),
+            failed_batch_ids: DashSet::new(),
+            pool: None,
+            mw_api,
+        }
+    }
+
     pub async fn new(ini_file: &str) -> Result<Self> {
         Ok(Self {
             params: json!({}),
@@ -275,4 +286,151 @@ impl SourceMD {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use regex::Regex;
+    use wikibase::mediawiki::api::Api;
+    use wiremock::{
+        matchers::{method, query_param},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    use super::*;
+    use crate::sourcemd_command::{SourceMDcommand, SourceMDcommandMode};
+
+    const SITEINFO: &str = include_str!("../test_data/api_siteinfo.json");
+
+    async fn start_mock_server() -> MockServer {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(query_param("meta", "siteinfo"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/json; charset=utf-8")
+                    .set_body_string(SITEINFO),
+            )
+            .mount(&mock_server)
+            .await;
+        mock_server
+    }
+
+    /// Build a SourceMD that points at a wiremock-backed Api with no DB pool.
+    async fn make_sourcemd(mock_server: &MockServer) -> SourceMD {
+        let api = Api::new(&mock_server.uri()).await.unwrap();
+        SourceMD::new_for_testing(Arc::new(RwLock::new(api)))
+    }
+
+    #[tokio::test]
+    async fn timestamp_format() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        let ts = smd.timestamp();
+        // Format is "YYYY-MM-DD HH:MM:SS"
+        let re = Regex::new(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$").unwrap();
+        assert!(re.is_match(&ts), "timestamp {} does not match expected format", ts);
+    }
+
+    #[tokio::test]
+    async fn number_of_bots_running_starts_at_zero() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        assert_eq!(smd.number_of_bots_running().await, 0);
+    }
+
+    #[tokio::test]
+    async fn set_batch_running_increments_count() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        smd.set_batch_running(42).await;
+        assert_eq!(smd.number_of_bots_running().await, 1);
+        smd.set_batch_running(43).await;
+        assert_eq!(smd.number_of_bots_running().await, 2);
+    }
+
+    #[tokio::test]
+    async fn set_batch_running_is_idempotent_per_id() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        smd.set_batch_running(42).await;
+        smd.set_batch_running(42).await;
+        // Inserting the same id twice should not double-count
+        assert_eq!(smd.number_of_bots_running().await, 1);
+    }
+
+    #[tokio::test]
+    async fn set_batch_failed_records_the_id() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        smd.set_batch_failed(99).await;
+        assert!(smd.failed_batch_ids.contains(&99));
+    }
+
+    #[tokio::test]
+    async fn restart_batch_without_pool_returns_none() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        assert!(smd.restart_batch(1).is_none());
+    }
+
+    #[tokio::test]
+    async fn get_next_batch_without_pool_returns_none() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        assert!(smd.get_next_batch().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn deactivate_batch_run_without_pool_returns_none() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        assert!(smd.deactivate_batch_run(1).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn set_batch_finished_without_pool_returns_none() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        assert!(smd.set_batch_finished(1).is_none());
+    }
+
+    #[tokio::test]
+    async fn check_batch_not_stopped_without_pool_errors() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        assert!(smd.check_batch_not_stopped(1).is_err());
+    }
+
+    #[tokio::test]
+    async fn get_next_command_without_pool_returns_none() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        assert!(smd.get_next_command(1).is_none());
+    }
+
+    #[tokio::test]
+    async fn set_command_status_without_pool_returns_none() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        let mut cmd = SourceMDcommand {
+            id: 1,
+            batch_id: 1,
+            serial_number: 1,
+            mode: SourceMDcommandMode::Dummy,
+            identifier: "x".to_string(),
+            status: "TODO".to_string(),
+            note: String::new(),
+            q: String::new(),
+            auto_escalate: false,
+        };
+        assert!(smd.set_command_status(&mut cmd, "RUNNING", None).is_none());
+    }
+
+    #[tokio::test]
+    async fn mw_api_returns_a_handle() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        // mw_api() returns a clone of the Arc; both should point to the same RwLock
+        let h1 = smd.mw_api();
+        let h2 = smd.mw_api();
+        assert!(Arc::ptr_eq(&h1, &h2));
+    }
+}
