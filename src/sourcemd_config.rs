@@ -6,6 +6,7 @@ use config::{Config, File};
 use dashmap::DashSet;
 use mysql_async as my;
 use mysql_async::prelude::Queryable;
+use mysql_async::TxOpts;
 use tokio::sync::RwLock;
 use tracing::info;
 use wikibase::mediawiki::api::Api;
@@ -61,18 +62,18 @@ impl SourceMD {
     }
 
     pub async fn restart_batch(&self, batch_id: i64) -> Result<()> {
-        // NOTE: these two UPDATEs share one Conn but are not wrapped in a
-        // transaction. If the first succeeds and the second fails the DB is
-        // left inconsistent (batch RUNNING, commands still RUNNING). Tracked
-        // as P2-DB-1 in audits/STATUS.md.
         let mut conn = self.conn().await?;
-        conn.exec_drop(
+        let mut txn = conn
+            .start_transaction(TxOpts::default())
+            .await
+            .with_context(|| format!("restart_batch: opening txn for batch {batch_id}"))?;
+        txn.exec_drop(
             r#"UPDATE `batch` SET `status`="RUNNING",`last_action`=? WHERE id=?"#,
             (self.timestamp(), batch_id),
         )
         .await
         .with_context(|| format!("restart_batch: setting batch {batch_id} RUNNING"))?;
-        conn.exec_drop(
+        txn.exec_drop(
             r#"UPDATE `command` SET `status`="TODO",`note`="" WHERE `status`="RUNNING" AND `batch_id`=?"#,
             (batch_id,),
         )
@@ -80,6 +81,9 @@ impl SourceMD {
         .with_context(|| {
             format!("restart_batch: resetting RUNNING commands of batch {batch_id} to TODO")
         })?;
+        txn.commit()
+            .await
+            .with_context(|| format!("restart_batch: commit for batch {batch_id}"))?;
         Ok(())
     }
 
@@ -160,13 +164,21 @@ impl SourceMD {
 
     async fn set_batch_status(&self, status: &str, batch_id: i64) -> Result<()> {
         let mut conn = self.conn().await?;
-        conn.exec_drop(
+        let mut txn = conn
+            .start_transaction(TxOpts::default())
+            .await
+            .with_context(|| format!("set_batch_status: opening txn for batch {batch_id}"))?;
+        txn.exec_drop(
             r#"UPDATE `batch` SET `status`=?,`last_action`=? WHERE id=?"#,
             (status, self.timestamp(), batch_id),
         )
         .await
         .with_context(|| format!("set_batch_status: batch {batch_id} -> {status}"))?;
-        self.update_batch_stats(batch_id, &mut conn).await
+        self.update_batch_stats(batch_id, &mut txn).await?;
+        txn.commit()
+            .await
+            .with_context(|| format!("set_batch_status: commit for batch {batch_id}"))?;
+        Ok(())
     }
 
     /// Fetch the next TODO command for a batch.
@@ -190,8 +202,10 @@ impl SourceMD {
         new_message: Option<String>,
     ) -> Result<()> {
         let mut conn = self.conn().await?;
-        // NOTE: UPDATE + update_batch_stats are not atomic. Tracked as P2-DB-1.
-        conn.exec_drop(
+        let mut txn = conn.start_transaction(TxOpts::default()).await.with_context(|| {
+            format!("set_command_status: opening txn for command {}", command.id)
+        })?;
+        txn.exec_drop(
             r#"UPDATE `command` SET `status`=?,`note`=?,`q`=? WHERE `id`=?"#,
             (
                 new_status,
@@ -204,10 +218,17 @@ impl SourceMD {
         .with_context(|| {
             format!("set_command_status: command {} -> {}", command.id, new_status)
         })?;
-        self.update_batch_stats(command.batch_id, &mut conn).await
+        self.update_batch_stats(command.batch_id, &mut txn).await?;
+        txn.commit().await.with_context(|| {
+            format!("set_command_status: commit for command {}", command.id)
+        })?;
+        Ok(())
     }
 
-    async fn update_batch_stats(&self, batch_id: i64, conn: &mut my::Conn) -> Result<()> {
+    async fn update_batch_stats<Q>(&self, batch_id: i64, conn: &mut Q) -> Result<()>
+    where
+        Q: Queryable + Send,
+    {
         let sql =
             r#"SELECT `status`,count(*) AS cnt FROM command WHERE batch_id=? GROUP BY `status`"#;
         let counts: Vec<(String, i64)> = conn
