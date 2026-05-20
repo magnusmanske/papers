@@ -24,6 +24,13 @@ lazy_static! {
     static ref SNAK_REMOVE_STATEMENT: Snak = Snak::new_no_value("P2093", SnakDataType::String);
 }
 
+/// Hard cap on the identifier-discovery convergence loop in
+/// `update_from_paper_ids`. A misbehaving adapter that keeps inventing new
+/// IDs each call would otherwise loop forever; the cap bounds the worst
+/// case while still allowing real adapters (which converge in 2–3 passes)
+/// to finish naturally.
+pub(crate) const MAX_ID_DISCOVERY_PASSES: usize = 8;
+
 pub struct EditResult {
     q: String,
     edited: bool,
@@ -444,14 +451,19 @@ impl WikidataPapers {
         original_ids.iter().filter(|id| id.is_legit()).for_each(|id| {
             ids.insert(id.to_owned());
         });
-        loop {
+        // Hard-cap the convergence loop: a misbehaving adapter that returns
+        // a new ID on every call would otherwise spin forever. Real adapters
+        // converge in 2–3 passes; MAX_ID_DISCOVERY_PASSES leaves slack for
+        // legitimate multi-hop discovery (DOI → PMID → PMCID etc.) without
+        // letting bad data hang the bot.
+        for _ in 0..MAX_ID_DISCOVERY_PASSES {
             let last_id_size = ids.len();
             for adapter_id in 0..self.adapters.len() {
                 let adapter = &mut self.adapters[adapter_id];
-                // TODO: CPU work — par_iter blocks the async runtime thread; consider
-                // spawn_blocking
-                let vids: Vec<GenericWorkIdentifier> = ids.par_iter().cloned().collect();
-                // println!("Adapter {}", adapter.name());
+                // The id set is tiny (typically <20) — par_iter's thread-pool
+                // dispatch costs more than the work it parallelises, and would
+                // also block the tokio worker. Sequential is faster here.
+                let vids: Vec<GenericWorkIdentifier> = ids.iter().cloned().collect();
                 adapter
                     .get_identifier_list(&vids)
                     .await
@@ -465,9 +477,7 @@ impl WikidataPapers {
                 break;
             }
         }
-        // TODO: CPU work — par_iter blocks the async runtime thread; consider
-        // spawn_blocking
-        ids.par_iter().filter(|id| id.is_legit()).cloned().collect()
+        ids.iter().filter(|id| id.is_legit()).cloned().collect()
     }
 
     pub async fn get_items_for_ids(&self, ids: &Vec<GenericWorkIdentifier>) -> Vec<String> {
@@ -816,5 +826,88 @@ mod tests {
             !item.has_claims_with_property("P31"),
             "new_publication_item should not set P31; it should be set later based on work type"
         );
+    }
+
+    // === P1-6: convergence-loop termination =====================================
+
+    /// A fake adapter that returns a brand-new DOI on every call to
+    /// `get_identifier_list`. Without the cap in `update_from_paper_ids`,
+    /// driving this adapter would grow the id set forever and hang the bot.
+    struct FakeGrowingAdapter {
+        counter: u64,
+        author_cache: HashMap<String, String>,
+    }
+
+    #[async_trait::async_trait(?Send)]
+    impl crate::scientific_publication_adapter::ScientificPublicationAdapter for FakeGrowingAdapter {
+        fn name(&self) -> &str {
+            "FakeGrowingAdapter"
+        }
+        fn author_cache(&self) -> &HashMap<String, String> {
+            &self.author_cache
+        }
+        fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
+            &mut self.author_cache
+        }
+        async fn update_statements_for_publication_id(&self, _: &str, _: &mut Entity) {}
+        async fn get_identifier_list(
+            &mut self,
+            _ids: &[GenericWorkIdentifier],
+        ) -> Vec<GenericWorkIdentifier> {
+            let n = self.counter;
+            self.counter += 1;
+            vec![GenericWorkIdentifier::new_prop(
+                crate::identifiers::IdProp::DOI,
+                &format!("10.0/test{n}"),
+            )]
+        }
+    }
+
+    #[tokio::test]
+    async fn update_from_paper_ids_terminates_with_misbehaving_adapter() {
+        // A growing adapter would loop forever without MAX_ID_DISCOVERY_PASSES.
+        // We assert termination via tokio::time::timeout (well over what a
+        // bounded run takes, well under what a runaway loop would burn).
+        let mut wdp = make_wdp().await;
+        wdp.add_adapter(Box::new(FakeGrowingAdapter {
+            counter: 0,
+            author_cache: HashMap::new(),
+        }));
+
+        let initial = vec![GenericWorkIdentifier::new_prop(
+            crate::identifiers::IdProp::DOI,
+            "10.0/initial",
+        )];
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            wdp.update_from_paper_ids(&initial),
+        )
+        .await;
+
+        let ids = result.expect("update_from_paper_ids must terminate even with a growing adapter");
+        // The loop runs at most MAX_ID_DISCOVERY_PASSES; the fake adapter
+        // produces one new id per pass, so the final set is bounded by
+        // 1 (initial) + MAX_ID_DISCOVERY_PASSES.
+        assert!(
+            ids.len() <= 1 + MAX_ID_DISCOVERY_PASSES,
+            "expected at most {} ids, got {}",
+            1 + MAX_ID_DISCOVERY_PASSES,
+            ids.len()
+        );
+        // And we should make some progress: at least the initial id survives.
+        assert!(!ids.is_empty(), "expected at least the initial id to survive");
+    }
+
+    #[tokio::test]
+    async fn update_from_paper_ids_with_no_adapters_returns_legit_inputs() {
+        // Empty adapter list: the loop exits on the first pass because
+        // last_id_size == ids.len(). Output should be the legit inputs
+        // (DOIs are canonicalised to uppercase by GenericWorkIdentifier).
+        let mut wdp = make_wdp().await;
+        let initial =
+            vec![GenericWorkIdentifier::new_prop(crate::identifiers::IdProp::DOI, "10.0/a")];
+        let ids = wdp.update_from_paper_ids(&initial).await;
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0].id(), "10.0/A");
     }
 }
