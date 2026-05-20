@@ -232,6 +232,68 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 mod tests {
     use super::*;
     use crate::scientific_publication_adapter::crossref_work_type_to_q;
+    use crossref::response::work::DateParts;
+
+    /// Helper: build a Crossref `PartialDate` from raw year/month/day
+    /// optionals, matching how the upstream API hands us nested arrays.
+    fn partial_date(parts: Vec<Option<u32>>) -> PartialDate {
+        PartialDate { date_parts: DateParts(vec![parts]) }
+    }
+
+    // === parse_crossref_date ==============================================
+
+    #[test]
+    fn parse_crossref_date_full_ymd() {
+        let d = partial_date(vec![Some(2023), Some(6), Some(15)]);
+        assert_eq!(parse_crossref_date(&d), Some((2023, Some(6), Some(15))));
+    }
+
+    #[test]
+    fn parse_crossref_date_year_and_month() {
+        let d = partial_date(vec![Some(2023), Some(6)]);
+        assert_eq!(parse_crossref_date(&d), Some((2023, Some(6), None)));
+    }
+
+    #[test]
+    fn parse_crossref_date_year_only() {
+        let d = partial_date(vec![Some(2023)]);
+        assert_eq!(parse_crossref_date(&d), Some((2023, None, None)));
+    }
+
+    #[test]
+    fn parse_crossref_date_empty_array_returns_none() {
+        let d = partial_date(vec![]);
+        assert_eq!(parse_crossref_date(&d), None);
+    }
+
+    #[test]
+    fn parse_crossref_date_null_year_returns_none() {
+        // A `[null, 6, 15]` payload (year missing) should fail closed —
+        // we can't produce a usable Wikidata P577 without a year.
+        let d = partial_date(vec![None, Some(6), Some(15)]);
+        assert_eq!(parse_crossref_date(&d), None);
+    }
+
+    #[test]
+    fn parse_crossref_date_null_month_keeps_year() {
+        // `[2023, null]` should keep the year and drop the month.
+        let d = partial_date(vec![Some(2023), None]);
+        assert_eq!(parse_crossref_date(&d), Some((2023, None, None)));
+    }
+
+    #[test]
+    fn parse_crossref_date_null_day_keeps_year_month() {
+        // `[2023, 6, null]` keeps year+month, drops day.
+        let d = partial_date(vec![Some(2023), Some(6), None]);
+        assert_eq!(parse_crossref_date(&d), Some((2023, Some(6), None)));
+    }
+
+    #[test]
+    fn parse_crossref_date_extra_parts_ignored() {
+        // Anything past day is silently ignored.
+        let d = partial_date(vec![Some(2023), Some(6), Some(15), Some(99)]);
+        assert_eq!(parse_crossref_date(&d), Some((2023, Some(6), Some(15))));
+    }
 
     #[test]
     fn test_crossref_type_to_q_journal_article() {
