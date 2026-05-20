@@ -21,13 +21,13 @@ impl Default for Crossref2Wikidata {
     fn default() -> Self {
         // Share the bot-wide reqwest::Client with the Crossref SDK so the
         // adapter inherits the same connection pool, User-Agent, and
-        // timeout config as the rest of `papers`. `http_client` is on the
-        // built `Crossref` (not on `CrossrefBuilder`), so we chain after
-        // `.build()`.
+        // timeout config as the rest of `papers`. Both `http_client` and
+        // `base_url` live on `CrossrefBuilder`, so we chain on the
+        // builder before `.build()`.
         let client = Crossref::builder()
+            .http_client(crate::http_client::http_client().clone())
             .build()
-            .expect("Crossref2Wikidata::default: Crossref::builder().build() failed")
-            .http_client(crate::http_client::http_client().clone());
+            .expect("Crossref2Wikidata::default: Crossref::builder().build() failed");
         Self::new_with_client(client)
     }
 }
