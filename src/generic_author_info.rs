@@ -320,8 +320,16 @@ impl GenericAuthorInfo {
         let mut item = Entity::new_empty_item();
         ret.amend_author_item(&mut item);
 
-        // Create new item and use its ID
-        ret.wikidata_item = self.create_item(&item, mw_api).await;
+        // Create new item and use its ID. On API error we degrade to
+        // `None` so the outer best-effort flow can still proceed; the
+        // caller's "no item ID" branch will pick it up.
+        ret.wikidata_item = match self.create_item(&item, mw_api).await {
+            Ok(opt) => opt,
+            Err(e) => {
+                tracing::warn!(error = %e, "create_item failed for author");
+                None
+            },
+        };
 
         // Update external IDs cache
         for (prop, id) in &ret.prop2id {

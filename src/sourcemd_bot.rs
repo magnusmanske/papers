@@ -159,14 +159,16 @@ impl SourceMDbot {
 
         // Wikidata ID
         if RE_WD.is_match(&command.identifier) {
-            return wdp
+            let result = wdp
                 .create_or_update_item_from_q(
                     self.config.read().await.mw_api(),
                     &command.identifier,
                 )
                 .await
-                .map(|_x| true)
-                .ok_or(anyhow!("Can't update {}", command.identifier));
+                .with_context(|| format!("update {}", command.identifier))?;
+            return result
+                .map(|_| true)
+                .ok_or_else(|| anyhow!("Can't update {}", command.identifier));
         }
 
         // Others: regex-recognised formats
@@ -196,10 +198,11 @@ impl SourceMDbot {
         }
 
         ids = wdp.update_from_paper_ids(&ids).await;
-        match wdp
+        let result = wdp
             .create_or_update_item_from_ids(self.config.read().await.mw_api(), &ids)
             .await
-        {
+            .with_context(|| format!("create_or_update for command #{}", command.id))?;
+        match result {
             Some(er) => {
                 if command.q.is_empty() {
                     command.q = er.q().to_string();

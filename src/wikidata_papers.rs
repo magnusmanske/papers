@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use rayon::prelude::*;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
@@ -326,9 +326,9 @@ impl WikidataPapers {
         &mut self,
         mw_api: Arc<RwLock<Api>>,
         ids: &Vec<GenericWorkIdentifier>,
-    ) -> Option<EditResult> {
+    ) -> Result<Option<EditResult>> {
         if ids.is_empty() {
-            return None;
+            return Ok(None);
         }
         let items = match self.testing {
             true => vec![],
@@ -341,7 +341,7 @@ impl WikidataPapers {
         &mut self,
         mw_api: Arc<RwLock<Api>>,
         q: &str,
-    ) -> Option<EditResult> {
+    ) -> Result<Option<EditResult>> {
         let items = vec![q.to_owned()];
         self.create_or_update_item_from_items(mw_api, &vec![], &items).await
     }
@@ -355,13 +355,18 @@ impl WikidataPapers {
         mw_api: Arc<RwLock<Api>>,
         ids: &Vec<GenericWorkIdentifier>,
         items: &[String],
-    ) -> Option<EditResult> {
+    ) -> Result<Option<EditResult>> {
         let mut item: wikibase::Entity;
         let mut original_item = Entity::new_empty_item();
         match items.first() {
             Some(q) => {
                 let api = mw_api.read().await;
-                item = self.entities.load_entity(&api, q.clone()).await.ok()?.to_owned();
+                item = self
+                    .entities
+                    .load_entity(&api, q.clone())
+                    .await
+                    .with_context(|| format!("load_entity({q})"))?
+                    .to_owned();
                 drop(api);
                 original_item = item.clone();
             },
@@ -372,24 +377,32 @@ impl WikidataPapers {
 
         let mut adapter2work_id = HashMap::new();
         self.update_item_from_adapters(&mut item, &mut adapter2work_id, mw_api.clone())
-            .await
-            .ok()?;
+            .await?;
 
         // Paranoia
         if item.claims().len() < 4 {
             println!("Skipping {:?}", ids);
-            return None;
+            return Ok(None);
         }
 
         self.apply_diff_for_item(original_item, item, mw_api).await
     }
 
+    /// Applies the diff between `original_item` and `item` to Wikidata.
+    ///
+    /// Returns:
+    /// - `Ok(Some(EditResult))` for a successful write or an empty diff
+    ///   against an existing item (in which case `edited == false`),
+    /// - `Ok(None)` for an empty diff against an unsaved/empty original
+    ///   or for the testing/dry-run branch,
+    /// - `Err(_)` if the underlying Wikidata API write fails — so the
+    ///   bot loop can mark the command FAILED instead of silently DUNNO.
     pub async fn apply_diff_for_item(
         &mut self,
         original_item: Entity,
         item: Entity,
         mw_api: Arc<RwLock<Api>>,
-    ) -> Option<EditResult> {
+    ) -> Result<Option<EditResult>> {
         let mut params = EntityDiffParams::none();
         params.labels.add = EntityDiffParamState::All;
         params.aliases.add = EntityDiffParamState::All;
@@ -401,20 +414,25 @@ impl WikidataPapers {
         diff.set_edit_summary(self.edit_summary.to_owned());
 
         if diff.is_empty() {
-            return match original_item.id().as_str() {
+            return Ok(match original_item.id().as_str() {
                 "" => None,
                 id => Some(EditResult { q: id.to_string(), edited: false }),
-            };
+            });
         }
 
         if self.testing {
             println!("{}", diff.to_string_pretty().unwrap());
-            None
+            Ok(None)
         } else {
             let mut api = mw_api.write().await;
-            let new_json = diff.apply_diff(&mut api, &diff).await.ok()?;
-            let q = EntityDiff::get_entity_id(&new_json)?;
-            Some(EditResult { q: q.to_string(), edited: true })
+            let new_json = diff
+                .apply_diff(&mut api, &diff)
+                .await
+                .map_err(|e| anyhow!("apply_diff_for_item: apply_diff failed: {e}"))?;
+            match EntityDiff::get_entity_id(&new_json) {
+                Some(q) => Ok(Some(EditResult { q, edited: true })),
+                None => Ok(None),
+            }
         }
     }
 

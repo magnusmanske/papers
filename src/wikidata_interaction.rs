@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 use wikibase::{entity_diff::*, mediawiki::api::Api, *};
@@ -27,17 +27,28 @@ pub trait WikidataInteraction {
         }
     }
 
-    async fn create_item(&self, item: &Entity, mw_api: Arc<RwLock<Api>>) -> Option<String> {
+    /// Creates a new Wikidata entity from `item`'s diff against an empty
+    /// item. Returns `Ok(None)` if the diff is empty (nothing to write);
+    /// `Err(_)` if the underlying API call fails so callers can mark the
+    /// command failed instead of silently dropping the write.
+    async fn create_item(
+        &self,
+        item: &Entity,
+        mw_api: Arc<RwLock<Api>>,
+    ) -> Result<Option<String>> {
         let params = EntityDiffParams::all();
         let mut diff = EntityDiff::new(&Entity::new_empty_item(), item, &params);
         diff.set_edit_summary(Some("(automated edit by SourceMD)".to_string()));
         if diff.is_empty() {
-            return None;
+            return Ok(None);
         }
         let mut mw_api = mw_api.write().await;
-        let new_json = diff.apply_diff(&mut mw_api, &diff).await.ok()?;
+        let new_json = diff
+            .apply_diff(&mut mw_api, &diff)
+            .await
+            .map_err(|e| anyhow!("create_item: apply_diff failed: {e}"))?;
         drop(mw_api);
-        EntityDiff::get_entity_id(&new_json)
+        Ok(EntityDiff::get_entity_id(&new_json))
     }
 }
 
@@ -109,13 +120,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_item_returns_none_for_empty_diff() {
+    async fn create_item_returns_ok_none_for_empty_diff() {
         // Two identical empty items produce an empty diff, so create_item should
-        // bail out early without performing any HTTP write.
+        // bail out early without performing any HTTP write — Ok(None), not Err.
         let mock_server = start_mock_server().await;
         let api = mock_api(&mock_server).await;
         let d = DummyInteractor;
         let empty = Entity::new_empty_item();
-        assert!(d.create_item(&empty, api).await.is_none());
+        let r = d.create_item(&empty, api).await;
+        assert!(matches!(r, Ok(None)), "expected Ok(None), got {:?}", r.as_ref().err());
     }
 }

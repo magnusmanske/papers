@@ -140,7 +140,7 @@ impl AuthorNameString {
                 "[[".to_string() + &author_q + "]]"
             )));
             match papers.apply_diff_for_item(original_item, item, mw_api.clone()).await {
-                Some(er) => {
+                Ok(Some(er)) => {
                     if er.edited() {
                         self.log(
                             1,
@@ -154,7 +154,8 @@ impl AuthorNameString {
                         );
                     }
                 },
-                None => self.log(1, "No paper item ID!"),
+                Ok(None) => self.log(1, "No paper item ID!"),
+                Err(e) => self.log(1, format!("Error editing paper {paper_q}: {e:#}")),
             }
             // papers.set_edit_summary(None);
             // save_item_changes(&mut papers, mw_api.clone(), paper_q).await;
