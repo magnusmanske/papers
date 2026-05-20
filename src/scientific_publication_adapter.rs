@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use tokio::sync::OnceCell;
-use wikibase::mediawiki::api::Api;
 
 use self::identifiers::{GenericWorkIdentifier, IdProp};
 use crate::{
@@ -407,34 +406,18 @@ pub trait ScientificPublicationAdapter {
         self.author_cache().is_empty()
     }
 
-    /// Caches language ISO codes and their mapping to Wikidata items
+    /// Resolves an ISO language code to a Wikidata Q-item via the
+    /// process-wide [`LanguageCache`]. Cache is lazily populated by a
+    /// single SPARQL query the first time any adapter calls
+    /// `language2q`; a network failure degrades to an empty cache
+    /// (returns `None`) rather than panicking.
     async fn language2q(&self, language: &str) -> Option<String> {
-        static L2Q: OnceCell<HashMap<String, String>> = OnceCell::const_new();
-        L2Q.get_or_init(|| self.generate_l2q())
+        static CACHE: OnceCell<crate::language_cache::LanguageCache> = OnceCell::const_new();
+        CACHE
+            .get_or_init(|| async { crate::language_cache::LanguageCache::wikidata() })
             .await
             .get(language)
-            .map(|s| s.to_string())
-    }
-
-    async fn generate_l2q(&self) -> HashMap<String, String> {
-        let mw_api: Api = Api::new("https://www.wikidata.org/w/api.php")
             .await
-            .expect("ScientificPublicationAdapter::language2q: Could not get Wikidata API");
-        mw_api
-            .sparql_query("SELECT DISTINCT ?l ?q { ?q wdt:P31/wdt:P279* wd:Q20162172; (wdt:P219|wdt:P220) ?l }")
-            .await
-            .expect("generate_l2q: fail1")["results"]["bindings"]
-            .as_array()
-            .expect("generate_l2q: fail2")
-            .iter()
-            .filter_map(|j| {
-                let l = j["l"]["value"].as_str()?;
-                let q = mw_api
-                    .extract_entity_from_uri(j["q"]["value"].as_str()?)
-                    .ok()?;
-                Some((l.to_string(), q.to_string()))
-            })
-            .collect()
     }
 }
 
