@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use regex::Regex;
-use reqwest;
 
 use self::identifiers::{is_pubmed_id, GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
@@ -34,8 +33,7 @@ impl PMC2Wikidata {
         let mut publication_id = pubmed_id.to_string(); // Fallback
         if !self.work_cache.contains_key(pubmed_id) {
             let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:{}%20AND%20SRC:MED&resulttype=core&format=json",pubmed_id) ;
-            let json: serde_json::Value =
-                reqwest::get(url.as_str()).await.ok()?.json().await.ok()?;
+            let json = crate::http_client::fetch_json(&url).await?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
                 match results.first() {
@@ -66,8 +64,7 @@ impl PMC2Wikidata {
         }
         if !self.work_cache.contains_key(pmc_id) {
             let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={}&resulttype=core&format=json",pmc_id) ;
-            let json: serde_json::Value =
-                reqwest::get(url.as_str()).await.ok()?.json().await.ok()?;
+            let json = crate::http_client::fetch_json(&url).await?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
                 match results.first() {

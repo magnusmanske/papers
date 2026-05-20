@@ -42,7 +42,7 @@ impl DataCite2Wikidata {
 
     async fn fetch_doi_data(doi: &str) -> Option<(String, serde_json::Value)> {
         let url = format!("https://api.datacite.org/dois/{}", doi);
-        let json: serde_json::Value = reqwest::get(&url).await.ok()?.json().await.ok()?;
+        let json = crate::http_client::fetch_json(&url).await?;
         json["data"]["attributes"].as_object()?;
         Some((doi.to_uppercase(), json))
     }

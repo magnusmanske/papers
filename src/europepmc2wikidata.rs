@@ -39,7 +39,7 @@ impl EuropePMC2Wikidata {
             "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:{}&resulttype=core&format=json",
             doi
         );
-        let json: serde_json::Value = reqwest::get(&url).await.ok()?.json().await.ok()?;
+        let json = crate::http_client::fetch_json(&url).await?;
         let results = json["resultList"]["result"].as_array()?;
         let work = results.first()?.clone();
         Some((doi.to_uppercase(), work))

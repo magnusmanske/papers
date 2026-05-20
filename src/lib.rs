@@ -11,6 +11,7 @@ pub mod crossref2wikidata;
 pub mod datacite2wikidata;
 pub mod europepmc2wikidata;
 pub mod generic_author_info;
+pub mod http_client;
 pub mod identifiers;
 pub mod openalex2wikidata;
 pub mod orcid2wikidata;

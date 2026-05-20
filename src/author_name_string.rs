@@ -80,9 +80,8 @@ impl AuthorNameString {
             return None;
         }
         let url = format!("https://wd-infernal.toolforge.org/initial_search/{}", formatted);
-        let response = reqwest::get(&url).await.ok()?;
-        let results: Vec<String> = response.json().await.ok()?;
-        Some(results)
+        let json = crate::http_client::fetch_json(&url).await?;
+        serde_json::from_value(json).ok()
     }
 
     async fn process_papers_for_ans(

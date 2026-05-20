@@ -37,7 +37,7 @@ impl OpenAlex2Wikidata {
 
     async fn fetch_doi_data(doi: &str) -> Option<(String, serde_json::Value)> {
         let url = format!("https://api.openalex.org/works/doi:{}", doi);
-        let json: serde_json::Value = reqwest::get(&url).await.ok()?.json().await.ok()?;
+        let json = crate::http_client::fetch_json(&url).await?;
         Some((doi.to_uppercase(), json))
     }
 
