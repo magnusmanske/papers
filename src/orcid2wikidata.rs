@@ -324,4 +324,148 @@ mod tests {
         // .expect(1) asserts the mock was hit exactly once (second call
         // should hit the cache, not the mock).
     }
+
+    // === P2-T4b: external-ID dispatch =====================================
+    //
+    // get_author_data maps ORCID's external-id-type strings to Wikidata
+    // properties. Silent data-corruption risk: if a new ID type is added
+    // upstream and we miss it, those IDs vanish. These tests pin the
+    // matrix.
+
+    use orcid::Author;
+
+    /// Builds an `orcid::Author` from a list of `(external-id-type,
+    /// external-id-value)` pairs, with a fixed ORCID id at
+    /// `orcid-identifier.path`. Injected into the adapter's author_data
+    /// cache so `get_author_data` doesn't try to hit a real ORCID API.
+    fn author_with_external_ids(orcid_id: &str, ext_ids: &[(&str, &str)]) -> Author {
+        let ids_json: Vec<serde_json::Value> = ext_ids
+            .iter()
+            .map(|(t, v)| serde_json::json!({
+                "external-id-type": t,
+                "external-id-value": v,
+            }))
+            .collect();
+        Author::new_from_json(serde_json::json!({
+            "orcid-identifier": { "path": orcid_id },
+            "person": {
+                "name": { "credit-name": { "value": "Test Name" } },
+                "external-identifiers": { "external-identifier": ids_json },
+            },
+        }))
+    }
+
+    /// Builds an adapter with the given ORCID id pre-mapped to the given
+    /// constructed Author. Calls into `get_author_data` then skip the
+    /// network entirely.
+    async fn adapter_with_cached_author(orcid_id: &str, author: Author) -> Orcid2Wikidata {
+        let adapter = Orcid2Wikidata::default();
+        adapter
+            .author_data
+            .lock()
+            .await
+            .insert(orcid_id.to_string(), Some(author));
+        adapter
+    }
+
+    #[tokio::test]
+    async fn get_author_data_dispatches_all_known_external_id_types() {
+        // One Author with every known external-id type → verify each
+        // ends up under the right Wikidata property.
+        let orcid_id = "0000-0002-1825-0097";
+        let author = author_with_external_ids(
+            orcid_id,
+            &[
+                ("ResearcherID", "ABC-1234"),
+                ("Scopus Author ID", "55555"),
+                ("Loop profile", "12345"),
+                ("SciProfiles", "sp-67890"),
+                ("GitHub", "octocat"),
+                ("Ciência ID", "C8F1-A2B3-D4E5"),
+            ],
+        );
+        let adapter = adapter_with_cached_author(orcid_id, author).await;
+
+        let gai = adapter.get_author_data(orcid_id, "P496").await.expect("author data");
+
+        // Self-id: orcid_id under author_property.
+        assert_eq!(gai.prop2id().get("P496").map(String::as_str), Some(orcid_id));
+        // External IDs:
+        assert_eq!(gai.prop2id().get("P1053").map(String::as_str), Some("ABC-1234"));
+        assert_eq!(gai.prop2id().get("P1153").map(String::as_str), Some("55555"));
+        assert_eq!(gai.prop2id().get("P2798").map(String::as_str), Some("12345"));
+        assert_eq!(gai.prop2id().get("P8159").map(String::as_str), Some("sp-67890"));
+        assert_eq!(gai.prop2id().get("P2037").map(String::as_str), Some("octocat"));
+        assert_eq!(gai.prop2id().get("P7893").map(String::as_str), Some("C8F1-A2B3-D4E5"));
+    }
+
+    #[tokio::test]
+    async fn get_author_data_handles_researcher_id_alias() {
+        // The dispatch matrix accepts both "ResearcherID" and
+        // "Researcher ID" (with space) for P1053. Pin both.
+        let orcid_id = "0000-0002-1825-0097";
+        let author = author_with_external_ids(orcid_id, &[("Researcher ID", "XYZ-9999")]);
+        let adapter = adapter_with_cached_author(orcid_id, author).await;
+        let gai = adapter.get_author_data(orcid_id, "P496").await.unwrap();
+        assert_eq!(gai.prop2id().get("P1053").map(String::as_str), Some("XYZ-9999"));
+    }
+
+    #[tokio::test]
+    async fn get_author_data_handles_scopus_id_alias() {
+        // "Scopus Author ID" and "Scopus ID" both → P1153.
+        let orcid_id = "0000-0002-1825-0097";
+        let author = author_with_external_ids(orcid_id, &[("Scopus ID", "1111")]);
+        let adapter = adapter_with_cached_author(orcid_id, author).await;
+        let gai = adapter.get_author_data(orcid_id, "P496").await.unwrap();
+        assert_eq!(gai.prop2id().get("P1153").map(String::as_str), Some("1111"));
+    }
+
+    #[tokio::test]
+    async fn get_author_data_strips_dashes_from_isni() {
+        // ISNI is the only ID type that gets a transformation — dashes
+        // stripped. P213 expects the bare digit string "0000000123456789",
+        // not the upstream "0000-0001-2345-6789".
+        let orcid_id = "0000-0002-1825-0097";
+        let author =
+            author_with_external_ids(orcid_id, &[("ISNI", "0000-0001-2345-6789")]);
+        let adapter = adapter_with_cached_author(orcid_id, author).await;
+        let gai = adapter.get_author_data(orcid_id, "P496").await.unwrap();
+        assert_eq!(
+            gai.prop2id().get("P213").map(String::as_str),
+            Some("0000000123456789"),
+            "ISNI dashes must be stripped before pushing to P213"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_author_data_ignores_unknown_external_id_types() {
+        // An unrecognised id-type emits a tracing::warn! but must NOT
+        // pollute prop2id — otherwise a typo upstream could create
+        // bogus Wikidata statements.
+        let orcid_id = "0000-0002-1825-0097";
+        let author = author_with_external_ids(
+            orcid_id,
+            &[("SomeNewIdType", "value-we-do-not-understand")],
+        );
+        let adapter = adapter_with_cached_author(orcid_id, author).await;
+        let gai = adapter.get_author_data(orcid_id, "P496").await.unwrap();
+        // Only the orcid_id (P496) should be in prop2id; nothing else.
+        assert_eq!(gai.prop2id().len(), 1);
+        assert!(gai.prop2id().contains_key("P496"));
+    }
+
+    #[tokio::test]
+    async fn get_author_data_returns_none_when_author_load_fails() {
+        // If get_or_load_author_data returns None (network failure /
+        // unknown ORCID), get_author_data must also return None — not
+        // a half-populated GenericAuthorInfo.
+        let orcid_id = "0000-0002-1825-0097";
+        let adapter = Orcid2Wikidata::default();
+        adapter
+            .author_data
+            .lock()
+            .await
+            .insert(orcid_id.to_string(), None);
+        assert!(adapter.get_author_data(orcid_id, "P496").await.is_none());
+    }
 }
