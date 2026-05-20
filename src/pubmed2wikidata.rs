@@ -583,4 +583,46 @@ mod tests {
         let pm = Pubmed2Wikidata::new();
         assert_eq!(pm.get_work_issn("nonexistent"), None);
     }
+
+    // === P2-10b: SDK DI via base_url ======================================
+
+    use wiremock::matchers::method as wm_method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn publication_id_from_pubmed_routes_through_injected_base_url() {
+        // The PubMed SDK uses XML eutils. A 500 from the mock makes the
+        // SDK's article() error out; the adapter swallows the error and
+        // returns None. The point of the test is that the SDK actually
+        // hit the mock URL, proving DI works.
+        let server = MockServer::start().await;
+        Mock::given(wm_method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(1..)
+            .mount(&server)
+            .await;
+
+        let sdk = Client::new().base_url(server.uri());
+        let mut adapter = Pubmed2Wikidata::new_with_client(sdk);
+        let id = adapter.publication_id_from_pubmed("12345").await;
+        assert!(id.is_none(), "expected None on SDK error, got {id:?}");
+        // wiremock's `.expect(1..)` asserts on server drop that the mock
+        // matched at least once — confirming the injected base_url was used.
+    }
+
+    #[tokio::test]
+    async fn publication_id_from_pubmed_rejects_non_numeric_before_fetching() {
+        // is_pubmed_id guard short-circuits before any SDK call.
+        let server = MockServer::start().await;
+        Mock::given(wm_method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let sdk = Client::new().base_url(server.uri());
+        let mut adapter = Pubmed2Wikidata::new_with_client(sdk);
+        assert!(adapter.publication_id_from_pubmed("not-a-pmid").await.is_none());
+        // .expect(0) verifies no request was made.
+    }
 }

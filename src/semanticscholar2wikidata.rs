@@ -367,4 +367,48 @@ mod tests {
         let mut ss = Semanticscholar2Wikidata::new();
         assert!(ss.get_author_list("nonexistent").await.is_empty());
     }
+
+    // === P2-10b: SDK DI via base_url ======================================
+    //
+    // Verifies the new_with_client injection actually routes the SDK's HTTP
+    // calls through a caller-controlled endpoint. wiremock stands in for the
+    // real Semantic Scholar API.
+
+    use wiremock::matchers::{method as wm_method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn publication_ids_from_doi_hits_injected_base_url() {
+        let server = MockServer::start().await;
+        Mock::given(wm_method("GET"))
+            .and(wm_path("/paper/10.1234/test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "paperId": "abc123",
+                "authors": [],
+                "topics": [],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let sdk = Client::new().base_url(server.uri());
+        let mut adapter = Semanticscholar2Wikidata::new_with_client(sdk);
+        let ids = adapter.publication_ids_from_doi("10.1234/test").await;
+        assert_eq!(ids, vec!["abc123".to_string()]);
+        assert!(adapter.get_cached_publication_from_id("abc123").is_some());
+    }
+
+    #[tokio::test]
+    async fn publication_ids_from_doi_returns_empty_on_sdk_500() {
+        let server = MockServer::start().await;
+        Mock::given(wm_method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let sdk = Client::new().base_url(server.uri());
+        let mut adapter = Semanticscholar2Wikidata::new_with_client(sdk);
+        let ids = adapter.publication_ids_from_doi("10.1234/test").await;
+        assert!(ids.is_empty(), "expected empty on 500, got {ids:?}");
+    }
 }

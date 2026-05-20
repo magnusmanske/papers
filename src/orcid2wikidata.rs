@@ -241,8 +241,8 @@ mod tests {
     #[test]
     fn author_cache_mut_allows_insertion() {
         let mut o = Orcid2Wikidata::new();
-        o.author_cache_mut().insert("0000-0001-2345-6789".to_string(), "Q42".to_string());
-        assert_eq!(o.author_cache().get("0000-0001-2345-6789"), Some(&"Q42".to_string()));
+        o.author_cache_mut().insert("0000-0002-1825-0097".to_string(), "Q42".to_string());
+        assert_eq!(o.author_cache().get("0000-0002-1825-0097"), Some(&"Q42".to_string()));
     }
 
     #[test]
@@ -255,11 +255,11 @@ mod tests {
     fn get_cached_publication_from_id_returns_inserted_value() {
         let mut o = Orcid2Wikidata::new();
         let mut work = PseudoWork::new();
-        work.author_ids.push("0000-0001-2345-6789".to_string());
+        work.author_ids.push("0000-0002-1825-0097".to_string());
         o.work_cache.insert("10.0/test".to_string(), work);
 
         let got = o.get_cached_publication_from_id("10.0/test").expect("should be cached");
-        assert_eq!(got.author_ids, vec!["0000-0001-2345-6789".to_string()]);
+        assert_eq!(got.author_ids, vec!["0000-0002-1825-0097".to_string()]);
     }
 
     #[tokio::test]
@@ -277,5 +277,51 @@ mod tests {
         // Calling on an unknown publication ID should not mutate the item
         o.update_statements_for_publication_id("nonexistent", &mut item).await;
         assert_eq!(item.claims().len(), before);
+    }
+
+    // === P2-10b: SDK DI via base_url ======================================
+
+    use wiremock::matchers::method as wm_method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn get_or_load_author_data_routes_through_injected_base_url() {
+        // Valid-looking ORCID id triggers an SDK GET to the injected URL.
+        // 500 makes the SDK error; the adapter swallows it and returns None.
+        //
+        // Note: the ORCID SDK builds URLs as `base_url + query` (no
+        // separator), and its default base ends with `/` — so test mocks
+        // must include the trailing slash.
+        let server = MockServer::start().await;
+        Mock::given(wm_method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(1..)
+            .mount(&server)
+            .await;
+
+        let sdk = Client::new().base_url(format!("{}/", server.uri()));
+        let adapter = Orcid2Wikidata::new_with_client(sdk);
+        let data = adapter.get_or_load_author_data("0000-0002-1825-0097").await;
+        assert!(data.is_none(), "expected None on SDK error, got {data:?}");
+    }
+
+    #[tokio::test]
+    async fn get_or_load_author_data_caches_negative_result() {
+        // After a failure, a second call should reuse the cached None
+        // without re-hitting the mock — verifies the author_data Mutex
+        // cache actually short-circuits.
+        let server = MockServer::start().await;
+        Mock::given(wm_method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let sdk = Client::new().base_url(format!("{}/", server.uri()));
+        let adapter = Orcid2Wikidata::new_with_client(sdk);
+        assert!(adapter.get_or_load_author_data("0000-0002-1825-0097").await.is_none());
+        assert!(adapter.get_or_load_author_data("0000-0002-1825-0097").await.is_none());
+        // .expect(1) asserts the mock was hit exactly once (second call
+        // should hit the cache, not the mock).
     }
 }

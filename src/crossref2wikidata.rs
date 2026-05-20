@@ -290,4 +290,43 @@ mod tests {
         assert_eq!(crossref_work_type_to_q("proceedings-article"), Some("Q23927052"));
         assert_eq!(crossref_work_type_to_q("proceedings"), Some("Q1143604"));
     }
+
+    // === P2-10b: SDK DI via base_url ======================================
+    //
+    // Note: Crossref's reqwest dependency (0.12) is incompatible with the
+    // papers crate's (0.13), so we can't share `http_client` directly. We
+    // can still inject a `base_url` to point the SDK at a wiremock server.
+
+    use wiremock::matchers::method as wm_method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn publication_id_from_item_routes_through_injected_base_url() {
+        let server = MockServer::start().await;
+        Mock::given(wm_method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(1..)
+            .mount(&server)
+            .await;
+
+        // base_url is on the built `Crossref`, not on `CrossrefBuilder`.
+        let sdk = Crossref::builder()
+            .build()
+            .expect("Crossref::builder().build()")
+            .base_url(server.uri());
+        let mut adapter = Crossref2Wikidata::new_with_client(sdk);
+
+        // Build an item with a DOI; the adapter looks at P356 (DOI) on the
+        // item, then asks the SDK for the work.
+        let mut item = wikibase::Entity::new_empty_item();
+        item.add_claim(wikibase::Statement::new_normal(
+            wikibase::Snak::new_external_id("P356", "10.1234/test"),
+            vec![],
+            vec![],
+        ));
+
+        let pub_id = adapter.publication_id_from_item(&item).await;
+        assert!(pub_id.is_none(), "expected None on SDK 500, got {pub_id:?}");
+        // .expect(1..) ensures the SDK actually hit the mock URL.
+    }
 }
