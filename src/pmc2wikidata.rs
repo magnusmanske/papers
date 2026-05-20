@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use regex::Regex;
 
 use self::identifiers::{is_pubmed_id, GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
@@ -51,11 +50,7 @@ impl PMC2Wikidata {
     }
 
     fn is_pmcid(&self, id: &str) -> bool {
-        lazy_static! {
-            static ref RE_PMCID: Regex = Regex::new(r#"^(PMC\d+)$"#)
-                .expect("main.rs::paper_from_id: RE_PMCID does not compile");
-        }
-        RE_PMCID.is_match(id)
+        crate::identifiers::is_pmcid(id)
     }
 
     async fn publication_id_from_pmcid(&mut self, pmc_id: &str) -> Option<String> {

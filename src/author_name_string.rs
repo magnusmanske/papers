@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
 use futures::prelude::*;
-use regex::Regex;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 
@@ -10,11 +9,6 @@ use crate::{
     generic_author_info::GenericAuthorInfo, wikidata_interaction::WikidataInteraction,
     wikidata_papers::WikidataPapers, wikidata_string_cache::WikidataStringCache,
 };
-
-lazy_static! {
-    static ref RE_WD: Regex =
-        Regex::new(r#"^(Q\d+)$"#).expect("SourceMDbot::process_author: RE_WD does not compile");
-}
 
 const MIN_PAPERS_PER_AUTHOR: usize = 2;
 const MIN_SPACES_FOR_NAME: usize = 1;
@@ -268,7 +262,7 @@ impl AuthorNameString {
 
         let mut ans2paper_qs: HashMap<String, Vec<String>> = HashMap::new();
         for (paper_q, ans) in result_ans {
-            if RE_WD.is_match(&paper_q) {
+            if crate::identifiers::is_qid(&paper_q) {
                 let paper_qs = ans2paper_qs.entry(ans).or_default();
                 paper_qs.push(paper_q);
             }
@@ -302,7 +296,7 @@ impl AuthorNameString {
 
         let mut name2qs: HashMap<String, Vec<String>> = HashMap::new();
         for (author_q, name) in result_coauthors {
-            if RE_WD.is_match(&author_q) {
+            if crate::identifiers::is_qid(&author_q) {
                 let author_qs = name2qs.entry(name).or_default();
                 author_qs.push(author_q);
             }

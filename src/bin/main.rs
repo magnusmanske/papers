@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate lazy_static;
-
 use std::{io, io::prelude::*, sync::Arc, time::Duration};
 
 use futures::prelude::*;
@@ -10,7 +7,6 @@ use papers::{
 };
 use pico_args::Arguments;
 use rand::seq::SliceRandom;
-use regex::Regex;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 
@@ -81,16 +77,11 @@ async fn command_papers(ini_file: &str) {
 }
 
 async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
-    lazy_static! {
-        static ref RE_WD: Regex =
-            Regex::new(r#"^(Q\d+)$"#).expect("main.rs::paper_from_id: RE_WD does not compile");
-    }
-
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
     let mut wdp = WikidataPapers::with_default_adapters(cache.clone());
 
-    if let Some(q) = RE_WD.captures(id).and_then(|c| c.get(1)) {
-        save_item_changes(&mut wdp, mw_api.clone(), q.as_str()).await;
+    if papers::identifiers::is_qid(id) {
+        save_item_changes(&mut wdp, mw_api.clone(), id).await;
         return;
     }
 

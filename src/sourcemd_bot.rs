@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
-use regex::Regex;
 use tokio::sync::RwLock;
 
 use self::sourcemd_command::SourceMDcommandMode;
@@ -91,17 +90,10 @@ impl SourceMDbot {
     }
 
     async fn get_author_item(&self, identifier: &str) -> Result<GenericAuthorInfo> {
-        lazy_static! {
-            static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
-                .expect("SourceMDbot::process_author: RE_WD does not compile");
-            static ref RE_ORCID: Regex = Regex::new(r#"^(\d{4}-\d{4}-\d{4}-\d{4})$"#)
-                .expect("SourceMDbot::process_author: RE_ORCID does not compile");
-        }
-
         let mut author = GenericAuthorInfo::new();
-        if RE_WD.is_match(identifier) {
+        if crate::identifiers::is_qid(identifier) {
             author.set_wikidata_item(Some(identifier.to_owned()));
-        } else if RE_ORCID.is_match(identifier) {
+        } else if crate::identifiers::is_orcid(identifier) {
             author.prop2id_mut().insert("P496".to_string(), identifier.to_owned());
             author = author
                 .get_or_create_author_item(
@@ -137,11 +129,6 @@ impl SourceMDbot {
     }
 
     async fn process_paper(&self, command: &mut SourceMDcommand) -> Result<bool> {
-        lazy_static! {
-            static ref RE_WD: Regex = Regex::new(r#"^(Q\d+)$"#)
-                .expect("SourceMDbot::process_paper: RE_WD does not compile");
-        }
-
         let mut wdp = self.new_wdp(command);
         wdp.set_edit_summary(Some(format!(
             "SourceMD [rust bot], [https://sourcemd.toolforge.org/?action=batch&batch={} batch #{}], command #{}",
@@ -149,7 +136,7 @@ impl SourceMDbot {
         )));
 
         // Wikidata ID
-        if RE_WD.is_match(&command.identifier) {
+        if crate::identifiers::is_qid(&command.identifier) {
             let result = wdp
                 .create_or_update_item_from_q(
                     self.config.read().await.mw_api(),

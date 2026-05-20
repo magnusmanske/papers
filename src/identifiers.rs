@@ -133,6 +133,27 @@ pub fn is_pubmed_id(id: &str) -> bool {
     !id.is_empty() && id.chars().all(|c| c.is_ascii_digit())
 }
 
+lazy_static::lazy_static! {
+    static ref RE_QID:   Regex = Regex::new(r"^Q\d+$").expect("RE_QID");
+    static ref RE_PMCID: Regex = Regex::new(r"^PMC\d+$").expect("RE_PMCID");
+    static ref RE_ORCID: Regex = Regex::new(r"^\d{4}-\d{4}-\d{4}-\d{4}$").expect("RE_ORCID");
+}
+
+/// Returns `true` if `s` is a Wikidata Q-ID like `"Q12345"`.
+pub fn is_qid(s: &str) -> bool {
+    RE_QID.is_match(s)
+}
+
+/// Returns `true` if `s` is a PMCID like `"PMC1234567"`.
+pub fn is_pmcid(s: &str) -> bool {
+    RE_PMCID.is_match(s)
+}
+
+/// Returns `true` if `s` is an ORCID like `"0000-0001-2345-6789"`.
+pub fn is_orcid(s: &str) -> bool {
+    RE_ORCID.is_match(s)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +175,57 @@ mod tests {
         assert_eq!(IdProp::DOI.to_string(), PROP_DOI);
         assert_eq!(IdProp::ARXIV.to_string(), PROP_ARXIV);
         assert_eq!(IdProp::SemanticScholar.to_string(), PROP_SEMANTIC_SCHOLAR);
+    }
+
+    #[test]
+    fn is_qid_accepts_valid_qids() {
+        assert!(is_qid("Q1"));
+        assert!(is_qid("Q12345"));
+        assert!(is_qid("Q9999999"));
+    }
+
+    #[test]
+    fn is_qid_rejects_invalid() {
+        assert!(!is_qid(""));
+        assert!(!is_qid("Q"));
+        assert!(!is_qid("q12"));        // lowercase
+        assert!(!is_qid("Q12 "));       // trailing space
+        assert!(!is_qid(" Q12"));       // leading space
+        assert!(!is_qid("Q12abc"));     // mixed
+        assert!(!is_qid("P12"));        // property, not item
+        assert!(!is_qid("Q12\nQ34"));   // multi-line (anchors are line-anchored by default? regex has ^$ so only matches a single line)
+    }
+
+    #[test]
+    fn is_pmcid_accepts_valid_pmcids() {
+        assert!(is_pmcid("PMC1"));
+        assert!(is_pmcid("PMC1234567"));
+    }
+
+    #[test]
+    fn is_pmcid_rejects_invalid() {
+        assert!(!is_pmcid(""));
+        assert!(!is_pmcid("PMC"));
+        assert!(!is_pmcid("pmc1"));    // lowercase
+        assert!(!is_pmcid("1234567")); // no prefix
+        assert!(!is_pmcid("PMC12 34"));
+    }
+
+    #[test]
+    fn is_orcid_accepts_valid_orcid() {
+        assert!(is_orcid("0000-0001-2345-6789"));
+        assert!(is_orcid("0000-0000-0000-0000"));
+        assert!(is_orcid("9999-9999-9999-9999"));
+    }
+
+    #[test]
+    fn is_orcid_rejects_invalid() {
+        assert!(!is_orcid(""));
+        assert!(!is_orcid("0000000123456789"));      // no dashes
+        assert!(!is_orcid("0000-0001-2345"));        // too short
+        assert!(!is_orcid("0000-0001-2345-6789-0")); // too long
+        assert!(!is_orcid("000A-0001-2345-6789"));   // non-digit
+        assert!(!is_orcid("https://orcid.org/0000-0001-2345-6789")); // URL form
     }
 
     #[test]
