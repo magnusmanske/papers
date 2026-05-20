@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::prelude::*;
 use config::{Config, File};
 use dashmap::DashSet;
 use mysql as my;
 use serde_json::Value;
 use tokio::sync::RwLock;
+use tracing::info;
 use wikibase::mediawiki::api::Api;
 
 use crate::sourcemd_command::SourceMDcommand;
@@ -50,25 +51,37 @@ impl SourceMD {
         self.mw_api.clone()
     }
 
-    pub fn restart_batch(&self, batch_id: i64) -> Option<()> {
-        let pool = self.pool.as_ref()?;
+    /// Borrow the configured MySQL pool, or return a contextual error if
+    /// `init()` has not been run / the connection could not be established.
+    fn pool(&self) -> Result<&my::Pool> {
+        self.pool.as_ref().ok_or_else(|| anyhow!("no MySQL pool configured"))
+    }
+
+    pub fn restart_batch(&self, batch_id: i64) -> Result<()> {
+        // NOTE: these two UPDATEs are not wrapped in a transaction. If the
+        // first succeeds and the second fails the DB is left inconsistent
+        // (batch RUNNING, commands still RUNNING). Tracked as a P2 follow-up
+        // in audits/STATUS.md.
+        let pool = self.pool()?;
         pool.prep_exec(
             r#"UPDATE `batch` SET `status`="RUNNING",`last_action`=? WHERE id=?"#,
             (my::Value::from(self.timestamp()), my::Value::Int(batch_id)),
         )
-        .ok()?;
+        .with_context(|| format!("restart_batch: setting batch {batch_id} RUNNING"))?;
         pool.prep_exec(
             r#"UPDATE `command` SET `status`="TODO",`note`="" WHERE `status`="RUNNING" AND `batch_id`=?"#,
             (my::Value::Int(batch_id),),
         )
-        .ok()?;
-        Some(())
+        .with_context(|| {
+            format!("restart_batch: resetting RUNNING commands of batch {batch_id} to TODO")
+        })?;
+        Ok(())
     }
 
     pub async fn set_batch_running(&self, batch_id: i64) {
-        println!("set_batch_running: Starting batch #{}", batch_id);
+        info!(batch_id, "starting batch");
         self.running_batch_ids.insert(batch_id);
-        println!("Currently {} bots running", self.number_of_bots_running().await);
+        info!(running = self.number_of_bots_running().await, "bots currently running");
     }
 
     pub async fn number_of_bots_running(&self) -> usize {
@@ -80,14 +93,21 @@ impl SourceMD {
         now.format("%Y-%m-%d %H:%M:%S").to_string()
     }
 
-    pub async fn get_next_batch(&self) -> Option<i64> {
-        let pool = self.pool.as_ref()?;
+    /// Find the next eligible batch to run.
+    ///
+    /// Returns:
+    /// - `Ok(Some(id))` if a batch is available,
+    /// - `Ok(None)` if no batch matches the criteria,
+    /// - `Err(_)` if the DB query itself fails (caller should back off, not
+    ///   confuse this with "no work").
+    pub async fn get_next_batch(&self) -> Result<Option<i64>> {
+        let pool = self.pool()?;
 
-        let sql: String = r#"SELECT * FROM batch WHERE `status` ='TODO' AND NOT EXISTS (SELECT * FROM command WHERE batch_id=batch.id AND `status` IN ("RUNNING","TODO") AND `mode` NOT IN ("CREATE_PAPER_BY_ID","ADD_AUTHOR_TO_PUBLICATION")) ORDER BY `last_action`"#.into();
-        // let sql: String = "SELECT * FROM batch WHERE id=8117".into(); // TESTING
-        // (also 551)
-        for row in pool.prep_exec(sql, ()).ok()? {
-            let row = row.ok()?;
+        let sql = r#"SELECT * FROM batch WHERE `status` ='TODO' AND NOT EXISTS (SELECT * FROM command WHERE batch_id=batch.id AND `status` IN ("RUNNING","TODO") AND `mode` NOT IN ("CREATE_PAPER_BY_ID","ADD_AUTHOR_TO_PUBLICATION")) ORDER BY `last_action`"#;
+        let result = pool.prep_exec(sql, ()).context("get_next_batch query")?;
+        for row in result {
+            // A single malformed row should not abort the whole search.
+            let Ok(row) = row else { continue };
             let id = match &row["id"] {
                 my::Value::Int(x) => *x,
                 _ => continue,
@@ -95,23 +115,21 @@ impl SourceMD {
             if self.running_batch_ids.contains(&id) || self.failed_batch_ids.contains(&id) {
                 continue;
             }
-            return Some(id);
+            return Ok(Some(id));
         }
-        None
+        Ok(None)
     }
 
-    pub async fn deactivate_batch_run(&self, batch_id: i64) -> Option<()> {
-        println!("Deactivating batch #{}", batch_id);
+    pub async fn deactivate_batch_run(&self, batch_id: i64) -> Result<()> {
+        info!(batch_id, "deactivating batch");
         self.set_batch_finished(batch_id)?;
-        {
-            self.running_batch_ids.remove(&batch_id);
-        }
-        println!("Currently {} bots running", self.number_of_bots_running().await);
-        Some(())
+        self.running_batch_ids.remove(&batch_id);
+        info!(running = self.number_of_bots_running().await, "bots currently running");
+        Ok(())
     }
 
-    pub fn set_batch_finished(&self, batch_id: i64) -> Option<()> {
-        println!("set_batch_finished: Batch #{}", batch_id);
+    pub fn set_batch_finished(&self, batch_id: i64) -> Result<()> {
+        info!(batch_id, "marking batch finished");
         self.set_batch_status("DONE", batch_id)
     }
 
@@ -134,27 +152,29 @@ impl SourceMD {
         Ok(())
     }
 
-    fn set_batch_status(&self, status: &str, batch_id: i64) -> Option<()> {
-        let pool = self.pool.as_ref()?;
-        // TODO stats
+    fn set_batch_status(&self, status: &str, batch_id: i64) -> Result<()> {
+        let pool = self.pool()?;
         pool.prep_exec(
             r#"UPDATE `batch` SET `status`=?,`last_action`=? WHERE id=?"#,
             (my::Value::from(status), my::Value::from(self.timestamp()), my::Value::Int(batch_id)),
         )
-        .ok()?;
+        .with_context(|| format!("set_batch_status: batch {batch_id} -> {status}"))?;
         self.update_batch_stats(batch_id, pool)
-        // self.deactivate_batch_run(batch_id)
     }
 
-    pub fn get_next_command(&self, batch_id: i64) -> Option<SourceMDcommand> {
-        let pool = self.pool.as_ref()?;
+    /// Fetch the next TODO command for a batch.
+    ///
+    /// Returns `Ok(None)` when there is no work for this batch, `Err` when the
+    /// DB query itself fails — callers must distinguish these.
+    pub fn get_next_command(&self, batch_id: i64) -> Result<Option<SourceMDcommand>> {
+        let pool = self.pool()?;
         let sql = r#"SELECT * FROM command FORCE INDEX (batch_id_4) WHERE `batch_id`=? AND `status`='TODO' ORDER BY `serial_number` LIMIT 1"#;
-        // trunk-ignore(clippy/never_loop)
-        if let Some(row) = (pool.prep_exec(sql, (my::Value::Int(batch_id),)).ok()?).next() {
-            let row = row.ok()?;
-            return SourceMDcommand::new_from_row(row);
-        }
-        None
+        let mut result = pool
+            .prep_exec(sql, (my::Value::Int(batch_id),))
+            .with_context(|| format!("get_next_command: batch {batch_id}"))?;
+        let Some(row) = result.next() else { return Ok(None) };
+        let row = row.with_context(|| format!("get_next_command: decoding row for batch {batch_id}"))?;
+        Ok(SourceMDcommand::new_from_row(row))
     }
 
     pub fn set_command_status(
@@ -162,27 +182,33 @@ impl SourceMD {
         command: &mut SourceMDcommand,
         new_status: &str,
         new_message: Option<String>,
-    ) -> Option<()> {
-        let pool = self.pool.as_ref()?;
+    ) -> Result<()> {
+        let pool = self.pool()?;
         pool.prep_exec(
             r#"UPDATE `command` SET `status`=?,`note`=?,`q`=? WHERE `id`=?"#,
             (
                 my::Value::from(new_status),
-                my::Value::from(new_message.unwrap_or("".to_string())),
+                my::Value::from(new_message.unwrap_or_default()),
                 my::Value::from(&command.q),
                 my::Value::from(&command.id),
             ),
         )
-        .ok()?;
+        .with_context(|| {
+            format!("set_command_status: command {} -> {}", command.id, new_status)
+        })?;
         self.update_batch_stats(command.batch_id, pool)
     }
 
-    fn update_batch_stats(&self, batch_id: i64, pool: &my::Pool) -> Option<()> {
-        let mut j = json!({"TOTAL":0});
+    fn update_batch_stats(&self, batch_id: i64, pool: &my::Pool) -> Result<()> {
+        let mut j = json!({"TOTAL": 0});
         let sql =
             r#"SELECT `status`,count(*) AS cnt FROM command WHERE batch_id=? GROUP BY `status`"#;
-        for row in pool.prep_exec(sql, (my::Value::from(batch_id),)).ok()? {
-            let row = row.ok()?;
+        let result = pool
+            .prep_exec(sql, (my::Value::from(batch_id),))
+            .with_context(|| format!("update_batch_stats: aggregating batch {batch_id}"))?;
+        for row in result {
+            // Skip individual malformed rows rather than abort the aggregation.
+            let Ok(row) = row else { continue };
             let status = match &row["status"] {
                 my::Value::Bytes(x) => String::from_utf8_lossy(x),
                 _ => continue,
@@ -191,7 +217,9 @@ impl SourceMD {
                 my::Value::Int(x) => *x,
                 _ => continue,
             };
-            j.as_object_mut()?.insert(status.to_string(), json!(cnt));
+            if let Some(obj) = j.as_object_mut() {
+                obj.insert(status.to_string(), json!(cnt));
+            }
             match j["TOTAL"].as_i64() {
                 Some(i) => j["TOTAL"] = json!(cnt + i),
                 None => j["TOTAL"] = json!(cnt),
@@ -201,51 +229,43 @@ impl SourceMD {
             r#"UPDATE `batch` SET `overview`=? WHERE `id`=?"#,
             (my::Value::from(format!("{}", j)), my::Value::from(batch_id)),
         )
-        .ok()?;
-        Some(())
+        .with_context(|| format!("update_batch_stats: writing overview for batch {batch_id}"))?;
+        Ok(())
     }
 
-    pub fn init(&mut self) {
+    pub fn init(&mut self) -> Result<()> {
         // File::with_name(..) is shorthand for File::from(Path::new(..))
-        let ini_file = "/data/project/sourcemd/rust/papers/replica.my.ini";
+        let ini_file = std::env::var("SOURCEMD_REPLICA_INI")
+            .unwrap_or_else(|_| "/data/project/sourcemd/rust/papers/replica.my.ini".to_string());
         let settings = Config::builder()
-            .add_source(File::with_name(ini_file))
+            .add_source(File::with_name(&ini_file))
             .build()
-            .unwrap_or_else(|_| panic!("Replica file '{}' can't be opened", ini_file));
+            .with_context(|| format!("opening replica ini file '{ini_file}'"))?;
         self.params["mysql"]["user"] =
-            json!(settings.get_string("client.user").expect("No client.name"));
+            json!(settings.get_string("client.user").context("missing client.user")?);
         self.params["mysql"]["pass"] =
-            json!(settings.get_string("client.password").expect("No client.password"));
+            json!(settings.get_string("client.password").context("missing client.password")?);
         self.params["mysql"]["schema"] = json!("s52680__sourcemd_batches_p");
 
-        // On Labs
-        self.params["mysql"]["host"] = json!("tools-db");
-        self.params["mysql"]["port"] = json!(3306);
-        self.create_mysql_pool();
-
-        // On PetScan
-        if self.pool.is_none() {
-            self.params["mysql"]["host"] = json!("tools.labsdb");
-            self.params["mysql"]["port"] = json!(3306);
+        // Try each known DB host in turn.
+        for (host, port) in
+            [("tools-db", 3306u64), ("tools.labsdb", 3306), ("localhost", 3307)]
+        {
+            self.params["mysql"]["host"] = json!(host);
+            self.params["mysql"]["port"] = json!(port);
             self.create_mysql_pool();
+            if self.pool.is_some() {
+                break;
+            }
         }
 
-        // Local fallback
-        if self.pool.is_none() {
-            self.params["mysql"]["host"] = json!("localhost");
-            self.params["mysql"]["port"] = json!(3307);
-            self.create_mysql_pool();
-        }
-
-        let pool = match &self.pool {
-            Some(pool) => pool,
-            None => {
-                println!("{settings:?}");
-                panic!("Can't establish DB connection!");
-            },
-        };
+        let pool = self.pool.as_ref().ok_or_else(|| {
+            // Do NOT log connection-string contents — they include the password.
+            anyhow!("could not establish a MySQL connection to any known host")
+        })?;
         pool.prep_exec(r#"UPDATE `batch` SET `status`='TODO' WHERE status='RUNNING'"#, ())
-            .expect("SourceMD::init: Resetting old running batches to TODO has failed");
+            .context("resetting RUNNING batches to TODO on startup")?;
+        Ok(())
     }
 
     fn create_mysql_pool(&mut self) {
@@ -277,7 +297,7 @@ impl SourceMD {
                 // Use username/password login
                 let lgname = settings.get_string("user.user")?;
                 let lgpass = settings.get_string("user.pass")?;
-                println!("LOGIN {lgname}/{lgpass}");
+                info!(user = %lgname, "Wikidata login (username/password)");
                 mw_api.login(lgname, lgpass).await?;
             },
         }
@@ -364,32 +384,41 @@ mod tests {
         assert!(smd.failed_batch_ids.contains(&99));
     }
 
-    #[tokio::test]
-    async fn restart_batch_without_pool_returns_none() {
-        let mock_server = start_mock_server().await;
-        let smd = make_sourcemd(&mock_server).await;
-        assert!(smd.restart_batch(1).is_none());
+    // After the P0-4/P0-5 fix the DB layer returns `Result`; the no-pool case
+    // is now an explicit error rather than a silent `None`, so callers can
+    // distinguish "no work" from "DB unreachable".
+
+    fn assert_no_pool_err<T: std::fmt::Debug>(r: Result<T>) {
+        let err = r.unwrap_err().to_string();
+        assert!(err.contains("no MySQL pool"), "unexpected error: {err}");
     }
 
     #[tokio::test]
-    async fn get_next_batch_without_pool_returns_none() {
+    async fn restart_batch_without_pool_errors() {
         let mock_server = start_mock_server().await;
         let smd = make_sourcemd(&mock_server).await;
-        assert!(smd.get_next_batch().await.is_none());
+        assert_no_pool_err(smd.restart_batch(1));
     }
 
     #[tokio::test]
-    async fn deactivate_batch_run_without_pool_returns_none() {
+    async fn get_next_batch_without_pool_errors() {
         let mock_server = start_mock_server().await;
         let smd = make_sourcemd(&mock_server).await;
-        assert!(smd.deactivate_batch_run(1).await.is_none());
+        assert_no_pool_err(smd.get_next_batch().await);
     }
 
     #[tokio::test]
-    async fn set_batch_finished_without_pool_returns_none() {
+    async fn deactivate_batch_run_without_pool_errors() {
         let mock_server = start_mock_server().await;
         let smd = make_sourcemd(&mock_server).await;
-        assert!(smd.set_batch_finished(1).is_none());
+        assert_no_pool_err(smd.deactivate_batch_run(1).await);
+    }
+
+    #[tokio::test]
+    async fn set_batch_finished_without_pool_errors() {
+        let mock_server = start_mock_server().await;
+        let smd = make_sourcemd(&mock_server).await;
+        assert_no_pool_err(smd.set_batch_finished(1));
     }
 
     #[tokio::test]
@@ -400,14 +429,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_next_command_without_pool_returns_none() {
+    async fn get_next_command_without_pool_errors() {
         let mock_server = start_mock_server().await;
         let smd = make_sourcemd(&mock_server).await;
-        assert!(smd.get_next_command(1).is_none());
+        assert_no_pool_err(smd.get_next_command(1));
     }
 
     #[tokio::test]
-    async fn set_command_status_without_pool_returns_none() {
+    async fn set_command_status_without_pool_errors() {
         let mock_server = start_mock_server().await;
         let smd = make_sourcemd(&mock_server).await;
         let mut cmd = SourceMDcommand {
@@ -421,7 +450,7 @@ mod tests {
             q: String::new(),
             auto_escalate: false,
         };
-        assert!(smd.set_command_status(&mut cmd, "RUNNING", None).is_none());
+        assert_no_pool_err(smd.set_command_status(&mut cmd, "RUNNING", None));
     }
 
     #[tokio::test]

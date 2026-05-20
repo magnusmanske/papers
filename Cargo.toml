@@ -27,6 +27,8 @@ anyhow = "*"
 rand = "*"
 pico-args = "0.5"
 deunicode = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 semanticscholar = "*"
 orcid="*"
 pubmed = "*"

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 use tokio::sync::RwLock;
 
@@ -44,15 +44,16 @@ impl SourceMDbot {
 
     pub async fn start(&self) -> Result<()> {
         let config = self.config.read().await;
-        config.restart_batch(self.batch_id).ok_or(anyhow!("Can't (re)start batch"))?;
+        config
+            .restart_batch(self.batch_id)
+            .with_context(|| format!("starting batch #{}", self.batch_id))?;
         config.set_batch_running(self.batch_id).await;
         Ok(())
     }
 
     pub async fn run(&self) -> Result<bool> {
-        // Check if batch is still valid (STOP etc)
-        let command = self.get_next_command().await;
-        let mut command = match command {
+        // Check if batch is still valid (STOP etc.)
+        let mut command = match self.get_next_command().await? {
             Some(c) => c,
             None => {
                 self.config
@@ -60,7 +61,7 @@ impl SourceMDbot {
                     .await
                     .deactivate_batch_run(self.batch_id)
                     .await
-                    .ok_or(anyhow!("Can't set batch as stopped"))?;
+                    .with_context(|| format!("deactivating batch #{}", self.batch_id))?;
                 return Ok(false);
             },
         };
@@ -68,11 +69,8 @@ impl SourceMDbot {
         self.set_command_status("RUNNING", None, &mut command).await?;
         match self.execute_command(&mut command).await {
             Ok(b) => {
-                if b {
-                    self.set_command_status("DONE", None, &mut command).await?;
-                } else {
-                    self.set_command_status("DUNNO", None, &mut command).await?;
-                }
+                let status = if b { "DONE" } else { "DUNNO" };
+                self.set_command_status(status, None, &mut command).await?;
                 Ok(b)
             },
             Err(e) => {
@@ -221,11 +219,15 @@ impl SourceMDbot {
             .read()
             .await
             .set_command_status(command, status, message.map(|s| s.to_string()))
-            .ok_or(anyhow!("Can't config.set_command_status for batch #{}", self.batch_id))?;
-        Ok(())
+            .with_context(|| {
+                format!(
+                    "set_command_status({status}) for command {} in batch #{}",
+                    command.id, self.batch_id
+                )
+            })
     }
 
-    async fn get_next_command(&self) -> Option<SourceMDcommand> {
+    async fn get_next_command(&self) -> Result<Option<SourceMDcommand>> {
         self.config.read().await.get_next_command(self.batch_id)
     }
 
@@ -324,10 +326,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_next_command_with_no_pool_returns_none() {
+    async fn get_next_command_with_no_pool_errors() {
         let mock_server = start_mock_server().await;
         let bot = make_bot(&mock_server).await;
-        assert!(bot.get_next_command().await.is_none());
+        // After the P0-4 fix, "no pool" is an error rather than a silent None,
+        // so the bot loop can distinguish "DB unavailable" from "no work".
+        let err = bot.get_next_command().await.unwrap_err().to_string();
+        assert!(err.contains("no MySQL pool"), "unexpected error: {err}");
     }
 
     #[tokio::test]

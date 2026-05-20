@@ -153,52 +153,88 @@ fn usage(prog: &str) {
     println!("  --config <file>  Configuration file (default: {})", INI_FILE);
 }
 
-/// Returns true if a new batch was started, false otherwise
-async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> bool {
-    // println!("BOT!");
-    let batch_id = match config.read().await.get_next_batch().await {
-        Some(n) => n,
-        None => return false, // Nothing to do
-    };
+/// Outcome of one tick of the bot driver.
+enum BotTick {
+    /// A batch was found and processed; loop should poll again soon.
+    Worked,
+    /// No batch was found; loop should sleep on the "idle" cadence.
+    Idle,
+    /// The DB query for the next batch failed; treat as transient and back off
+    /// on the "idle" cadence rather than spin tight.
+    DbError,
+}
 
-    println!("SPAWN: Starting batch #{}", batch_id);
-    let bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id).await {
-        Ok(bot) => bot,
-        Err(error) => {
-            println!("Error when starting bot for batch #{}: '{}'", batch_id, error);
-            config.read().await.set_batch_failed(batch_id).await;
-            return false;
+async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> BotTick {
+    let batch_id = match config.read().await.get_next_batch().await {
+        Ok(Some(n)) => n,
+        Ok(None) => return BotTick::Idle,
+        Err(e) => {
+            // P0-5: previously a DB failure was indistinguishable from "no
+            // work" and the bot would silently spin on a broken DB. Now we
+            // log and treat it as an idle tick so the caller backs off.
+            tracing::error!(error = %e, "get_next_batch failed; backing off");
+            return BotTick::DbError;
         },
     };
 
-    println!("Batch #{} spawned", batch_id);
-    // tokio::spawn(async move { while bot.run().await.unwrap_or(false) {} });
-    while bot.run().await.unwrap_or(false) {}
-    true
+    tracing::info!(batch_id, "starting batch");
+    let bot = match SourceMDbot::new(config.clone(), cache.clone(), batch_id).await {
+        Ok(bot) => bot,
+        Err(error) => {
+            tracing::error!(batch_id, error = %error, "failed to start bot for batch");
+            config.read().await.set_batch_failed(batch_id).await;
+            return BotTick::Idle;
+        },
+    };
+
+    tracing::info!(batch_id, "batch spawned");
+    loop {
+        match bot.run().await {
+            Ok(true) => continue,
+            Ok(false) => break, // No more commands for this batch.
+            Err(e) => {
+                tracing::error!(batch_id, error = %e, "bot run failed; ending batch tick");
+                break;
+            },
+        }
+    }
+    BotTick::Worked
 }
 
 async fn command_bot(ini_file: &str) {
-    println!("== STARTING BOT MODE");
+    tracing::info!("starting bot mode");
     let mut smd = SourceMD::new(ini_file).await.unwrap();
-    smd.init();
+    if let Err(e) = smd.init() {
+        tracing::error!(error = %e, "SourceMD::init failed; aborting bot");
+        std::process::exit(1);
+    }
     let smd = Arc::new(RwLock::new(smd));
     let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).await.unwrap()));
     let cache = Arc::new(WikidataStringCache::new(mw_api));
     loop {
-        // println!("BOT!");
-        if run_bot(smd.clone(), cache.clone()).await {
-            tokio::time::sleep(Duration::from_millis(1000)).await;
-        } else {
-            tokio::time::sleep(Duration::from_millis(5000)).await;
-        }
+        let delay = match run_bot(smd.clone(), cache.clone()).await {
+            BotTick::Worked => Duration::from_millis(1000),
+            // Idle and DB-error tick get the same long delay; DB errors are
+            // already logged inside run_bot so a broken DB is no longer silent.
+            BotTick::Idle | BotTick::DbError => Duration::from_millis(5000),
+        };
+        tokio::time::sleep(delay).await;
     }
 }
 
 // For local testing:
 // ssh magnus@tools-login.wmflabs.org -L 3307:tools-db:3306 -N &
 
+fn init_tracing() {
+    use tracing_subscriber::EnvFilter;
+    // Honour RUST_LOG if set; otherwise default to INFO for our crate.
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
+}
+
 #[tokio::main]
 async fn main() {
+    init_tracing();
     let prog = std::env::args().next().unwrap_or_else(|| "papers".to_string());
     let mut pargs = Arguments::from_env();
 

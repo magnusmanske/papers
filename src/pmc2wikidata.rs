@@ -150,7 +150,11 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
 
     // Overriding default function
     fn update_work_item_with_property(&self, publication_id: &str, item: &mut Entity) {
-        if publication_id[0..4].to_string() == "PMID_" {
+        // The original guard was `publication_id[0..4] == "PMID_"`, which
+        // panicked on inputs shorter than 4 bytes and never matched anyway
+        // (4-byte slice vs. 5-byte literal). `starts_with` is the intended
+        // check.
+        if publication_id.starts_with("PMID_") {
             return;
         }
         if let Some(prop) = self.publication_property() {
@@ -482,5 +486,45 @@ mod tests {
     fn publication_property_returns_pmcid() {
         let pmc = PMC2Wikidata::new();
         assert_eq!(pmc.publication_property(), Some(IdProp::PMCID));
+    }
+
+    // === update_work_item_with_property — regression tests for the
+    //     `publication_id[0..4] == "PMID_"` slice bug (would panic on
+    //     inputs shorter than 4 bytes; the guard was also dead code
+    //     because "PMID_" is 5 bytes).
+
+    #[test]
+    fn update_work_item_with_property_does_not_panic_on_short_input() {
+        let pmc = PMC2Wikidata::new();
+        let mut item = wikibase::Entity::new_empty_item();
+        // "PMC" is 3 bytes — pre-fix this slice indexing panics.
+        pmc.update_work_item_with_property("PMC", &mut item);
+        // Not a valid PMCID, so no claim should be added either.
+        assert!(!item.has_claims_with_property("P932"));
+    }
+
+    #[test]
+    fn update_work_item_with_property_does_not_panic_on_empty_input() {
+        let pmc = PMC2Wikidata::new();
+        let mut item = wikibase::Entity::new_empty_item();
+        pmc.update_work_item_with_property("", &mut item);
+        assert!(!item.has_claims_with_property("P932"));
+    }
+
+    #[test]
+    fn update_work_item_with_property_adds_pmcid_claim() {
+        let pmc = PMC2Wikidata::new();
+        let mut item = wikibase::Entity::new_empty_item();
+        pmc.update_work_item_with_property("PMC12345", &mut item);
+        assert!(item.has_claims_with_property("P932"));
+    }
+
+    #[test]
+    fn update_work_item_with_property_skips_pmid_prefixed_id() {
+        let pmc = PMC2Wikidata::new();
+        let mut item = wikibase::Entity::new_empty_item();
+        // The guard's intent: pass-through for PubMed IDs handled elsewhere.
+        pmc.update_work_item_with_property("PMID_999", &mut item);
+        assert!(!item.has_claims_with_property("P932"));
     }
 }
