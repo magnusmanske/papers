@@ -19,15 +19,15 @@ pub struct Crossref2Wikidata {
 
 impl Default for Crossref2Wikidata {
     fn default() -> Self {
-        // Crossref's reqwest version (0.12) differs from the papers crate's
-        // (0.13), so we can't pass `crate::http_client::http_client().clone()`
-        // through Crossref's `.http_client(...)` builder method — the
-        // reqwest::Client types are distinct between major versions. Build a
-        // default Crossref client; tests still get the testability win via
-        // `.base_url(mock.uri())` in `new_with_client`.
+        // Share the bot-wide reqwest::Client with the Crossref SDK so the
+        // adapter inherits the same connection pool, User-Agent, and
+        // timeout config as the rest of `papers`. `http_client` is on the
+        // built `Crossref` (not on `CrossrefBuilder`), so we chain after
+        // `.build()`.
         let client = Crossref::builder()
             .build()
-            .expect("Crossref2Wikidata::default: Crossref::builder().build() failed");
+            .expect("Crossref2Wikidata::default: Crossref::builder().build() failed")
+            .http_client(crate::http_client::http_client().clone());
         Self::new_with_client(client)
     }
 }
@@ -293,9 +293,9 @@ mod tests {
 
     // === P2-10b: SDK DI via base_url ======================================
     //
-    // Note: Crossref's reqwest dependency (0.12) is incompatible with the
-    // papers crate's (0.13), so we can't share `http_client` directly. We
-    // can still inject a `base_url` to point the SDK at a wiremock server.
+    // Crossref now uses reqwest 0.13 (matching papers), so production also
+    // shares the bot-wide HTTP client via `.http_client(...)`. Tests
+    // configure `base_url` on the builder.
 
     use wiremock::matchers::method as wm_method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -309,11 +309,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        // base_url is on the built `Crossref`, not on `CrossrefBuilder`.
+        // base_url is now on the builder; chain before .build().
         let sdk = Crossref::builder()
+            .base_url(server.uri())
             .build()
-            .expect("Crossref::builder().build()")
-            .base_url(server.uri());
+            .expect("Crossref::builder().base_url(mock).build()");
         let mut adapter = Crossref2Wikidata::new_with_client(sdk);
 
         // Build an item with a DOI; the adapter looks at P356 (DOI) on the
