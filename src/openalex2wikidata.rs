@@ -5,7 +5,7 @@ use async_trait::async_trait;
 
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    adapter_helpers::get_external_identifier_from_item,
+    adapter_helpers::{fetch_doi_json, get_external_identifier_from_item},
     generic_author_info::GenericAuthorInfo,
     http_client::{HttpJsonFetcher, JsonFetcher},
     scientific_publication_adapter::{crossref_work_type_to_q, ScientificPublicationAdapter},
@@ -42,9 +42,8 @@ impl OpenAlex2Wikidata {
     }
 
     async fn fetch_doi_data(&self, doi: &str) -> Option<(String, serde_json::Value)> {
-        let url = format!("https://api.openalex.org/works/doi:{}", doi);
-        let json = self.fetcher.fetch_json(&url).await?;
-        Some((doi.to_uppercase(), json))
+        fetch_doi_json(&*self.fetcher, doi, |d| format!("https://api.openalex.org/works/doi:{d}"))
+            .await
     }
 
     async fn fetch_work_by_doi(&mut self, doi: &str) -> Option<String> {

@@ -97,6 +97,30 @@ pub fn parse_date(date_str: &str) -> Option<(u32, Option<u8>, Option<u8>)> {
     crate::scientific_publication_adapter::parse_date(date_str)
 }
 
+/// Fetches a DOI's JSON record via the given [`JsonFetcher`] and returns
+/// `(uppercased_doi, json)` on 2xx + parse success. Returns `None` for
+/// transport failure, non-2xx response, or JSON-parse failure.
+///
+/// The `url_for` closure builds the per-adapter URL pattern. Adapter
+/// callers do any post-fetch validation (e.g. checking for an expected
+/// JSON path) on the returned value before caching it.
+///
+/// Used by the three DOI-based adapters
+/// (`datacite2wikidata`, `europepmc2wikidata`, `openalex2wikidata`)
+/// to avoid duplicating the URL+fetch+uppercase pattern. See audit P2-3.
+pub async fn fetch_doi_json<F>(
+    fetcher: &dyn crate::http_client::JsonFetcher,
+    doi: &str,
+    url_for: F,
+) -> Option<(String, serde_json::Value)>
+where
+    F: FnOnce(&str) -> String,
+{
+    let url = url_for(doi);
+    let json = fetcher.fetch_json(&url).await?;
+    Some((doi.to_uppercase(), json))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

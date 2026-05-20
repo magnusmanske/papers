@@ -5,7 +5,7 @@ use async_trait::async_trait;
 
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    adapter_helpers::get_external_identifier_from_item,
+    adapter_helpers::{fetch_doi_json, get_external_identifier_from_item},
     generic_author_info::GenericAuthorInfo,
     http_client::{HttpJsonFetcher, JsonFetcher},
     scientific_publication_adapter::ScientificPublicationAdapter,
@@ -49,10 +49,12 @@ impl DataCite2Wikidata {
     }
 
     async fn fetch_doi_data(&self, doi: &str) -> Option<(String, serde_json::Value)> {
-        let url = format!("https://api.datacite.org/dois/{}", doi);
-        let json = self.fetcher.fetch_json(&url).await?;
+        let (pub_id, json) =
+            fetch_doi_json(&*self.fetcher, doi, |d| format!("https://api.datacite.org/dois/{d}"))
+                .await?;
+        // DataCite-specific validation: real responses have data.attributes.
         json["data"]["attributes"].as_object()?;
-        Some((doi.to_uppercase(), json))
+        Some((pub_id, json))
     }
 
     async fn fetch_work_by_doi(&mut self, doi: &str) -> Option<String> {

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    adapter_helpers::get_external_identifier_from_item,
+    adapter_helpers::{fetch_doi_json, get_external_identifier_from_item},
     generic_author_info::GenericAuthorInfo,
     http_client::{HttpJsonFetcher, JsonFetcher},
     scientific_publication_adapter::ScientificPublicationAdapter,
@@ -44,14 +44,17 @@ impl EuropePMC2Wikidata {
     }
 
     async fn fetch_doi_data(&self, doi: &str) -> Option<(String, serde_json::Value)> {
-        let url = format!(
-            "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:{}&resulttype=core&format=json",
-            doi
-        );
-        let json = self.fetcher.fetch_json(&url).await?;
+        let (pub_id, json) = fetch_doi_json(&*self.fetcher, doi, |d| {
+            format!(
+                "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:{d}&resulttype=core&format=json"
+            )
+        })
+        .await?;
+        // EuropePMC wraps the work under resultList.result[0] — unpack and
+        // return the work itself, not the wrapper.
         let results = json["resultList"]["result"].as_array()?;
         let work = results.first()?.clone();
-        Some((doi.to_uppercase(), work))
+        Some((pub_id, work))
     }
 
     async fn fetch_work_by_doi(&mut self, doi: &str) -> Option<String> {
