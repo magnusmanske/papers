@@ -233,14 +233,17 @@ impl SourceMD {
         Ok(())
     }
 
-    pub fn init(&mut self) -> Result<()> {
-        // File::with_name(..) is shorthand for File::from(Path::new(..))
-        let ini_file = std::env::var("SOURCEMD_REPLICA_INI")
-            .unwrap_or_else(|_| "/data/project/sourcemd/rust/papers/replica.my.ini".to_string());
+    /// Initialise the MySQL pool used by the bot loop.
+    ///
+    /// `ini_file` is the same path the user passes via `--config` — it must
+    /// contain a `[client]` section with `user` and `password` fields for the
+    /// SourceMD database (in addition to the `[user]` section that
+    /// `create_mw_api` reads for Wikidata login).
+    pub fn init(&mut self, ini_file: &str) -> Result<()> {
         let settings = Config::builder()
-            .add_source(File::with_name(&ini_file))
+            .add_source(File::with_name(ini_file))
             .build()
-            .with_context(|| format!("opening replica ini file '{ini_file}'"))?;
+            .with_context(|| format!("opening config file '{ini_file}'"))?;
         self.params["mysql"]["user"] =
             json!(settings.get_string("client.user").context("missing client.user")?);
         self.params["mysql"]["pass"] =

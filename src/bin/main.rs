@@ -151,6 +151,9 @@ fn usage(prog: &str) {
     println!("USAGE: {} [--config <file>] <subcommand>", prog);
     println!("Subcommands: papers, authors, bot, ans");
     println!("  --config <file>  Configuration file (default: {})", INI_FILE);
+    println!("                   For the `bot` subcommand the file must also");
+    println!("                   contain a [client] section with `user` and");
+    println!("                   `password` for the SourceMD MySQL DB.");
 }
 
 /// Outcome of one tick of the bot driver.
@@ -204,7 +207,7 @@ async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>)
 async fn command_bot(ini_file: &str) {
     tracing::info!("starting bot mode");
     let mut smd = SourceMD::new(ini_file).await.unwrap();
-    if let Err(e) = smd.init() {
+    if let Err(e) = smd.init(ini_file) {
         tracing::error!(error = %e, "SourceMD::init failed; aborting bot");
         std::process::exit(1);
     }
