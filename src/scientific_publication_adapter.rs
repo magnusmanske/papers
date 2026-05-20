@@ -8,25 +8,101 @@ use wikibase::mediawiki::api::Api;
 use self::identifiers::{GenericWorkIdentifier, IdProp};
 use crate::{generic_author_info::GenericAuthorInfo, *};
 
-/// Maps a Crossref/OpenAlex work-type string to a Wikidata Q-item for P31
-/// (instance of). Both APIs use the same Crossref type vocabulary, so a single
-/// function serves both.
-pub fn crossref_work_type_to_q(type_: &str) -> Option<&'static str> {
-    match type_ {
-        "journal-article" => Some("Q13442814"),
-        "book" | "edited-book" | "reference-book" => Some("Q571"),
-        "monograph" => Some("Q193495"),
-        "book-chapter" | "book-section" => Some("Q1980247"),
-        "proceedings-article" => Some("Q23927052"),
-        "proceedings" => Some("Q1143604"),
-        "dissertation" => Some("Q187685"),
-        "posted-content" => Some("Q580922"),
-        "dataset" => Some("Q1172284"),
-        "report" | "report-series" => Some("Q10870555"),
-        "standard" => Some("Q317623"),
-        "peer-review" => Some("Q7161778"),
-        _ => None,
+/// Wikidata work-type vocabulary shared between adapters that report
+/// publication types via different upstream namespaces.
+///
+/// Crossref and OpenAlex both use Crossref's hyphen-separated strings
+/// (e.g. `"journal-article"`); DataCite uses its own CamelCase set
+/// (e.g. `"JournalArticle"`). The two vocabularies overlap on most
+/// Q-IDs but the strings differ, so we previously duplicated the
+/// Q-IDs across two parser functions and risked them drifting.
+/// `WorkType` is the single source of truth for the Q-ID side; each
+/// adapter family has its own `from_<vocab>` parser into this enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkType {
+    JournalArticle,
+    Book,
+    Monograph,
+    BookChapter,
+    ConferencePaper,
+    Proceedings,
+    Dissertation,
+    Preprint,
+    Dataset,
+    Report,
+    Standard,
+    Software,
+    PeerReview,
+}
+
+impl WorkType {
+    /// Returns the Wikidata Q-ID for this work type.
+    pub fn as_q(self) -> &'static str {
+        use WorkType::*;
+        match self {
+            JournalArticle => "Q13442814",
+            Book => "Q571",
+            Monograph => "Q193495",
+            BookChapter => "Q1980247",
+            ConferencePaper => "Q23927052",
+            Proceedings => "Q1143604",
+            Dissertation => "Q187685",
+            Preprint => "Q580922",
+            Dataset => "Q1172284",
+            Report => "Q10870555",
+            Standard => "Q317623",
+            Software => "Q7397",
+            PeerReview => "Q7161778",
+        }
     }
+
+    /// Parses a Crossref `type` field. OpenAlex's `type_crossref` field
+    /// mirrors the same vocabulary. Returns `None` for unknown types.
+    pub fn from_crossref(s: &str) -> Option<Self> {
+        use WorkType::*;
+        Some(match s {
+            "journal-article" => JournalArticle,
+            "book" | "edited-book" | "reference-book" => Book,
+            "monograph" => Monograph,
+            "book-chapter" | "book-section" => BookChapter,
+            "proceedings-article" => ConferencePaper,
+            "proceedings" => Proceedings,
+            "dissertation" => Dissertation,
+            "posted-content" => Preprint,
+            "dataset" => Dataset,
+            "report" | "report-series" => Report,
+            "standard" => Standard,
+            "peer-review" => PeerReview,
+            _ => return None,
+        })
+    }
+
+    /// Parses a DataCite `resourceTypeGeneral` value. Returns `None`
+    /// for unknown types.
+    pub fn from_datacite(s: &str) -> Option<Self> {
+        use WorkType::*;
+        Some(match s {
+            "Book" => Book,
+            "BookChapter" => BookChapter,
+            "ConferencePaper" => ConferencePaper,
+            "ConferenceProceeding" => Proceedings,
+            "Dataset" => Dataset,
+            "Dissertation" => Dissertation,
+            "JournalArticle" | "Journal Article" => JournalArticle,
+            "Preprint" => Preprint,
+            "Report" => Report,
+            "Standard" => Standard,
+            "Software" => Software,
+            _ => return None,
+        })
+    }
+}
+
+/// Maps a Crossref/OpenAlex work-type string to a Wikidata Q-item for P31.
+/// Thin wrapper around [`WorkType::from_crossref`] + [`WorkType::as_q`];
+/// kept for callers that want a `&'static str` directly.
+pub fn crossref_work_type_to_q(type_: &str) -> Option<&'static str> {
+    WorkType::from_crossref(type_).map(WorkType::as_q)
 }
 
 /// Parses a date string like "2023-01-15" or "2023-01-15T00:00:00Z" into (year,
@@ -426,6 +502,103 @@ pub trait ScientificPublicationAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // === WorkType ===========================================================
+
+    #[test]
+    fn work_type_as_q_is_distinct_for_every_variant() {
+        // Catches a future copy-paste where two variants accidentally share
+        // the same Q-ID. Update the list when adding a new WorkType variant.
+        let all = [
+            WorkType::JournalArticle,
+            WorkType::Book,
+            WorkType::Monograph,
+            WorkType::BookChapter,
+            WorkType::ConferencePaper,
+            WorkType::Proceedings,
+            WorkType::Dissertation,
+            WorkType::Preprint,
+            WorkType::Dataset,
+            WorkType::Report,
+            WorkType::Standard,
+            WorkType::Software,
+            WorkType::PeerReview,
+        ];
+        let qs: Vec<&'static str> = all.iter().map(|w| w.as_q()).collect();
+        let mut unique = qs.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(qs.len(), unique.len(), "duplicate Q-ID across WorkType variants: {qs:?}");
+        // And every Q-ID must look like a Q-ID.
+        for q in &qs {
+            assert!(q.starts_with('Q') && q[1..].chars().all(|c| c.is_ascii_digit()), "bad Q: {q}");
+        }
+    }
+
+    #[test]
+    fn work_type_from_crossref_known_inputs() {
+        assert_eq!(WorkType::from_crossref("journal-article"), Some(WorkType::JournalArticle));
+        assert_eq!(WorkType::from_crossref("book"), Some(WorkType::Book));
+        assert_eq!(WorkType::from_crossref("edited-book"), Some(WorkType::Book));
+        assert_eq!(WorkType::from_crossref("reference-book"), Some(WorkType::Book));
+        assert_eq!(WorkType::from_crossref("posted-content"), Some(WorkType::Preprint));
+        assert_eq!(WorkType::from_crossref("report-series"), Some(WorkType::Report));
+        assert_eq!(WorkType::from_crossref("peer-review"), Some(WorkType::PeerReview));
+    }
+
+    #[test]
+    fn work_type_from_crossref_unknown_returns_none() {
+        assert_eq!(WorkType::from_crossref(""), None);
+        assert_eq!(WorkType::from_crossref("unknown-type"), None);
+        // Case sensitivity: Crossref is lowercase-with-hyphens.
+        assert_eq!(WorkType::from_crossref("Journal-Article"), None);
+    }
+
+    #[test]
+    fn work_type_from_datacite_known_inputs() {
+        assert_eq!(WorkType::from_datacite("JournalArticle"), Some(WorkType::JournalArticle));
+        // DataCite also produces the spaced variant.
+        assert_eq!(WorkType::from_datacite("Journal Article"), Some(WorkType::JournalArticle));
+        assert_eq!(WorkType::from_datacite("ConferenceProceeding"), Some(WorkType::Proceedings));
+        assert_eq!(WorkType::from_datacite("Software"), Some(WorkType::Software));
+        assert_eq!(WorkType::from_datacite("Preprint"), Some(WorkType::Preprint));
+    }
+
+    #[test]
+    fn work_type_from_datacite_unknown_returns_none() {
+        assert_eq!(WorkType::from_datacite(""), None);
+        assert_eq!(WorkType::from_datacite("nope"), None);
+        // Case sensitivity: DataCite is CamelCase.
+        assert_eq!(WorkType::from_datacite("journalarticle"), None);
+    }
+
+    #[test]
+    fn work_type_crossref_and_datacite_agree_on_overlap() {
+        // For every input where both vocabularies have a mapping, the
+        // resulting WorkType (and therefore Q-ID) must match. Regression
+        // guard for vocabulary drift between adapters.
+        let pairs = [
+            ("journal-article", "JournalArticle"),
+            ("book", "Book"),
+            ("book-chapter", "BookChapter"),
+            ("proceedings-article", "ConferencePaper"),
+            ("proceedings", "ConferenceProceeding"),
+            ("dissertation", "Dissertation"),
+            ("posted-content", "Preprint"),
+            ("dataset", "Dataset"),
+            ("report", "Report"),
+            ("standard", "Standard"),
+        ];
+        for (crossref, datacite) in pairs {
+            assert_eq!(
+                WorkType::from_crossref(crossref),
+                WorkType::from_datacite(datacite),
+                "{crossref} (crossref) vs {datacite} (datacite) disagree"
+            );
+        }
+    }
+
+    // === ScientificPublicationAdapter helpers =================================
 
     /// Minimal test adapter that returns configurable titles
     struct TestAdapter {

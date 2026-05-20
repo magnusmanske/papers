@@ -53,22 +53,11 @@ impl DataCite2Wikidata {
         Some(pub_id)
     }
 
-    /// Maps a DataCite resourceTypeGeneral value to a Wikidata Q-item.
+    /// Maps a DataCite `resourceTypeGeneral` value to a Wikidata Q-item.
+    /// Thin wrapper around [`WorkType::from_datacite`] + [`WorkType::as_q`].
     fn datacite_type_to_q(resource_type: &str) -> Option<&'static str> {
-        match resource_type {
-            "Book" => Some("Q571"),
-            "BookChapter" => Some("Q1980247"),
-            "ConferencePaper" => Some("Q23927052"),
-            "ConferenceProceeding" => Some("Q1143604"),
-            "Dataset" => Some("Q1172284"),
-            "Dissertation" => Some("Q187685"),
-            "JournalArticle" | "Journal Article" => Some("Q13442814"),
-            "Preprint" => Some("Q580922"),
-            "Report" => Some("Q10870555"),
-            "Standard" => Some("Q317623"),
-            "Software" => Some("Q7397"),
-            _ => None,
-        }
+        crate::scientific_publication_adapter::WorkType::from_datacite(resource_type)
+            .map(crate::scientific_publication_adapter::WorkType::as_q)
     }
 }
 
