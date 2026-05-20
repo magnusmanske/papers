@@ -987,4 +987,178 @@ mod tests {
         assert_eq!(ids.len(), 1);
         assert_eq!(ids[0].id(), "10.0/A");
     }
+
+    #[tokio::test]
+    async fn update_from_paper_ids_filters_non_legit_inputs() {
+        // GenericWorkIdentifier::is_legit rejects empty and "0" ids;
+        // those must not survive into the output set.
+        let mut wdp = make_wdp().await;
+        let initial = vec![
+            GenericWorkIdentifier::new_prop(crate::identifiers::IdProp::DOI, "10.0/legit"),
+            GenericWorkIdentifier::new_prop(crate::identifiers::IdProp::DOI, ""),
+            GenericWorkIdentifier::new_prop(crate::identifiers::IdProp::DOI, "0"),
+        ];
+        let ids = wdp.update_from_paper_ids(&initial).await;
+        assert_eq!(ids.len(), 1, "expected only the legit DOI to survive; got {ids:?}");
+        assert_eq!(ids[0].id(), "10.0/LEGIT");
+    }
+
+    // === P2-T2: merge_authors ===============================================
+    //
+    // The audit specifically called out the no-overlap branch (no match
+    // found, and no partial-match either → append the new author) and
+    // the partial-match branch (ambiguous overlap → skip to avoid
+    // duplicates). Both are private inherent methods on WikidataPapers
+    // and are testable via the in-module test access.
+
+    fn author_named(name: &str, list_num: usize) -> GenericAuthorInfo {
+        GenericAuthorInfo::new_from_name_num(name, list_num)
+    }
+
+    #[tokio::test]
+    async fn merge_authors_shortcut_when_existing_is_empty() {
+        // Shortcut: if `authors` starts empty, just clone authors2.
+        let wdp = make_wdp().await;
+        let mut authors = vec![];
+        let authors2 = vec![author_named("Alice Smith", 1), author_named("Bob Jones", 2)];
+        wdp.merge_authors(&mut authors, &authors2);
+        assert_eq!(authors.len(), 2);
+        assert_eq!(authors[0].name(), Some("Alice Smith"));
+        assert_eq!(authors[1].name(), Some("Bob Jones"));
+    }
+
+    #[tokio::test]
+    async fn merge_authors_appends_when_no_overlap() {
+        // No partial match anywhere → the new author is appended.
+        // (Tests the no-overlap branch the audit named.)
+        let wdp = make_wdp().await;
+        let mut authors = vec![author_named("Alice Smith", 1)];
+        let authors2 = vec![author_named("Bob Jones", 2)];
+        wdp.merge_authors(&mut authors, &authors2);
+        assert_eq!(authors.len(), 2);
+        assert!(authors.iter().any(|a| a.name() == Some("Bob Jones")));
+    }
+
+    #[tokio::test]
+    async fn merge_authors_merges_when_best_match_found() {
+        // find_best_match returns Some → merge_from is called.
+        // Verify the merge happened by checking that data from author2 was
+        // absorbed into authors[0] (here: a prop2id entry was added).
+        let wdp = make_wdp().await;
+        let mut a1 = author_named("Alice Smith", 1);
+        let mut a2 = author_named("Alice Smith", 1);
+        a2.prop2id_mut().insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+        let mut authors = vec![a1.clone()];
+        let authors2 = vec![a2];
+        wdp.merge_authors(&mut authors, &authors2);
+        assert_eq!(authors.len(), 1, "exact-match merge must not duplicate");
+        assert_eq!(
+            authors[0].prop2id().get("P496"),
+            Some(&"0000-0001-2345-6789".to_string()),
+            "ORCID from author2 should have merged into authors[0]"
+        );
+        // Suppress the unused-must-use lint on the clone we built for setup.
+        let _ = &mut a1;
+    }
+
+    #[tokio::test]
+    async fn merge_authors_skips_partial_match_to_avoid_duplicates() {
+        // The no-best-match-but-partial-overlap branch: an author who
+        // partially matches an existing one (e.g. same prop2id but
+        // different name) should NOT be appended — that would create a
+        // duplicate person in the paper.
+        let wdp = make_wdp().await;
+        let mut a1 = author_named("Alice Smith", 1);
+        a1.prop2id_mut().insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+
+        // Same ORCID, different name (partial match via has_partial_match).
+        let mut a2 = author_named("A. Smith", 5);
+        a2.prop2id_mut().insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+
+        let mut authors = vec![a1];
+        let authors2 = vec![a2];
+        wdp.merge_authors(&mut authors, &authors2);
+        // Partial match → either merged or skipped, depending on
+        // find_best_match score. Either way, no duplicate must appear.
+        assert!(
+            authors.len() <= 1 || authors.iter().filter(|a| a.prop2id().get("P496").is_some()).count() <= 1,
+            "ORCID-sharing authors must not appear twice; got {authors:?}",
+        );
+    }
+
+    // === P2-T2: create_author_statements dedup ============================
+
+    #[tokio::test]
+    async fn create_author_statements_dedups_by_wikidata_item() {
+        // Two authors with the same wikidata_item must not produce two P50s.
+        let mut wdp = make_wdp().await;
+        let mut a1 = author_named("Alice Smith", 1);
+        a1.set_wikidata_item(Some("Q100".to_string()));
+        let mut a2 = author_named("A. Smith", 2);
+        a2.set_wikidata_item(Some("Q100".to_string())); // same Q!
+
+        let mut item = Entity::new_empty_item();
+        wdp.create_author_statements(&vec![a1, a2], &mut item);
+
+        let p50_count =
+            item.claims().iter().filter(|s| s.main_snak().property() == "P50").count();
+        assert_eq!(p50_count, 1, "duplicate Q-item must produce only one P50");
+    }
+
+    #[tokio::test]
+    async fn create_author_statements_dedups_by_name_when_no_item() {
+        // Two authors with the same simplified name and NO wikidata_item
+        // must not produce two P2093s.
+        let mut wdp = make_wdp().await;
+        let a1 = author_named("Alice Smith", 1);
+        let a2 = author_named("alice smith", 2); // simplified-equivalent
+
+        let mut item = Entity::new_empty_item();
+        wdp.create_author_statements(&vec![a1, a2], &mut item);
+
+        let p2093_count =
+            item.claims().iter().filter(|s| s.main_snak().property() == "P2093").count();
+        assert_eq!(p2093_count, 1, "duplicate simplified-name must produce only one P2093");
+    }
+
+    #[tokio::test]
+    async fn create_author_statements_distinct_authors_both_produce_statements() {
+        // Sanity: distinct names + distinct items each get their own statement.
+        let mut wdp = make_wdp().await;
+        let mut a1 = author_named("Alice Smith", 1);
+        a1.set_wikidata_item(Some("Q100".to_string()));
+        let a2 = author_named("Bob Jones", 2); // no item, will be P2093
+
+        let mut item = Entity::new_empty_item();
+        wdp.create_author_statements(&vec![a1, a2], &mut item);
+
+        let p50_count =
+            item.claims().iter().filter(|s| s.main_snak().property() == "P50").count();
+        let p2093_count =
+            item.claims().iter().filter(|s| s.main_snak().property() == "P2093").count();
+        assert_eq!(p50_count, 1, "Alice's Q-item should produce a P50");
+        assert_eq!(p2093_count, 1, "Bob's nameless author should produce a P2093");
+    }
+
+    #[tokio::test]
+    async fn create_author_statements_item_and_nameless_dup_with_same_simplified_name() {
+        // Edge case: a1 has wikidata_item (gets P50, skips name-dedup);
+        // a2 has the same simplified name but no item (gets P2093, no
+        // collision with a1's seen_q_items set, so it's added).
+        // Verifies the two dedup sets (q_items, names) are independent.
+        let mut wdp = make_wdp().await;
+        let mut a1 = author_named("Alice Smith", 1);
+        a1.set_wikidata_item(Some("Q100".to_string()));
+        let a2 = author_named("Alice Smith", 2); // no item, same name
+
+        let mut item = Entity::new_empty_item();
+        wdp.create_author_statements(&vec![a1, a2], &mut item);
+
+        let p50_count =
+            item.claims().iter().filter(|s| s.main_snak().property() == "P50").count();
+        let p2093_count =
+            item.claims().iter().filter(|s| s.main_snak().property() == "P2093").count();
+        assert_eq!(p50_count, 1);
+        assert_eq!(p2093_count, 1, "nameless author with same name as a Q-item author still gets a P2093");
+    }
 }
