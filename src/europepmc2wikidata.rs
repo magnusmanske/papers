@@ -1,27 +1,36 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    adapter_helpers::get_external_identifier_from_item, generic_author_info::GenericAuthorInfo,
-    scientific_publication_adapter::ScientificPublicationAdapter, *,
+    adapter_helpers::get_external_identifier_from_item,
+    generic_author_info::GenericAuthorInfo,
+    http_client::{HttpJsonFetcher, JsonFetcher},
+    scientific_publication_adapter::ScientificPublicationAdapter,
+    *,
 };
 
 pub struct EuropePMC2Wikidata {
+    fetcher: Arc<dyn JsonFetcher>,
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, serde_json::Value>,
 }
 
 impl Default for EuropePMC2Wikidata {
     fn default() -> Self {
-        Self::new()
+        Self::new(Arc::new(HttpJsonFetcher::default()))
     }
 }
 
 impl EuropePMC2Wikidata {
-    pub fn new() -> Self {
+    /// New adapter with the given JSON fetcher. Production callers pass
+    /// `Arc::new(HttpJsonFetcher::default())`; tests pass an
+    /// `Arc::new(MockJsonFetcher::new())`.
+    pub fn new(fetcher: Arc<dyn JsonFetcher>) -> Self {
         EuropePMC2Wikidata {
+            fetcher,
             author_cache: HashMap::new(),
             work_cache: HashMap::new(),
         }
@@ -34,19 +43,19 @@ impl EuropePMC2Wikidata {
         self.work_cache.get(publication_id)
     }
 
-    async fn fetch_doi_data(doi: &str) -> Option<(String, serde_json::Value)> {
+    async fn fetch_doi_data(&self, doi: &str) -> Option<(String, serde_json::Value)> {
         let url = format!(
             "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:{}&resulttype=core&format=json",
             doi
         );
-        let json = crate::http_client::fetch_json(&url).await?;
+        let json = self.fetcher.fetch_json(&url).await?;
         let results = json["resultList"]["result"].as_array()?;
         let work = results.first()?.clone();
         Some((doi.to_uppercase(), work))
     }
 
     async fn fetch_work_by_doi(&mut self, doi: &str) -> Option<String> {
-        let (pub_id, work) = Self::fetch_doi_data(doi).await?;
+        let (pub_id, work) = self.fetch_doi_data(doi).await?;
         self.work_cache.insert(pub_id.clone(), work);
         Some(pub_id)
     }
@@ -113,9 +122,14 @@ impl ScientificPublicationAdapter for EuropePMC2Wikidata {
                 None
             })
             .collect();
-        let futures: Vec<_> = dois.iter().map(|doi| Self::fetch_doi_data(doi)).collect();
-        for result in futures::future::join_all(futures).await.into_iter().flatten() {
-            let (pub_id, work) = result;
+        // Build the per-DOI futures with shared & borrows of self, await
+        // them all together, then drop the futures (releasing the borrow)
+        // before mutating self.work_cache below.
+        let results: Vec<_> = {
+            let futures = dois.iter().map(|doi| self.fetch_doi_data(doi));
+            futures::future::join_all(futures).await
+        };
+        for (pub_id, work) in results.into_iter().flatten() {
             self.work_cache.insert(pub_id, work);
         }
         let mut ret = vec![];
@@ -238,13 +252,13 @@ mod tests {
 
     #[test]
     fn test_name() {
-        let adapter = EuropePMC2Wikidata::new();
+        let adapter = EuropePMC2Wikidata::default();
         assert_eq!(adapter.name(), "EuropePMC2Wikidata");
     }
 
     #[test]
     fn test_get_work_titles() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         adapter.work_cache.insert("10.1234/TEST".to_string(), make_epmc_work());
         let titles = adapter.get_work_titles("10.1234/TEST");
         assert_eq!(titles.len(), 1);
@@ -253,13 +267,13 @@ mod tests {
 
     #[test]
     fn test_get_work_titles_missing() {
-        let adapter = EuropePMC2Wikidata::new();
+        let adapter = EuropePMC2Wikidata::default();
         assert!(adapter.get_work_titles("nonexistent").is_empty());
     }
 
     #[test]
     fn test_get_work_titles_empty_title() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         let mut work = make_epmc_work();
         work["title"] = json!("");
         adapter.work_cache.insert("10.1234/TEST".to_string(), work);
@@ -268,14 +282,14 @@ mod tests {
 
     #[test]
     fn test_get_publication_date_from_first_publication_date() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         adapter.work_cache.insert("10.1234/TEST".to_string(), make_epmc_work());
         assert_eq!(adapter.get_publication_date("10.1234/TEST"), Some((2023, Some(6), Some(15))));
     }
 
     #[test]
     fn test_get_publication_date_fallback_to_journal_info() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         let mut work = make_epmc_work();
         work["firstPublicationDate"] = json!(null);
         adapter.work_cache.insert("10.1234/TEST".to_string(), work);
@@ -284,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_get_volume_and_issue() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         adapter.work_cache.insert("10.1234/TEST".to_string(), make_epmc_work());
         assert_eq!(adapter.get_volume("10.1234/TEST"), Some("42".to_string()));
         assert_eq!(adapter.get_issue("10.1234/TEST"), Some("3".to_string()));
@@ -292,14 +306,14 @@ mod tests {
 
     #[test]
     fn test_get_work_issn() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         adapter.work_cache.insert("10.1234/TEST".to_string(), make_epmc_work());
         assert_eq!(adapter.get_work_issn("10.1234/TEST"), Some("1234-5678".to_string()));
     }
 
     #[tokio::test]
     async fn test_get_author_list() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         adapter.work_cache.insert("10.1234/TEST".to_string(), make_epmc_work());
         let authors = adapter.get_author_list("10.1234/TEST").await;
         assert_eq!(authors.len(), 2);
@@ -311,7 +325,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_author_list_empty() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         let mut work = make_epmc_work();
         work["authorList"]["author"] = json!([]);
         adapter.work_cache.insert("10.1234/TEST".to_string(), work);
@@ -320,13 +334,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_author_list_missing() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         assert!(adapter.get_author_list("nonexistent").await.is_empty());
     }
 
     #[test]
     fn test_add_identifiers_from_cached_publication() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         adapter.work_cache.insert("10.1234/TEST".to_string(), make_epmc_work());
         let mut ret = vec![];
         adapter.add_identifiers_from_cached_publication("10.1234/TEST", &mut ret);
@@ -340,7 +354,7 @@ mod tests {
 
     #[test]
     fn test_add_identifiers_partial() {
-        let mut adapter = EuropePMC2Wikidata::new();
+        let mut adapter = EuropePMC2Wikidata::default();
         let mut work = make_epmc_work();
         work["pmcid"] = json!(null);
         adapter.work_cache.insert("10.1234/TEST".to_string(), work);
@@ -348,5 +362,92 @@ mod tests {
         adapter.add_identifiers_from_cached_publication("10.1234/TEST", &mut ret);
         assert_eq!(ret.len(), 2); // DOI + PMID, no PMCID
         assert!(!ret.iter().any(|id| *id.work_type() == GenericWorkType::Property(IdProp::PMCID)));
+    }
+
+    // === HTTP-injected tests (P2-10) =======================================
+
+    use crate::http_client::MockJsonFetcher;
+
+    #[tokio::test]
+    async fn fetch_work_by_doi_hits_expected_url_and_caches() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:10.1234/test&resulttype=core&format=json";
+        fetcher.add_response(
+            url,
+            json!({"resultList": {"result": [
+                {"doi": "10.1234/test", "title": "Test"}
+            ]}}),
+        );
+        let mut adapter = EuropePMC2Wikidata::new(fetcher.clone());
+
+        // Note: fetch_work_by_doi (and its callers) feed the *original*
+        // DOI in unchanged; the cache key is the uppercased form because
+        // fetch_doi_data returns `doi.to_uppercase()`.
+        let pub_id = adapter.fetch_work_by_doi("10.1234/test").await;
+        assert_eq!(pub_id, Some("10.1234/TEST".to_string()));
+        assert_eq!(fetcher.captured_urls(), vec![url.to_string()]);
+        assert!(adapter.get_cached_publication_from_id("10.1234/TEST").is_some());
+    }
+
+    #[tokio::test]
+    async fn fetch_work_by_doi_returns_none_on_fetch_failure() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:10.1234/test&resulttype=core&format=json";
+        fetcher.add_failure(url);
+        let mut adapter = EuropePMC2Wikidata::new(fetcher);
+        assert!(adapter.fetch_work_by_doi("10.1234/test").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn fetch_work_by_doi_returns_none_on_empty_results() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:10.1234/missing&resulttype=core&format=json";
+        fetcher.add_response(url, json!({"resultList": {"result": []}}));
+        let mut adapter = EuropePMC2Wikidata::new(fetcher);
+        assert!(adapter.fetch_work_by_doi("10.1234/missing").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_identifier_list_fetches_each_doi_and_merges_ids() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        // GenericWorkIdentifier::new_prop uppercases DOIs on construction,
+        // so the upstream URLs use the uppercase form.
+        let url_a = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:10.1/A&resulttype=core&format=json";
+        let url_b = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:10.1/B&resulttype=core&format=json";
+        fetcher.add_response(
+            url_a,
+            json!({"resultList": {"result": [
+                {"doi": "10.1/A", "pmid": "111"}
+            ]}}),
+        );
+        fetcher.add_response(
+            url_b,
+            json!({"resultList": {"result": [
+                {"doi": "10.1/B", "pmcid": "PMC222"}
+            ]}}),
+        );
+        let mut adapter = EuropePMC2Wikidata::new(fetcher.clone());
+
+        let inputs = vec![
+            GenericWorkIdentifier::new_prop(IdProp::DOI, "10.1/a"),
+            GenericWorkIdentifier::new_prop(IdProp::DOI, "10.1/b"),
+        ];
+        let out = adapter.get_identifier_list(&inputs).await;
+
+        let captured = fetcher.captured_urls();
+        assert!(
+            captured.iter().any(|u| u.contains("DOI:10.1/A")),
+            "expected DOI:10.1/A in captured URLs, got {captured:?}"
+        );
+        assert!(
+            captured.iter().any(|u| u.contains("DOI:10.1/B")),
+            "expected DOI:10.1/B in captured URLs, got {captured:?}"
+        );
+
+        // Output contains the PMID/PMCID we mocked.
+        assert!(out.iter().any(|id| *id.work_type() == GenericWorkType::Property(IdProp::PMID)
+            && id.id() == "111"));
+        assert!(out.iter().any(|id| *id.work_type() == GenericWorkType::Property(IdProp::PMCID)
+            && id.id() == "PMC222"));
     }
 }

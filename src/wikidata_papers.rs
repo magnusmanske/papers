@@ -96,7 +96,7 @@ impl WikidataPapers {
         wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
         wdp.add_adapter(Box::new(OpenAlex2Wikidata::new()));
         wdp.add_adapter(Box::new(DataCite2Wikidata::new()));
-        wdp.add_adapter(Box::new(EuropePMC2Wikidata::new()));
+        wdp.add_adapter(Box::new(EuropePMC2Wikidata::default()));
         wdp
     }
 
