@@ -126,51 +126,6 @@ impl Pubmed2Wikidata {
         dois
     }
 
-    fn add_identifiers_from_cached_publication(
-        &mut self,
-        publication_id: &str,
-        ret: &mut Vec<GenericWorkIdentifier>,
-    ) -> Option<()> {
-        let my_prop = self.publication_property()?;
-
-        let work = self.get_cached_publication_from_id(publication_id)?;
-
-        ret.push(GenericWorkIdentifier::new_prop(my_prop, publication_id));
-
-        let medline_citation = work.medline_citation.to_owned()?;
-        let article = medline_citation.article?;
-
-        if let Some(pubmed_data) = &work.pubmed_data {
-            if let Some(article_ids) = &pubmed_data.article_ids {
-                article_ids.ids.iter().for_each(|id| {
-                    if let (Some(key), Some(id)) = (&id.id_type, &id.id) {
-                        if let "doi" = key.as_str() {
-                            ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id));
-                        }
-                    }
-                });
-            }
-        }
-
-        // ???
-        for elid in &article.e_location_ids {
-            if !elid.valid {
-                continue;
-            }
-            match (&elid.e_id_type, &elid.id) {
-                (Some(id_type), Some(id)) => {
-                    match id_type.as_str() {
-                        "doi" => ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id)),
-                        other => {
-                            self.warn(&format!("pubmed2wikidata::get_identifier_list unknown paper ID type '{other}'"));
-                        },
-                    }
-                },
-                _ => continue,
-            }
-        }
-        Some(())
-    }
 }
 
 #[async_trait(?Send)]
@@ -189,6 +144,47 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
 
     fn publication_property(&self) -> Option<IdProp> {
         Some(IdProp::PMID)
+    }
+
+    fn has_cached_publication(&self, publication_id: &str) -> bool {
+        self.get_cached_publication_from_id(publication_id).is_some()
+    }
+
+    fn extract_extra_ids(&self, publication_id: &str) -> Vec<GenericWorkIdentifier> {
+        let Some(work) = self.get_cached_publication_from_id(publication_id) else {
+            return vec![];
+        };
+        let mut extras = Vec::new();
+        // DOIs may appear under work.pubmed_data.article_ids[*]
+        if let Some(pubmed_data) = &work.pubmed_data {
+            if let Some(article_ids) = &pubmed_data.article_ids {
+                for id in &article_ids.ids {
+                    if let (Some(key), Some(id_val)) = (&id.id_type, &id.id) {
+                        if key.as_str() == "doi" {
+                            extras.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id_val));
+                        }
+                    }
+                }
+            }
+        }
+        // DOIs may also appear under article.e_location_ids
+        if let Some(article) = work.medline_citation.as_ref().and_then(|m| m.article.as_ref()) {
+            for elid in &article.e_location_ids {
+                if !elid.valid {
+                    continue;
+                }
+                match (&elid.e_id_type, &elid.id) {
+                    (Some(id_type), Some(id)) => match id_type.as_str() {
+                        "doi" => extras.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id)),
+                        other => self.warn(&format!(
+                            "pubmed2wikidata::extract_extra_ids unknown paper ID type '{other}'"
+                        )),
+                    },
+                    _ => continue,
+                }
+            }
+        }
+        extras
     }
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {

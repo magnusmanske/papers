@@ -49,38 +49,6 @@ impl Semanticscholar2Wikidata {
         vec![publication_id]
     }
 
-    fn add_identifiers_from_cached_publication(
-        &mut self,
-        publication_id: &str,
-        ret: &mut Vec<GenericWorkIdentifier>,
-    ) {
-        let my_prop = match self.publication_property() {
-            Some(prop) => prop,
-            None => return,
-        };
-
-        let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w,
-            None => return,
-        };
-
-        ret.push(GenericWorkIdentifier::new_prop(my_prop, publication_id));
-
-        if let Some(id) = &work.doi {
-            ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, id));
-        }
-
-        // This works, but might somehow merge separate items for "reviewed
-        // publication" and arxiv version match &work.arxiv_id {
-        // Some(id) => {
-        // ret.push(GenericWorkIdentifier {
-        // work_type: GenericWorkType::Property(PROP_ARXIV.to_string()),
-        // id: id.clone(),
-        // });
-        // }
-        // None => {}
-        // }
-    }
 }
 
 #[async_trait(?Send)]
@@ -118,6 +86,21 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
 
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
         &mut self.author_cache
+    }
+
+    fn has_cached_publication(&self, publication_id: &str) -> bool {
+        self.get_cached_publication_from_id(publication_id).is_some()
+    }
+
+    fn extract_extra_ids(&self, publication_id: &str) -> Vec<GenericWorkIdentifier> {
+        let Some(work) = self.get_cached_publication_from_id(publication_id) else {
+            return vec![];
+        };
+        let mut extras = Vec::new();
+        if let Some(doi) = &work.doi {
+            extras.push(GenericWorkIdentifier::new_prop(IdProp::DOI, doi));
+        }
+        extras
     }
 
     async fn get_identifier_list(
@@ -284,7 +267,7 @@ mod tests {
 
     #[test]
     fn add_identifiers_includes_semantic_scholar_id() {
-        let mut ss = make_ss("abc123", make_work(None, None, None));
+        let ss = make_ss("abc123", make_work(None, None, None));
         let mut ret = vec![];
         ss.add_identifiers_from_cached_publication("abc123", &mut ret);
         assert!(ret.iter().any(|id| id.work_type()
@@ -294,7 +277,7 @@ mod tests {
 
     #[test]
     fn add_identifiers_includes_doi_when_present() {
-        let mut ss = make_ss("abc123", make_work(None, Some("10.1234/test"), None));
+        let ss = make_ss("abc123", make_work(None, Some("10.1234/test"), None));
         let mut ret = vec![];
         ss.add_identifiers_from_cached_publication("abc123", &mut ret);
         assert!(ret
@@ -304,7 +287,7 @@ mod tests {
 
     #[test]
     fn add_identifiers_no_doi_when_absent() {
-        let mut ss = make_ss("abc123", make_work(None, None, None));
+        let ss = make_ss("abc123", make_work(None, None, None));
         let mut ret = vec![];
         ss.add_identifiers_from_cached_publication("abc123", &mut ret);
         assert!(!ret
@@ -314,7 +297,10 @@ mod tests {
 
     #[test]
     fn add_identifiers_does_nothing_for_missing_publication() {
-        let mut ss = Semanticscholar2Wikidata::new();
+        // Defensive check: the function bails out via has_cached_publication
+        // when the work isn't cached, so callers can't accidentally fabricate
+        // claims for non-existent publications.
+        let ss = Semanticscholar2Wikidata::new();
         let mut ret = vec![];
         ss.add_identifiers_from_cached_publication("nonexistent", &mut ret);
         assert!(ret.is_empty());

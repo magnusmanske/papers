@@ -177,6 +177,60 @@ pub trait ScientificPublicationAdapter {
         vec![]
     }
 
+    /// Returns true if this adapter currently has a cached publication
+    /// for `publication_id`. Default is `false` (no cache exists);
+    /// adapters with an internal `work_cache` override with a one-line
+    /// `self.get_cached_publication_from_id(id).is_some()`.
+    ///
+    /// This is the defensive guard that
+    /// [`add_identifiers_from_cached_publication`] consults before
+    /// pushing any IDs. Without it, a buggy caller asking for IDs
+    /// from a publication that doesn't exist would silently fabricate
+    /// a self-id claim for it.
+    fn has_cached_publication(&self, _publication_id: &str) -> bool {
+        false
+    }
+
+    /// Adapter-specific "self" identifier for a cached publication.
+    ///
+    /// Default: builds `(publication_property, publication_id_for_statement(publication_id))`
+    /// if `publication_property` is set. Override when the cached work's
+    /// canonical id differs from the lookup id — e.g. PMC stores the
+    /// `pmcid` in the work even when the lookup was by PMID.
+    fn extract_self_id(&self, publication_id: &str) -> Option<GenericWorkIdentifier> {
+        let p = self.publication_property()?;
+        let id = self.publication_id_for_statement(publication_id)?;
+        Some(GenericWorkIdentifier::new_prop(p, &id))
+    }
+
+    /// Extra identifiers (DOI, PMID, PMCID, …) discoverable in this
+    /// adapter's cached work, other than the self-id from
+    /// [`extract_self_id`]. Empty by default. Override per-adapter.
+    fn extract_extra_ids(&self, _publication_id: &str) -> Vec<GenericWorkIdentifier> {
+        vec![]
+    }
+
+    /// Combines [`extract_self_id`] and [`extract_extra_ids`] into the
+    /// shared shape used by every adapter that contributes IDs in
+    /// `get_identifier_list`. Bails out if `has_cached_publication`
+    /// returns false. Adapters that previously had their own inherent
+    /// `add_identifiers_from_cached_publication` now override
+    /// `has_cached_publication` (one-liner) + one of the two extract
+    /// hooks above instead.
+    fn add_identifiers_from_cached_publication(
+        &self,
+        publication_id: &str,
+        ret: &mut Vec<GenericWorkIdentifier>,
+    ) {
+        if !self.has_cached_publication(publication_id) {
+            return;
+        }
+        if let Some(self_id) = self.extract_self_id(publication_id) {
+            ret.push(self_id);
+        }
+        ret.extend(self.extract_extra_ids(publication_id));
+    }
+
     /// Returns a lanuage item identifier, or None
     async fn get_language_item(&self, _publication_id: &str) -> Option<String> {
         None

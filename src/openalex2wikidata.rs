@@ -53,43 +53,6 @@ impl OpenAlex2Wikidata {
         Some(pub_id)
     }
 
-    fn add_identifiers_from_cached_publication(
-        &self,
-        publication_id: &str,
-        ret: &mut Vec<GenericWorkIdentifier>,
-    ) {
-        let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w,
-            None => return,
-        };
-
-        // DOI
-        if let Some(doi) = work["doi"].as_str() {
-            // OpenAlex returns DOI as full URL like "https://doi.org/10.1234/..."
-            let doi = doi.strip_prefix("https://doi.org/").unwrap_or(doi);
-            ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, doi));
-        }
-
-        // PMID
-        if let Some(pmid_url) = work["ids"]["pmid"].as_str() {
-            // Format: "https://pubmed.ncbi.nlm.nih.gov/12345678"
-            if let Some(pmid) = pmid_url.rsplit('/').next() {
-                if !pmid.is_empty() {
-                    ret.push(GenericWorkIdentifier::new_prop(IdProp::PMID, pmid));
-                }
-            }
-        }
-
-        // PMCID
-        if let Some(pmcid_url) = work["ids"]["pmcid"].as_str() {
-            // Format: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1234567"
-            if let Some(pmcid) = pmcid_url.rsplit('/').next() {
-                if !pmcid.is_empty() {
-                    ret.push(GenericWorkIdentifier::new_prop(IdProp::PMCID, pmcid));
-                }
-            }
-        }
-    }
 }
 
 #[async_trait(?Send)]
@@ -104,6 +67,35 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
 
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
         &mut self.author_cache
+    }
+
+    fn has_cached_publication(&self, publication_id: &str) -> bool {
+        self.get_cached_publication_from_id(publication_id).is_some()
+    }
+
+    fn extract_extra_ids(&self, publication_id: &str) -> Vec<GenericWorkIdentifier> {
+        let Some(work) = self.get_cached_publication_from_id(publication_id) else {
+            return vec![];
+        };
+        let mut extras = Vec::new();
+        // OpenAlex returns DOI as full URL like "https://doi.org/10.1234/..."
+        if let Some(doi) = work["doi"].as_str() {
+            let doi = doi.strip_prefix("https://doi.org/").unwrap_or(doi);
+            extras.push(GenericWorkIdentifier::new_prop(IdProp::DOI, doi));
+        }
+        // PMID URL: "https://pubmed.ncbi.nlm.nih.gov/12345678"
+        if let Some(pmid_url) = work["ids"]["pmid"].as_str() {
+            if let Some(pmid) = pmid_url.rsplit('/').next().filter(|s| !s.is_empty()) {
+                extras.push(GenericWorkIdentifier::new_prop(IdProp::PMID, pmid));
+            }
+        }
+        // PMCID URL: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1234567"
+        if let Some(pmcid_url) = work["ids"]["pmcid"].as_str() {
+            if let Some(pmcid) = pmcid_url.rsplit('/').next().filter(|s| !s.is_empty()) {
+                extras.push(GenericWorkIdentifier::new_prop(IdProp::PMCID, pmcid));
+            }
+        }
+        extras
     }
 
     async fn get_identifier_list(

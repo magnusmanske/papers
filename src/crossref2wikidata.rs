@@ -40,21 +40,6 @@ impl Crossref2Wikidata {
         self.work_cache.get(publication_id)
     }
 
-    fn add_identifiers_from_cached_publication(
-        &mut self,
-        publication_id: &str,
-        ret: &mut Vec<GenericWorkIdentifier>,
-    ) {
-        let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w,
-            None => return,
-        };
-
-        if !work.doi.is_empty() {
-            ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, &work.doi));
-        }
-    }
-
     fn should_add_string(&self, s: &str) -> bool {
         if s == "n/a" || s == "n/a-n/a" {
             return false;
@@ -107,6 +92,20 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
         &mut self.author_cache
+    }
+
+    fn has_cached_publication(&self, publication_id: &str) -> bool {
+        self.get_cached_publication_from_id(publication_id).is_some()
+    }
+
+    fn extract_extra_ids(&self, publication_id: &str) -> Vec<GenericWorkIdentifier> {
+        let Some(work) = self.get_cached_publication_from_id(publication_id) else {
+            return vec![];
+        };
+        if work.doi.is_empty() {
+            return vec![];
+        }
+        vec![GenericWorkIdentifier::new_prop(IdProp::DOI, &work.doi)]
     }
 
     async fn get_identifier_list(

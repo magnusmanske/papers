@@ -103,30 +103,6 @@ impl PMC2Wikidata {
         json["pmid"].as_str().map(|pmid| pmid.to_string())
     }
 
-    fn add_identifiers_from_cached_publication(
-        &mut self,
-        publication_id: &str,
-        ret: &mut Vec<GenericWorkIdentifier>,
-    ) {
-        let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w,
-            None => return,
-        };
-
-        // PMCID (self)
-        if let Some(p) = self.publication_property() {
-            if let Some(pmc_id) = self.get_pmcid_from_work(work) {
-                if let Some(id) = self.publication_id_for_statement(&pmc_id) {
-                    ret.push(GenericWorkIdentifier::new_prop(p, &id));
-                }
-            }
-        };
-
-        // PubMed
-        if let Some(pmid) = self.get_pmid_from_work(work) {
-            ret.push(GenericWorkIdentifier::new_prop(IdProp::PMID, &pmid));
-        }
-    }
 }
 
 #[async_trait(?Send)]
@@ -145,6 +121,34 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
 
     fn publication_property(&self) -> Option<IdProp> {
         Some(IdProp::PMCID)
+    }
+
+    fn has_cached_publication(&self, publication_id: &str) -> bool {
+        self.get_cached_publication_from_id(publication_id).is_some()
+    }
+
+    /// PMC overrides the default `extract_self_id` because its cached
+    /// work holds the canonical PMC id even when the lookup happened
+    /// by PMID. The input `publication_id` may be either a PMID or
+    /// a PMC id; the right self id always comes from the work's
+    /// `pmcid` field.
+    fn extract_self_id(&self, publication_id: &str) -> Option<GenericWorkIdentifier> {
+        let work = self.get_cached_publication_from_id(publication_id)?;
+        let prop = self.publication_property()?;
+        let pmc_id = self.get_pmcid_from_work(work)?;
+        let id = self.publication_id_for_statement(&pmc_id)?;
+        Some(GenericWorkIdentifier::new_prop(prop, &id))
+    }
+
+    fn extract_extra_ids(&self, publication_id: &str) -> Vec<GenericWorkIdentifier> {
+        let Some(work) = self.get_cached_publication_from_id(publication_id) else {
+            return vec![];
+        };
+        let mut extras = Vec::new();
+        if let Some(pmid) = self.get_pmid_from_work(work) {
+            extras.push(GenericWorkIdentifier::new_prop(IdProp::PMID, &pmid));
+        }
+        extras
     }
 
     fn publication_id_for_statement(&self, id: &str) -> Option<String> {

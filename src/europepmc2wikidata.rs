@@ -60,37 +60,6 @@ impl EuropePMC2Wikidata {
         Some(pub_id)
     }
 
-    fn add_identifiers_from_cached_publication(
-        &self,
-        publication_id: &str,
-        ret: &mut Vec<GenericWorkIdentifier>,
-    ) {
-        let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w,
-            None => return,
-        };
-
-        // DOI
-        if let Some(doi) = work["doi"].as_str() {
-            if !doi.is_empty() {
-                ret.push(GenericWorkIdentifier::new_prop(IdProp::DOI, doi));
-            }
-        }
-
-        // PMID
-        if let Some(pmid) = work["pmid"].as_str() {
-            if !pmid.is_empty() {
-                ret.push(GenericWorkIdentifier::new_prop(IdProp::PMID, pmid));
-            }
-        }
-
-        // PMCID
-        if let Some(pmcid) = work["pmcid"].as_str() {
-            if !pmcid.is_empty() {
-                ret.push(GenericWorkIdentifier::new_prop(IdProp::PMCID, pmcid));
-            }
-        }
-    }
 }
 
 #[async_trait(?Send)]
@@ -105,6 +74,27 @@ impl ScientificPublicationAdapter for EuropePMC2Wikidata {
 
     fn author_cache_mut(&mut self) -> &mut HashMap<String, String> {
         &mut self.author_cache
+    }
+
+    fn has_cached_publication(&self, publication_id: &str) -> bool {
+        self.get_cached_publication_from_id(publication_id).is_some()
+    }
+
+    fn extract_extra_ids(&self, publication_id: &str) -> Vec<GenericWorkIdentifier> {
+        let Some(work) = self.get_cached_publication_from_id(publication_id) else {
+            return vec![];
+        };
+        let mut extras = Vec::new();
+        if let Some(doi) = work["doi"].as_str().filter(|s| !s.is_empty()) {
+            extras.push(GenericWorkIdentifier::new_prop(IdProp::DOI, doi));
+        }
+        if let Some(pmid) = work["pmid"].as_str().filter(|s| !s.is_empty()) {
+            extras.push(GenericWorkIdentifier::new_prop(IdProp::PMID, pmid));
+        }
+        if let Some(pmcid) = work["pmcid"].as_str().filter(|s| !s.is_empty()) {
+            extras.push(GenericWorkIdentifier::new_prop(IdProp::PMCID, pmcid));
+        }
+        extras
     }
 
     async fn get_identifier_list(
