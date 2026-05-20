@@ -1,27 +1,35 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    adapter_helpers::get_external_identifier_from_item, generic_author_info::GenericAuthorInfo,
-    scientific_publication_adapter::ScientificPublicationAdapter, *,
+    adapter_helpers::get_external_identifier_from_item,
+    generic_author_info::GenericAuthorInfo,
+    http_client::{HttpJsonFetcher, JsonFetcher},
+    scientific_publication_adapter::ScientificPublicationAdapter,
+    *,
 };
 
 pub struct DataCite2Wikidata {
+    fetcher: Arc<dyn JsonFetcher>,
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, serde_json::Value>,
 }
 
 impl Default for DataCite2Wikidata {
     fn default() -> Self {
-        Self::new()
+        Self::new(Arc::new(HttpJsonFetcher::default()))
     }
 }
 
 impl DataCite2Wikidata {
-    pub fn new() -> Self {
+    /// New adapter with the given JSON fetcher. See [`crate::http_client`]
+    /// for the production/mocking pair.
+    pub fn new(fetcher: Arc<dyn JsonFetcher>) -> Self {
         DataCite2Wikidata {
+            fetcher,
             author_cache: HashMap::new(),
             work_cache: HashMap::new(),
         }
@@ -40,15 +48,15 @@ impl DataCite2Wikidata {
         work["data"]["attributes"].as_object().map(|_| &work["data"]["attributes"])
     }
 
-    async fn fetch_doi_data(doi: &str) -> Option<(String, serde_json::Value)> {
+    async fn fetch_doi_data(&self, doi: &str) -> Option<(String, serde_json::Value)> {
         let url = format!("https://api.datacite.org/dois/{}", doi);
-        let json = crate::http_client::fetch_json(&url).await?;
+        let json = self.fetcher.fetch_json(&url).await?;
         json["data"]["attributes"].as_object()?;
         Some((doi.to_uppercase(), json))
     }
 
     async fn fetch_work_by_doi(&mut self, doi: &str) -> Option<String> {
-        let (pub_id, json) = Self::fetch_doi_data(doi).await?;
+        let (pub_id, json) = self.fetch_doi_data(doi).await?;
         self.work_cache.insert(pub_id.clone(), json);
         Some(pub_id)
     }
@@ -90,9 +98,11 @@ impl ScientificPublicationAdapter for DataCite2Wikidata {
                 None
             })
             .collect();
-        let futures: Vec<_> = dois.iter().map(|doi| Self::fetch_doi_data(doi)).collect();
-        for result in futures::future::join_all(futures).await.into_iter().flatten() {
-            let (pub_id, json) = result;
+        let results: Vec<_> = {
+            let futures = dois.iter().map(|doi| self.fetch_doi_data(doi));
+            futures::future::join_all(futures).await
+        };
+        for (pub_id, json) in results.into_iter().flatten() {
             self.work_cache.insert(pub_id, json);
         }
         let mut ret = vec![];
@@ -256,13 +266,13 @@ mod tests {
 
     #[test]
     fn test_name() {
-        let adapter = DataCite2Wikidata::new();
+        let adapter = DataCite2Wikidata::default();
         assert_eq!(adapter.name(), "DataCite2Wikidata");
     }
 
     #[test]
     fn test_get_work_titles() {
-        let mut adapter = DataCite2Wikidata::new();
+        let mut adapter = DataCite2Wikidata::default();
         adapter
             .work_cache
             .insert("10.5281/ZENODO.1234567".to_string(), make_datacite_work());
@@ -273,13 +283,13 @@ mod tests {
 
     #[test]
     fn test_get_work_titles_missing() {
-        let adapter = DataCite2Wikidata::new();
+        let adapter = DataCite2Wikidata::default();
         assert!(adapter.get_work_titles("nonexistent").is_empty());
     }
 
     #[test]
     fn test_get_work_titles_empty_titles_array() {
-        let mut adapter = DataCite2Wikidata::new();
+        let mut adapter = DataCite2Wikidata::default();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["titles"] = json!([]);
         adapter.work_cache.insert("10.5281/ZENODO.1234567".to_string(), work);
@@ -288,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_get_work_type_dataset() {
-        let mut adapter = DataCite2Wikidata::new();
+        let mut adapter = DataCite2Wikidata::default();
         adapter
             .work_cache
             .insert("10.5281/ZENODO.1234567".to_string(), make_datacite_work());
@@ -297,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_get_work_type_software() {
-        let mut adapter = DataCite2Wikidata::new();
+        let mut adapter = DataCite2Wikidata::default();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["types"]["resourceTypeGeneral"] = json!("Software");
         adapter.work_cache.insert("10.5281/ZENODO.1234567".to_string(), work);
@@ -314,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_get_publication_date_with_issued_date() {
-        let mut adapter = DataCite2Wikidata::new();
+        let mut adapter = DataCite2Wikidata::default();
         adapter
             .work_cache
             .insert("10.5281/ZENODO.1234567".to_string(), make_datacite_work());
@@ -326,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_get_publication_date_year_only() {
-        let mut adapter = DataCite2Wikidata::new();
+        let mut adapter = DataCite2Wikidata::default();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["dates"] = json!([]);
         adapter.work_cache.insert("10.5281/ZENODO.1234567".to_string(), work);
@@ -338,7 +348,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_author_list() {
-        let mut adapter = DataCite2Wikidata::new();
+        let mut adapter = DataCite2Wikidata::default();
         adapter
             .work_cache
             .insert("10.5281/ZENODO.1234567".to_string(), make_datacite_work());
@@ -354,7 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_author_list_name_only() {
-        let mut adapter = DataCite2Wikidata::new();
+        let mut adapter = DataCite2Wikidata::default();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["creators"] = json!([
             {
@@ -370,10 +380,49 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_author_list_empty() {
-        let mut adapter = DataCite2Wikidata::new();
+        let mut adapter = DataCite2Wikidata::default();
         let mut work = make_datacite_work();
         work["data"]["attributes"]["creators"] = json!([]);
         adapter.work_cache.insert("10.5281/ZENODO.1234567".to_string(), work);
         assert!(adapter.get_author_list("10.5281/ZENODO.1234567").await.is_empty());
+    }
+
+    // === HTTP-injected tests (P2-10) =======================================
+
+    use crate::http_client::MockJsonFetcher;
+
+    #[tokio::test]
+    async fn fetch_work_by_doi_hits_expected_url_and_caches() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://api.datacite.org/dois/10.5281/zenodo.999";
+        fetcher.add_response(
+            url,
+            json!({"data": {"attributes": {"titles": [{"title": "X"}]}}}),
+        );
+        let mut adapter = DataCite2Wikidata::new(fetcher.clone());
+        let pub_id = adapter.fetch_work_by_doi("10.5281/zenodo.999").await;
+        // DataCite's fetch_doi_data uppercases the cache key.
+        assert_eq!(pub_id, Some("10.5281/ZENODO.999".to_string()));
+        assert_eq!(fetcher.captured_urls(), vec![url.to_string()]);
+    }
+
+    #[tokio::test]
+    async fn fetch_work_by_doi_returns_none_on_fetch_failure() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://api.datacite.org/dois/10.5281/zenodo.999";
+        fetcher.add_failure(url);
+        let mut adapter = DataCite2Wikidata::new(fetcher);
+        assert!(adapter.fetch_work_by_doi("10.5281/zenodo.999").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn fetch_work_by_doi_returns_none_when_attributes_missing() {
+        // Server returns 200 OK but the JSON has no `data.attributes` object;
+        // the early guard in fetch_doi_data rejects this.
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://api.datacite.org/dois/10.5281/zenodo.999";
+        fetcher.add_response(url, json!({"data": {}}));
+        let mut adapter = DataCite2Wikidata::new(fetcher);
+        assert!(adapter.fetch_work_by_doi("10.5281/zenodo.999").await.is_none());
     }
 }

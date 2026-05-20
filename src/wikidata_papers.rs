@@ -94,8 +94,8 @@ impl WikidataPapers {
         wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
         wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
         wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
-        wdp.add_adapter(Box::new(OpenAlex2Wikidata::new()));
-        wdp.add_adapter(Box::new(DataCite2Wikidata::new()));
+        wdp.add_adapter(Box::new(OpenAlex2Wikidata::default()));
+        wdp.add_adapter(Box::new(DataCite2Wikidata::default()));
         wdp.add_adapter(Box::new(EuropePMC2Wikidata::default()));
         wdp
     }
