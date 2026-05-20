@@ -359,9 +359,11 @@ impl GenericAuthorInfo {
             self.list_number = author2.list_number.clone();
         } else if author2.list_number.is_some() && self.list_number != author2.list_number {
             // Keep existing list number from higher-priority source
-            eprintln!(
-                "GenericAuthorInfo::merge_from: Different list numbers {:?} and {:?} for {:?}, keeping {:?}",
-                self.list_number, author2.list_number, self.name, self.list_number
+            tracing::warn!(
+                kept = ?self.list_number,
+                discarded = ?author2.list_number,
+                name = ?self.name,
+                "merge_from: conflicting list numbers, keeping higher-priority value",
             );
         }
         for (k, v) in &author2.prop2id {
@@ -369,9 +371,12 @@ impl GenericAuthorInfo {
                 Some(x) => {
                     if x != v {
                         // Keep existing value from higher-priority source
-                        eprintln!(
-                            "GenericAuthorInfo::merge_from: Different property {} values {} and {} for {:?}, keeping {}",
-                            k, x, v, self.name, x
+                        tracing::warn!(
+                            property = %k,
+                            kept = %x,
+                            discarded = %v,
+                            name = ?self.name,
+                            "merge_from: conflicting property values, keeping higher-priority value",
                         );
                     }
                 },

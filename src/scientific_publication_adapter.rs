@@ -67,14 +67,12 @@ pub trait ScientificPublicationAdapter {
         }
     }
 
-    #[cfg(debug_assertions)]
+    /// Emit a warning routed through `tracing` so it appears in structured
+    /// logs in all build profiles (formerly a `cfg(debug_assertions)`
+    /// no-op in release, which silently swallowed adapter complaints in
+    /// production — see audit P3 polish).
     fn warn(&self, msg: &str) {
-        println!("{}: {msg}", self.name())
-    }
-
-    #[cfg(not(debug_assertions))]
-    fn warn(&self, _msg: &str) {
-        // Do nothing
+        tracing::warn!(adapter = self.name(), "{msg}");
     }
 
     /// Adds/updates "special" statements of an item from the resource, given

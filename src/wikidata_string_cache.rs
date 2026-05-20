@@ -110,7 +110,7 @@ impl WikidataStringCache {
         };
 
         // Do prune
-        println!("Pruning {}", property);
+        tracing::info!(property, "pruning cache property");
         let mut times: Vec<SystemTime> = data.values().map(|v| v.timestamp()).collect();
         if times.is_empty() {
             return;
@@ -121,7 +121,7 @@ impl WikidataStringCache {
         // Remove older half of cache
         let half_time = times[times.len() / 2];
         data.retain(|_k, v| v.timestamp() >= half_time);
-        println!("Pruned {} to {}", property, data.len());
+        tracing::info!(property, remaining = data.len(), "pruned cache property");
     }
 
     /// Checks if a property has a key-value hash in the cache

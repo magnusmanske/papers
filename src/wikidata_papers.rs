@@ -235,7 +235,7 @@ impl WikidataPapers {
             match author.find_best_match(authors) {
                 Some((candidate, _points)) => match authors[candidate].merge_from(author) {
                     Ok(_) => {},
-                    Err(e) => eprintln!("{:?}: {}", author, e),
+                    Err(e) => tracing::warn!(?author, error = %e, "merge_authors: merge_from failed"),
                 },
                 None => {
                     // Only add if there's truly no overlap with any existing author.
@@ -419,7 +419,7 @@ impl WikidataPapers {
 
         // Paranoia
         if item.claims().len() < 4 {
-            println!("Skipping {:?}", ids);
+            tracing::warn!(?ids, claim_count = item.claims().len(), "skipping: too few claims to write");
             return Ok(None);
         }
 
