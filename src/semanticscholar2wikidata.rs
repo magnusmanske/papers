@@ -17,16 +17,28 @@ pub struct Semanticscholar2Wikidata {
 
 impl Default for Semanticscholar2Wikidata {
     fn default() -> Self {
-        Self::new()
+        // Wire the shared papers reqwest::Client into the SDK so the
+        // adapter and the rest of the bot share one connection pool,
+        // one User-Agent, and one timeout config. See audit P2-10b.
+        let client = Client::new().http_client(crate::http_client::http_client().clone());
+        Self::new_with_client(client)
     }
 }
 
 impl Semanticscholar2Wikidata {
     pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// New adapter with a caller-provided SDK client. Tests construct
+    /// a `semanticscholar::Client::new().base_url(mock.uri())` and pass
+    /// it here; production goes through `Default::default()` which
+    /// shares the bot-wide HTTP client.
+    pub fn new_with_client(client: Client) -> Self {
         Semanticscholar2Wikidata {
             author_cache: HashMap::new(),
             work_cache: HashMap::new(),
-            client: Client::new(),
+            client,
         }
     }
 

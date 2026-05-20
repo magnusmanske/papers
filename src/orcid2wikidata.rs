@@ -31,16 +31,26 @@ pub struct Orcid2Wikidata {
 
 impl Default for Orcid2Wikidata {
     fn default() -> Self {
-        Self::new()
+        // Wire the shared papers reqwest::Client into the SDK so the
+        // adapter shares the bot-wide connection pool + UA + timeout.
+        let client = Client::new().http_client(crate::http_client::http_client().clone());
+        Self::new_with_client(client)
     }
 }
 
 impl Orcid2Wikidata {
     pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// New adapter with a caller-provided SDK client. Tests construct
+    /// an `orcid::Client::new().base_url(mock.uri())`; production uses
+    /// `Default::default()` to share the bot-wide HTTP client.
+    pub fn new_with_client(client: Client) -> Self {
         Orcid2Wikidata {
             author_cache: HashMap::new(),
             work_cache: HashMap::new(),
-            client: Client::new(),
+            client,
             author_data: Arc::new(Mutex::new(HashMap::new())),
         }
     }

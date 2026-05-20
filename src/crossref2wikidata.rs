@@ -14,26 +14,38 @@ use crate::{
 pub struct Crossref2Wikidata {
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, crossref::Work>,
+    client: Crossref,
 }
 
 impl Default for Crossref2Wikidata {
     fn default() -> Self {
-        Self::new()
+        // Crossref's reqwest version (0.12) differs from the papers crate's
+        // (0.13), so we can't pass `crate::http_client::http_client().clone()`
+        // through Crossref's `.http_client(...)` builder method — the
+        // reqwest::Client types are distinct between major versions. Build a
+        // default Crossref client; tests still get the testability win via
+        // `.base_url(mock.uri())` in `new_with_client`.
+        let client = Crossref::builder()
+            .build()
+            .expect("Crossref2Wikidata::default: Crossref::builder().build() failed");
+        Self::new_with_client(client)
     }
 }
 
 impl Crossref2Wikidata {
     pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// New adapter with a caller-provided SDK client. Tests construct
+    /// a `Crossref::builder().base_url(mock.uri()).build()?` and pass
+    /// it here; production goes through `Default::default()`.
+    pub fn new_with_client(client: Crossref) -> Self {
         Crossref2Wikidata {
             author_cache: HashMap::new(),
             work_cache: HashMap::new(),
+            client,
         }
-    }
-
-    fn get_client(&self) -> crossref::Crossref {
-        Crossref::builder()
-            .build()
-            .expect("Crossref2Wikidata::new: Could not build Crossref client")
     }
 
     pub fn get_cached_publication_from_id(&self, publication_id: &str) -> Option<&crossref::Work> {
@@ -126,7 +138,9 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         let futures: Vec<_> = dois
             .iter()
             .map(|doi| {
-                let client = self.get_client();
+                // Crossref derives Clone; the underlying reqwest::Client is
+                // Arc-wrapped so this is a cheap refcount bump per future.
+                let client = self.client.clone();
                 let doi = doi.clone();
                 async move { client.work(&doi).await.ok() }
             })
@@ -143,7 +157,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         let doi = get_external_identifier_from_item(item, &IdProp::DOI)?;
-        let work = match self.get_client().work(&doi).await {
+        let work = match self.client.work(&doi).await {
             Ok(w) => w,
             _ => return None, // No such work
         };

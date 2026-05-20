@@ -20,7 +20,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rand::RngExt;
+use rand::Rng;
 use reqwest::{Client, Response, StatusCode};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);

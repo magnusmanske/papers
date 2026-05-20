@@ -13,7 +13,7 @@ include = ["**/*.rs", "Cargo.toml"]
 [dependencies]
 serde_json = "1"
 mysql_async = "0.36"
-reqwest = { version = "*", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 config = "*"
 regex = "1"
 lazy_static = "1"
@@ -24,7 +24,7 @@ tokio = { version = "^1", features = ["full", "rt-multi-thread"] }
 futures = "*"
 async-trait = "*"
 anyhow = "*"
-rand = "*"
+rand = ">=0.9, <0.11"
 pico-args = "0.5"
 deunicode = "1"
 tracing = "0.1"
