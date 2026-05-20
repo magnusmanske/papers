@@ -43,7 +43,7 @@ async fn command_ans(ini_file: &str) {
     let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).await.unwrap()));
     let mw_api = smd.read().await.mw_api();
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
-    let ans = AuthorNameString { logging_level: 2 };
+    let ans = AuthorNameString::new(2, std::sync::Arc::new(papers::http_client::HttpJsonFetcher::default()));
 
     let mut futures: Vec<_> = io::stdin()
         .lock()

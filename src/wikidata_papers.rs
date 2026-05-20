@@ -81,22 +81,34 @@ impl WikidataPapers {
     /// across binaries; this constructor is the single source of truth.
     pub fn with_default_adapters(cache: Arc<WikidataStringCache>) -> WikidataPapers {
         use crate::{
-            arxiv2wikidata::Arxiv2Wikidata, crossref2wikidata::Crossref2Wikidata,
-            datacite2wikidata::DataCite2Wikidata, europepmc2wikidata::EuropePMC2Wikidata,
-            openalex2wikidata::OpenAlex2Wikidata, orcid2wikidata::Orcid2Wikidata,
-            pmc2wikidata::PMC2Wikidata, pubmed2wikidata::Pubmed2Wikidata,
+            arxiv2wikidata::Arxiv2Wikidata,
+            crossref2wikidata::Crossref2Wikidata,
+            datacite2wikidata::DataCite2Wikidata,
+            europepmc2wikidata::EuropePMC2Wikidata,
+            http_client::{HttpJsonFetcher, JsonFetcher},
+            openalex2wikidata::OpenAlex2Wikidata,
+            orcid2wikidata::Orcid2Wikidata,
+            pmc2wikidata::PMC2Wikidata,
+            pubmed2wikidata::Pubmed2Wikidata,
             semanticscholar2wikidata::Semanticscholar2Wikidata,
         };
+        // One JSON fetcher shared across all DI-aware adapters. Cheap to
+        // clone (the underlying reqwest::Client is a process-wide singleton).
+        // Category-B SDK adapters (Pubmed, Crossref, Semanticscholar,
+        // Orcid, Arxiv) construct their own clients — see audit P2-10b /
+        // P2-HTTP-1 for the upstream-owner follow-up to add
+        // `new_with_client` constructors.
+        let fetcher: Arc<dyn JsonFetcher> = Arc::new(HttpJsonFetcher::default());
         let mut wdp = Self::new(cache);
-        wdp.add_adapter(Box::new(PMC2Wikidata::default()));
+        wdp.add_adapter(Box::new(PMC2Wikidata::new(fetcher.clone())));
         wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
         wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
         wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
         wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
         wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
-        wdp.add_adapter(Box::new(OpenAlex2Wikidata::default()));
-        wdp.add_adapter(Box::new(DataCite2Wikidata::default()));
-        wdp.add_adapter(Box::new(EuropePMC2Wikidata::default()));
+        wdp.add_adapter(Box::new(OpenAlex2Wikidata::new(fetcher.clone())));
+        wdp.add_adapter(Box::new(DataCite2Wikidata::new(fetcher.clone())));
+        wdp.add_adapter(Box::new(EuropePMC2Wikidata::new(fetcher)));
         wdp
     }
 

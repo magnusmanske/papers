@@ -6,20 +6,36 @@ use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 
 use crate::{
-    generic_author_info::GenericAuthorInfo, wikidata_interaction::WikidataInteraction,
-    wikidata_papers::WikidataPapers, wikidata_string_cache::WikidataStringCache,
+    generic_author_info::GenericAuthorInfo,
+    http_client::{HttpJsonFetcher, JsonFetcher},
+    wikidata_interaction::WikidataInteraction,
+    wikidata_papers::WikidataPapers,
+    wikidata_string_cache::WikidataStringCache,
 };
 
 const MIN_PAPERS_PER_AUTHOR: usize = 2;
 const MIN_SPACES_FOR_NAME: usize = 1;
 const MAX_PROCESS_PAPERS_CONCURRENCY: usize = 5;
 
-#[derive(Default)]
 pub struct AuthorNameString {
     pub logging_level: u8,
+    fetcher: Arc<dyn JsonFetcher>,
+}
+
+impl Default for AuthorNameString {
+    fn default() -> Self {
+        Self { logging_level: 0, fetcher: Arc::new(HttpJsonFetcher::default()) }
+    }
 }
 
 impl AuthorNameString {
+    /// New with explicit logging verbosity and JSON fetcher. Production
+    /// callers use `Self::new(level, Arc::new(HttpJsonFetcher::default()))`;
+    /// tests inject a `MockJsonFetcher`.
+    pub fn new(logging_level: u8, fetcher: Arc<dyn JsonFetcher>) -> Self {
+        Self { logging_level, fetcher }
+    }
+
     fn log<S: Into<String>>(&self, level: u8, msg: S) {
         if level <= self.logging_level {
             println!("{}", msg.into());
@@ -68,13 +84,13 @@ impl AuthorNameString {
 
     /// Calls the wd-infernal initial_search API to find Wikidata items
     /// matching a name with initials. Returns Q-IDs on success, None on error.
-    async fn search_by_initials(name: &str) -> Option<Vec<String>> {
+    async fn search_by_initials(&self, name: &str) -> Option<Vec<String>> {
         let formatted = Self::format_name_for_initial_search(name);
         if formatted.is_empty() {
             return None;
         }
         let url = format!("https://wd-infernal.toolforge.org/initial_search/{}", formatted);
-        let json = crate::http_client::fetch_json(&url).await?;
+        let json = self.fetcher.fetch_json(&url).await?;
         serde_json::from_value(json).ok()
     }
 
@@ -166,7 +182,7 @@ impl AuthorNameString {
     ) -> Option<String> {
         // If the name has initials, try the specialized initial_search API first
         if Self::has_short_name_parts(ans) {
-            if let Some(initial_results) = Self::search_by_initials(ans).await {
+            if let Some(initial_results) = self.search_by_initials(ans).await {
                 if initial_results.len() == 1 {
                     let candidate = &initial_results[0];
                     // Cross-check: the candidate must be a known coauthor
