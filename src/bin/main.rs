@@ -207,7 +207,7 @@ async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>)
 async fn command_bot(ini_file: &str) {
     tracing::info!("starting bot mode");
     let mut smd = SourceMD::new(ini_file).await.unwrap();
-    if let Err(e) = smd.init(ini_file) {
+    if let Err(e) = smd.init(ini_file).await {
         tracing::error!(error = %e, "SourceMD::init failed; aborting bot");
         std::process::exit(1);
     }

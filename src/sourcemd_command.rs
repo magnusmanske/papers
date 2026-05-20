@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use mysql as my;
+use mysql_async as my;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SourceMDcommandMode {

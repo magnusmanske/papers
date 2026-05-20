@@ -46,6 +46,7 @@ impl SourceMDbot {
         let config = self.config.read().await;
         config
             .restart_batch(self.batch_id)
+            .await
             .with_context(|| format!("starting batch #{}", self.batch_id))?;
         config.set_batch_running(self.batch_id).await;
         Ok(())
@@ -219,6 +220,7 @@ impl SourceMDbot {
             .read()
             .await
             .set_command_status(command, status, message.map(|s| s.to_string()))
+            .await
             .with_context(|| {
                 format!(
                     "set_command_status({status}) for command {} in batch #{}",
@@ -228,7 +230,7 @@ impl SourceMDbot {
     }
 
     async fn get_next_command(&self) -> Result<Option<SourceMDcommand>> {
-        self.config.read().await.get_next_command(self.batch_id)
+        self.config.read().await.get_next_command(self.batch_id).await
     }
 
     fn new_wdp(&self, _command: &SourceMDcommand) -> WikidataPapers {
