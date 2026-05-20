@@ -60,28 +60,14 @@ mod tests {
     };
 
     use super::*;
+    use crate::test_helpers::start_mediawiki_mock_server as start_mock_server;
 
-    const SITEINFO: &str = include_str!("../test_data/api_siteinfo.json");
     const SEARCH_Q46664291: &str = include_str!("../test_data/search_found_q46664291.json");
     const SEARCH_EMPTY: &str = include_str!("../test_data/search_empty.json");
 
     /// Bare trait implementor for unit-testing the default trait methods.
     struct DummyInteractor;
     impl WikidataInteraction for DummyInteractor {}
-
-    async fn start_mock_server() -> MockServer {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(query_param("meta", "siteinfo"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("content-type", "application/json; charset=utf-8")
-                    .set_body_string(SITEINFO),
-            )
-            .mount(&mock_server)
-            .await;
-        mock_server
-    }
 
     async fn add_search_mock(mock_server: &MockServer, srsearch: &str, body: &'static str) {
         Mock::given(method("GET"))

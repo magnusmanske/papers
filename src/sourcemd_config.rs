@@ -344,29 +344,11 @@ impl SourceMD {
 mod tests {
     use regex::Regex;
     use wikibase::mediawiki::api::Api;
-    use wiremock::{
-        matchers::{method, query_param},
-        Mock, MockServer, ResponseTemplate,
-    };
+    use wiremock::MockServer;
 
     use super::*;
     use crate::sourcemd_command::{SourceMDcommand, SourceMDcommandMode};
-
-    const SITEINFO: &str = include_str!("../test_data/api_siteinfo.json");
-
-    async fn start_mock_server() -> MockServer {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(query_param("meta", "siteinfo"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("content-type", "application/json; charset=utf-8")
-                    .set_body_string(SITEINFO),
-            )
-            .mount(&mock_server)
-            .await;
-        mock_server
-    }
+    use crate::test_helpers::start_mediawiki_mock_server as start_mock_server;
 
     /// Build a SourceMD that points at a wiremock-backed Api with no DB pool.
     async fn make_sourcemd(mock_server: &MockServer) -> SourceMD {
