@@ -487,11 +487,28 @@ impl WikidataPapers {
             println!("{}", diff.to_string_pretty().unwrap());
             Ok(None)
         } else {
-            let mut api = mw_api.write().await;
-            let new_json = diff
-                .apply_diff(&mut api, &diff)
-                .await
-                .map_err(|e| anyhow!("apply_diff_for_item: apply_diff failed: {e}"))?;
+            // Why a write lock here at all:
+            // `wikibase::EntityDiff::apply_diff` takes `&mut mediawiki::Api`
+            // because internally it calls `Api::get_edit_token().await`
+            // which mutates the cached CSRF token. The actual edit POST
+            // (`post_query_api_json`) only needs `&Api` — but the
+            // upstream API doesn't expose the two halves separately, so
+            // we have to hold the write lock for the whole call.
+            //
+            // Concurrent edits on one Api therefore serialise here; that
+            // bottleneck is **upstream-bounded** and the path forward is
+            // a `wikibase` PR splitting the two phases. See audits/STATUS.md P1-3.
+            //
+            // What we *can* do is release the lock as soon as
+            // `apply_diff` returns, so the post-edit JSON parsing below
+            // doesn't keep blocking other writers.
+            let new_json = {
+                let mut api = mw_api.write().await;
+                diff.apply_diff(&mut api, &diff)
+                    .await
+                    .map_err(|e| anyhow!("apply_diff_for_item: apply_diff failed: {e}"))?
+                // `api` (the write lock guard) drops here.
+            };
             match EntityDiff::get_entity_id(&new_json) {
                 Some(q) => Ok(Some(EditResult { q, edited: true })),
                 None => Ok(None),

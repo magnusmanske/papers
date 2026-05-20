@@ -615,8 +615,15 @@ impl GenericAuthorInfo {
             return;
         }
 
-        let mut mw_api = mw_api.write().await;
-        entities.apply_diff(&mut mw_api, &diff).await;
+        // Write lock for the upstream-bounded reason described in
+        // wikidata_papers::apply_diff_for_item — `EntityContainer::apply_diff`
+        // delegates to `EntityDiff::apply_diff` which requires `&mut Api`
+        // for CSRF-token caching. See audits/STATUS.md P1-3.
+        {
+            let mut mw_api = mw_api.write().await;
+            entities.apply_diff(&mut mw_api, &diff).await;
+            // Guard drops here, releasing the write lock.
+        }
 
         // TODO what?
     }

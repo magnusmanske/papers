@@ -42,12 +42,19 @@ pub trait WikidataInteraction {
         if diff.is_empty() {
             return Ok(None);
         }
-        let mut mw_api = mw_api.write().await;
-        let new_json = diff
-            .apply_diff(&mut mw_api, &diff)
-            .await
-            .map_err(|e| anyhow!("create_item: apply_diff failed: {e}"))?;
-        drop(mw_api);
+        // Write lock is held for the duration of `apply_diff` because
+        // `wikibase::EntityDiff::apply_diff` requires `&mut Api` (its
+        // internal `get_edit_token` mutates the CSRF cache; the actual
+        // POST only needs `&Api`). The two halves aren't separately
+        // exposed upstream — see audits/STATUS.md P1-3 — so concurrent
+        // creates on the same Api serialise here. Drop the guard as
+        // soon as apply_diff returns to keep the lock window minimal.
+        let new_json = {
+            let mut mw_api = mw_api.write().await;
+            diff.apply_diff(&mut mw_api, &diff)
+                .await
+                .map_err(|e| anyhow!("create_item: apply_diff failed: {e}"))?
+        };
         Ok(EntityDiff::get_entity_id(&new_json))
     }
 }
