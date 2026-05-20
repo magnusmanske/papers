@@ -502,61 +502,101 @@ impl GenericAuthorInfo {
         initials
     }
 
+    /// Author-similarity score. Composed of four independent slices:
+    ///
+    /// 1. **Item match (early return)**: if both authors carry a
+    ///    `wikidata_item`, equality decides everything (no other signals
+    ///    can override it).
+    /// 2. **Shared external-id properties** (DOI, ORCID, etc.).
+    /// 3. **Name match** via [`Self::author_names_match`], plus a 1-point
+    ///    tie-breaker for exact match after accent normalisation.
+    /// 4. **List-number match**, optionally bumped to a higher score
+    ///    when the names also share their longest token AND don't have
+    ///    conflicting initials.
     pub fn compare(&self, author2: &GenericAuthorInfo) -> u16 {
-        if let (Some(q1), Some(q2)) = (&self.wikidata_item, &author2.wikidata_item) {
-            if q1 == q2 {
-                return SCORE_ITEM_MATCH; // This is it
-            } else {
-                return 0; // Different items
-            }
+        if let Some(score) = self.score_item_match(author2) {
+            return score;
         }
+        self.score_props(author2) + self.score_name(author2) + self.score_list_number(author2)
+    }
 
-        let mut ret = 0;
-
-        for (k, v) in &self.prop2id {
-            if let Some(v2) = author2.prop2id.get(k) {
-                if v == v2 {
-                    ret += SCORE_PROP_MATCH;
-                }
-            }
+    /// Resolves the wikidata_item half of [`Self::compare`]: returns
+    /// `Some(SCORE_ITEM_MATCH)` on equal Q-ids, `Some(0)` on different
+    /// Q-ids (both authors have one but they disagree → forced
+    /// not-a-match), and `None` when item identity is unknown for one
+    /// or both sides (defer to the other signals).
+    fn score_item_match(&self, other: &Self) -> Option<u16> {
+        match (&self.wikidata_item, &other.wikidata_item) {
+            (Some(q1), Some(q2)) if q1 == q2 => Some(SCORE_ITEM_MATCH),
+            (Some(_), Some(_)) => Some(0),
+            _ => None,
         }
+    }
 
-        // Name match
-        if let (Some(n1), Some(n2)) = (&self.name, &author2.name) {
-            ret += SCORE_NAME_MATCH * self.author_names_match(n1.as_str(), n2.as_str());
-            // Small bonus for exact name match (after accent normalization) to break ties
-            if self.asciify_string(n1) == self.asciify_string(n2) {
-                ret += 1;
-            }
+    /// One `SCORE_PROP_MATCH` per external-id property that both
+    /// authors carry with the same value.
+    fn score_props(&self, other: &Self) -> u16 {
+        self.prop2id
+            .iter()
+            .filter(|(k, v)| other.prop2id.get(*k) == Some(*v))
+            .map(|_| SCORE_PROP_MATCH)
+            .sum()
+    }
+
+    /// `SCORE_NAME_MATCH × author_names_match(…)`, plus a +1 tie-breaker
+    /// when the two names are character-equal after accent stripping.
+    fn score_name(&self, other: &Self) -> u16 {
+        let (Some(n1), Some(n2)) = (&self.name, &other.name) else {
+            return 0;
+        };
+        let mut score = SCORE_NAME_MATCH * self.author_names_match(n1, n2);
+        if self.asciify_string(n1) == self.asciify_string(n2) {
+            score += 1;
         }
+        score
+    }
 
-        // List number
-        if let (Some(n1), Some(n2)) = (&self.list_number, &author2.list_number) {
-            if n1 == n2 {
-                // Same list number
-                let l1 = self.get_longest_name_part();
-                let l2 = author2.get_longest_name_part();
-                if l1.is_some() && l2.is_some() && l1 == l2 {
-                    // Same longest name part — but only award higher score if initials are
-                    // compatible
-                    if let (Some(name1), Some(name2)) = (&self.name, &author2.name) {
-                        let n1_mod = self.asciify_string(name1).replace('.', " ");
-                        let n2_mod = self.asciify_string(name2).replace('.', " ");
-                        if Self::names_have_conflicting_initials(&n1_mod, &n2_mod) {
-                            ret += SCORE_LIST_NUMBER;
-                        } else {
-                            ret += SCORE_LIST_NUMBER_AND_NAME;
-                        }
-                    } else {
-                        ret += SCORE_LIST_NUMBER_AND_NAME;
-                    }
-                } else {
-                    ret += SCORE_LIST_NUMBER;
-                }
-            }
+    /// `SCORE_LIST_NUMBER` for matching list numbers, bumped to
+    /// `SCORE_LIST_NUMBER_AND_NAME` when the two names *also* share
+    /// their longest token and don't have conflicting initials.
+    fn score_list_number(&self, other: &Self) -> u16 {
+        let (Some(n1), Some(n2)) = (&self.list_number, &other.list_number) else {
+            return 0;
+        };
+        if n1 != n2 {
+            return 0;
         }
+        if !self.shares_longest_name_part(other) {
+            return SCORE_LIST_NUMBER;
+        }
+        // Same longest token: bump unless the initials disagree.
+        if self.has_conflicting_initials_with(other) {
+            SCORE_LIST_NUMBER
+        } else {
+            SCORE_LIST_NUMBER_AND_NAME
+        }
+    }
 
-        ret
+    /// True if both authors have a `get_longest_name_part` (i.e. a
+    /// ≥3-char token) and the two are equal.
+    fn shares_longest_name_part(&self, other: &Self) -> bool {
+        matches!(
+            (self.get_longest_name_part(), other.get_longest_name_part()),
+            (Some(l1), Some(l2)) if l1 == l2
+        )
+    }
+
+    /// True when *both* authors have a name AND those names'
+    /// (asciified, dot-stripped) initials disagree. False on any
+    /// missing-name input, so callers can use it as "definitely
+    /// conflicting" without needing to handle Option themselves.
+    fn has_conflicting_initials_with(&self, other: &Self) -> bool {
+        let (Some(n1), Some(n2)) = (&self.name, &other.name) else {
+            return false;
+        };
+        let n1_mod = self.asciify_string(n1).replace('.', " ");
+        let n2_mod = self.asciify_string(n2).replace('.', " ");
+        Self::names_have_conflicting_initials(&n1_mod, &n2_mod)
     }
 
     fn get_longest_name_part(&self) -> Option<String> {
