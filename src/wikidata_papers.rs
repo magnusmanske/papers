@@ -181,11 +181,24 @@ impl WikidataPapers {
                     Some(p50_statement) => p50_statement.to_owned(),
                     None => return,
                 };
-                Self::update_p2093_to_p50_statement(&p50_statement, p2093_statement);
+                Self::replace_p2093_with_p50_in_place(&p50_statement, p2093_statement);
             });
         Self::remove_statements_with_no_value(item);
     }
 
+    /// For each P2093 ("author name string") statement on `item`, tries to
+    /// match it against `authors` (typically merged adapter-supplied
+    /// authors) and either:
+    /// - **replaces** the P2093 with a P50 ("author") pointing at the
+    ///   matched Wikidata author item (via
+    ///   [`Self::replace_p2093_with_p50_in_place`]), or
+    /// - **removes** the P2093 if the matched author already has a P50
+    ///   on the item, or if that candidate has already been used by an
+    ///   earlier P2093 (prevents one matched candidate consuming
+    ///   multiple P2093s and creating duplicate P50s).
+    ///
+    /// Despite the name `update_*`, the operation **rewrites** statements
+    /// in place — see the per-method comments inside.
     fn update_author_statements(&self, authors: &[GenericAuthorInfo], item: &mut Entity) {
         let p50 = Self::get_p50s_from_item(item);
         let mut used_candidates: HashSet<usize> = HashSet::new();
@@ -210,7 +223,7 @@ impl WikidataPapers {
                 // Author already has P50 or candidate already used; remove redundant P2093
                 Self::remove_p2093_statement(statement);
             } else if let Some(p50_statement) = &authors[candidate].generate_author_statement() {
-                Self::update_p2093_to_p50_statement(p50_statement, statement);
+                Self::replace_p2093_with_p50_in_place(p50_statement, statement);
                 used_candidates.insert(candidate);
             }
         }
@@ -559,44 +572,65 @@ impl WikidataPapers {
             .collect()
     }
 
-    fn update_p2093_to_p50_statement(p50_statement: &Statement, p2093_statement: &mut Statement) {
-        let mut p50_statement = p50_statement.to_owned();
+    /// Merges qualifiers from a P2093 statement (already-on-Wikidata) and a
+    /// generated P50 statement (from the adapter), with **P2093 taking
+    /// precedence** on conflicting properties — the existing Wikidata data
+    /// is authoritative.
+    ///
+    /// Also adds the canonical P1932 ("object named as") qualifier built
+    /// from the P2093's *original* author-name-string main snak, so that
+    /// any accent/formatting differences in the adapter's name don't
+    /// silently lose the original spelling Wikidata had.
+    fn merge_qualifiers_with_p2093_precedence(
+        p2093_statement: &Statement,
+        p50_statement: &Statement,
+    ) -> Vec<Snak> {
+        let p2093_props: HashSet<&str> =
+            p2093_statement.qualifiers().iter().map(|q| q.property()).collect();
 
-        // Preserve qualifiers from the existing P2093 statement (e.g. P1545 ordinal).
-        // P2093 qualifiers take precedence over the generated P50's qualifiers,
-        // because the P2093 reflects what's already on Wikidata.
-        let p2093_properties: HashSet<String> =
-            p2093_statement.qualifiers().iter().map(|q| q.property().to_string()).collect();
-        // Build merged qualifiers: start with P2093's, then add non-conflicting P50
-        // ones. Always exclude P1932 from the P50's qualifiers — we'll add the
-        // correct one from the P2093's actual name string below.
-        let mut merged_qualifiers: Vec<Snak> = p2093_statement.qualifiers().to_vec();
+        // Start with all of P2093's qualifiers (precedence).
+        let mut merged: Vec<Snak> = p2093_statement.qualifiers().to_vec();
+
+        // Add P50's non-conflicting qualifiers, but always exclude its P1932 —
+        // we rebuild that from the P2093's actual name string below.
         for q in p50_statement.qualifiers() {
-            if q.property() != "P1932" && !p2093_properties.contains(q.property()) {
-                merged_qualifiers.push(q.clone());
+            if q.property() != "P1932" && !p2093_props.contains(q.property()) {
+                merged.push(q.clone());
             }
         }
 
-        // P1932 "object named as" — always use the P2093's original author name string,
-        // not the adapter's version (which may differ in accents, formatting, etc.)
+        // P1932 always comes from the P2093's main-snak string value.
         if let Some(dv) = p2093_statement.main_snak().data_value() {
             if let Value::StringValue(author_name_string) = dv.value() {
-                merged_qualifiers.push(Snak::new_string("P1932", author_name_string));
+                merged.push(Snak::new_string("P1932", author_name_string));
             }
         }
+        merged
+    }
 
-        // Rebuild the P50 statement with merged qualifiers
-        p50_statement = Statement::new_normal(
+    /// Replaces `p2093_statement` in place with a P50 statement that
+    /// carries the merged qualifiers (P2093 precedence — see
+    /// [`Self::merge_qualifiers_with_p2093_precedence`]) and preserves
+    /// the references that were on the original P2093.
+    ///
+    /// The function is named `replace_*_in_place` rather than `update_*`
+    /// because it literally builds a new `Statement` and assigns it via
+    /// `*p2093_statement = …`; calling it "update" historically hid
+    /// that the entire statement is rewritten.
+    fn replace_p2093_with_p50_in_place(
+        p50_statement: &Statement,
+        p2093_statement: &mut Statement,
+    ) {
+        let merged_qualifiers =
+            Self::merge_qualifiers_with_p2093_precedence(p2093_statement, p50_statement);
+        // Preserve references from the original P2093 — they may carry the
+        // P813 ("retrieved") timestamp we want to keep.
+        let references = p2093_statement.references().to_owned();
+        *p2093_statement = Statement::new_normal(
             p50_statement.main_snak().clone(),
             merged_qualifiers,
-            p50_statement.references().to_vec(),
+            references,
         );
-
-        // Preserve references
-        let references = p2093_statement.references().clone();
-        // println!("{p2093_statement:?} =>\n{p50_statement:?}\n");
-        *p2093_statement = p50_statement;
-        p2093_statement.set_references(references);
     }
 
     fn remove_p2093_statement(p2093_statement: &mut Statement) {
