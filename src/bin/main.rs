@@ -5,13 +5,8 @@ use std::{io, io::prelude::*, sync::Arc, time::Duration};
 
 use futures::prelude::*;
 use papers::{
-    arxiv2wikidata::Arxiv2Wikidata, author_name_string::AuthorNameString,
-    crossref2wikidata::Crossref2Wikidata, datacite2wikidata::DataCite2Wikidata,
-    europepmc2wikidata::EuropePMC2Wikidata, identifiers::GenericWorkIdentifier,
-    openalex2wikidata::OpenAlex2Wikidata, orcid2wikidata::Orcid2Wikidata,
-    pmc2wikidata::PMC2Wikidata, pubmed2wikidata::Pubmed2Wikidata,
-    semanticscholar2wikidata::Semanticscholar2Wikidata, sourcemd_bot::SourceMDbot,
-    sourcemd_config::SourceMD, wikidata_papers::WikidataPapers, *,
+    author_name_string::AuthorNameString, identifiers::GenericWorkIdentifier,
+    sourcemd_bot::SourceMDbot, sourcemd_config::SourceMD, wikidata_papers::WikidataPapers, *,
 };
 use pico_args::Arguments;
 use rand::seq::SliceRandom;
@@ -92,18 +87,7 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
     }
 
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
-
-    let mut wdp = WikidataPapers::new(cache.clone());
-    // wdp.testing = true;
-    wdp.add_adapter(Box::new(PMC2Wikidata::new()));
-    wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
-    wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
-    wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
-    wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
-    wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
-    wdp.add_adapter(Box::new(OpenAlex2Wikidata::new()));
-    wdp.add_adapter(Box::new(DataCite2Wikidata::new()));
-    wdp.add_adapter(Box::new(EuropePMC2Wikidata::new()));
+    let mut wdp = WikidataPapers::with_default_adapters(cache.clone());
 
     if let Some(q) = RE_WD.captures(id).and_then(|c| c.get(1)) {
         save_item_changes(&mut wdp, mw_api.clone(), q.as_str()).await;

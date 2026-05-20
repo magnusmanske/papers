@@ -69,6 +69,37 @@ impl WikidataPapers {
         }
     }
 
+    /// Constructor that registers every built-in provider adapter in the
+    /// canonical order.
+    ///
+    /// The order is meaningful: `update_item_from_adapters` and
+    /// `update_from_paper_ids` iterate `self.adapters` in registration
+    /// order, so earlier adapters get first claim on identifier mappings
+    /// and statement edits. Changing the order risks subtle behaviour
+    /// shifts in production. Keep PMC → PubMed → Crossref → Semantic
+    /// Scholar → ORCID → arXiv → OpenAlex → DataCite → EuropePMC in sync
+    /// across binaries; this constructor is the single source of truth.
+    pub fn with_default_adapters(cache: Arc<WikidataStringCache>) -> WikidataPapers {
+        use crate::{
+            arxiv2wikidata::Arxiv2Wikidata, crossref2wikidata::Crossref2Wikidata,
+            datacite2wikidata::DataCite2Wikidata, europepmc2wikidata::EuropePMC2Wikidata,
+            openalex2wikidata::OpenAlex2Wikidata, orcid2wikidata::Orcid2Wikidata,
+            pmc2wikidata::PMC2Wikidata, pubmed2wikidata::Pubmed2Wikidata,
+            semanticscholar2wikidata::Semanticscholar2Wikidata,
+        };
+        let mut wdp = Self::new(cache);
+        wdp.add_adapter(Box::new(PMC2Wikidata::new()));
+        wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
+        wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
+        wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
+        wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
+        wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
+        wdp.add_adapter(Box::new(OpenAlex2Wikidata::new()));
+        wdp.add_adapter(Box::new(DataCite2Wikidata::new()));
+        wdp.add_adapter(Box::new(EuropePMC2Wikidata::new()));
+        wdp
+    }
+
     pub fn adapters_mut(&mut self) -> &mut Vec<Spas> {
         &mut self.adapters
     }

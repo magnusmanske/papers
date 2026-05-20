@@ -6,17 +6,8 @@ use tokio::sync::RwLock;
 
 use self::sourcemd_command::SourceMDcommandMode;
 use crate::{
-    arxiv2wikidata::Arxiv2Wikidata,
-    crossref2wikidata::Crossref2Wikidata,
-    datacite2wikidata::DataCite2Wikidata,
-    europepmc2wikidata::EuropePMC2Wikidata,
     generic_author_info::GenericAuthorInfo,
     identifiers::{GenericWorkIdentifier, IdProp},
-    openalex2wikidata::OpenAlex2Wikidata,
-    orcid2wikidata::Orcid2Wikidata,
-    pmc2wikidata::PMC2Wikidata,
-    pubmed2wikidata::Pubmed2Wikidata,
-    semanticscholar2wikidata::Semanticscholar2Wikidata,
     sourcemd_command::SourceMDcommand,
     sourcemd_config::SourceMD,
     wikidata_papers::WikidataPapers,
@@ -237,17 +228,7 @@ impl SourceMDbot {
     }
 
     fn new_wdp(&self, _command: &SourceMDcommand) -> WikidataPapers {
-        let mut wdp = WikidataPapers::new(self.cache.clone());
-        wdp.add_adapter(Box::new(PMC2Wikidata::new()));
-        wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
-        wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
-        wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
-        wdp.add_adapter(Box::new(Orcid2Wikidata::new()));
-        wdp.add_adapter(Box::new(Arxiv2Wikidata::new()));
-        wdp.add_adapter(Box::new(OpenAlex2Wikidata::new()));
-        wdp.add_adapter(Box::new(DataCite2Wikidata::new()));
-        wdp.add_adapter(Box::new(EuropePMC2Wikidata::new()));
-        wdp
+        WikidataPapers::with_default_adapters(self.cache.clone())
     }
 }
 
