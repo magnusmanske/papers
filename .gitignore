@@ -2,3 +2,5 @@ target
 bot.ini
 .DS_Store
 .claude
+CLAUDE.md
+audits/
