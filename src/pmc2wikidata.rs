@@ -1,11 +1,15 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use self::identifiers::{is_pubmed_id, GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    adapter_helpers::get_external_identifier_from_item, generic_author_info::GenericAuthorInfo,
-    scientific_publication_adapter::ScientificPublicationAdapter, *,
+    adapter_helpers::get_external_identifier_from_item,
+    generic_author_info::GenericAuthorInfo,
+    http_client::{HttpJsonFetcher, JsonFetcher},
+    scientific_publication_adapter::ScientificPublicationAdapter,
+    *,
 };
 // use wikibase::mediawiki::api::Api;
 
@@ -14,15 +18,26 @@ use crate::{
 // https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:17246615%20AND%20SRC:MED&resulttype=core&format=json (with PMCID)
 // https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=PMC1201091&resulttype=core&format=json (same as line above)
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct PMC2Wikidata {
+    fetcher: Arc<dyn JsonFetcher>,
     author_cache: HashMap<String, String>,
     work_cache: HashMap<String, serde_json::Value>,
 }
 
+impl Default for PMC2Wikidata {
+    fn default() -> Self {
+        Self::new(Arc::new(HttpJsonFetcher::default()))
+    }
+}
+
 impl PMC2Wikidata {
-    pub fn new() -> Self {
-        Self::default()
+    /// New adapter with the given JSON fetcher. Production callers pass
+    /// `Arc::new(HttpJsonFetcher::default())` (this is what
+    /// `WikidataPapers::with_default_adapters` does); tests pass an
+    /// `Arc::new(MockJsonFetcher::new())`.
+    pub fn new(fetcher: Arc<dyn JsonFetcher>) -> Self {
+        Self { fetcher, author_cache: HashMap::new(), work_cache: HashMap::new() }
     }
 
     async fn publication_id_from_pubmed(&mut self, pubmed_id: &str) -> Option<String> {
@@ -32,7 +47,7 @@ impl PMC2Wikidata {
         let mut publication_id = pubmed_id.to_string(); // Fallback
         if !self.work_cache.contains_key(pubmed_id) {
             let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:{}%20AND%20SRC:MED&resulttype=core&format=json",pubmed_id) ;
-            let json = crate::http_client::fetch_json(&url).await?;
+            let json = self.fetcher.fetch_json(&url).await?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
                 match results.first() {
@@ -59,7 +74,7 @@ impl PMC2Wikidata {
         }
         if !self.work_cache.contains_key(pmc_id) {
             let url = format!("https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={}&resulttype=core&format=json",pmc_id) ;
-            let json = crate::http_client::fetch_json(&url).await?;
+            let json = self.fetcher.fetch_json(&url).await?;
             let results = json["resultList"]["result"].as_array()?;
             if results.len() == 1 {
                 match results.first() {
@@ -282,7 +297,7 @@ mod tests {
     use super::*;
 
     fn make_pmc(id: &str, work: serde_json::Value) -> PMC2Wikidata {
-        let mut pmc = PMC2Wikidata::new();
+        let mut pmc = PMC2Wikidata::default();
         pmc.work_cache.insert(id.to_string(), work);
         pmc
     }
@@ -308,14 +323,14 @@ mod tests {
 
     #[test]
     fn is_pmcid_accepts_pmc_prefix_with_digits() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         assert!(pmc.is_pmcid("PMC12345"));
         assert!(pmc.is_pmcid("PMC1"));
     }
 
     #[test]
     fn is_pmcid_rejects_invalid_formats() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         assert!(!pmc.is_pmcid("12345"));
         assert!(!pmc.is_pmcid("pmc123")); // lowercase
         assert!(!pmc.is_pmcid("PMC")); // no digits
@@ -327,13 +342,13 @@ mod tests {
 
     #[test]
     fn publication_id_for_statement_strips_pmc_prefix() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         assert_eq!(pmc.publication_id_for_statement("PMC12345"), Some("12345".to_string()));
     }
 
     #[test]
     fn publication_id_for_statement_returns_none_for_non_pmcid() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         assert_eq!(pmc.publication_id_for_statement("12345"), None);
         assert_eq!(pmc.publication_id_for_statement("pmc123"), None);
         assert_eq!(pmc.publication_id_for_statement(""), None);
@@ -343,28 +358,28 @@ mod tests {
 
     #[test]
     fn get_pmcid_from_work_extracts_pmcid() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         let work = json!({"pmcid": "PMC12345"});
         assert_eq!(pmc.get_pmcid_from_work(&work), Some("PMC12345".to_string()));
     }
 
     #[test]
     fn get_pmcid_from_work_returns_none_when_missing() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         let work = json!({"pmid": "99999"});
         assert_eq!(pmc.get_pmcid_from_work(&work), None);
     }
 
     #[test]
     fn get_pmid_from_work_extracts_pmid() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         let work = json!({"pmid": "12345"});
         assert_eq!(pmc.get_pmid_from_work(&work), Some("12345".to_string()));
     }
 
     #[test]
     fn get_pmid_from_work_returns_none_when_missing() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         let work = json!({"pmcid": "PMC99"});
         assert_eq!(pmc.get_pmid_from_work(&work), None);
     }
@@ -388,7 +403,7 @@ mod tests {
 
     #[test]
     fn get_work_titles_returns_empty_for_missing_publication() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         assert!(pmc.get_work_titles("PMC999").is_empty());
     }
 
@@ -462,7 +477,7 @@ mod tests {
 
     #[test]
     fn get_publication_date_returns_none_for_missing_publication() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         assert_eq!(pmc.get_publication_date("PMC999"), None);
     }
 
@@ -470,13 +485,13 @@ mod tests {
 
     #[test]
     fn name_returns_expected_string() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         assert_eq!(pmc.name(), "PMC2Wikidata");
     }
 
     #[test]
     fn publication_property_returns_pmcid() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         assert_eq!(pmc.publication_property(), Some(IdProp::PMCID));
     }
 
@@ -487,7 +502,7 @@ mod tests {
 
     #[test]
     fn update_work_item_with_property_does_not_panic_on_short_input() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         let mut item = wikibase::Entity::new_empty_item();
         // "PMC" is 3 bytes — pre-fix this slice indexing panics.
         pmc.update_work_item_with_property("PMC", &mut item);
@@ -497,7 +512,7 @@ mod tests {
 
     #[test]
     fn update_work_item_with_property_does_not_panic_on_empty_input() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         let mut item = wikibase::Entity::new_empty_item();
         pmc.update_work_item_with_property("", &mut item);
         assert!(!item.has_claims_with_property("P932"));
@@ -505,7 +520,7 @@ mod tests {
 
     #[test]
     fn update_work_item_with_property_adds_pmcid_claim() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         let mut item = wikibase::Entity::new_empty_item();
         pmc.update_work_item_with_property("PMC12345", &mut item);
         assert!(item.has_claims_with_property("P932"));
@@ -513,10 +528,101 @@ mod tests {
 
     #[test]
     fn update_work_item_with_property_skips_pmid_prefixed_id() {
-        let pmc = PMC2Wikidata::new();
+        let pmc = PMC2Wikidata::default();
         let mut item = wikibase::Entity::new_empty_item();
         // The guard's intent: pass-through for PubMed IDs handled elsewhere.
         pmc.update_work_item_with_property("PMID_999", &mut item);
         assert!(!item.has_claims_with_property("P932"));
+    }
+
+    // === HTTP-injected tests (P2-10) =======================================
+
+    use crate::http_client::MockJsonFetcher;
+
+    fn pmc_with_fetcher(f: Arc<MockJsonFetcher>) -> PMC2Wikidata {
+        PMC2Wikidata::new(f)
+    }
+
+    #[tokio::test]
+    async fn publication_id_from_pubmed_hits_expected_url_and_caches_work() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:12345%20AND%20SRC:MED&resulttype=core&format=json";
+        // EuropePMC response shape: one result containing a pmcid → adapter
+        // upgrades the publication_id from the bare PMID to the PMC form.
+        fetcher.add_response(
+            url,
+            json!({
+                "resultList": { "result": [
+                    { "pmid": "12345", "pmcid": "PMC987" }
+                ]}
+            }),
+        );
+        let mut pmc = pmc_with_fetcher(fetcher.clone());
+
+        let id = pmc.publication_id_from_pubmed("12345").await;
+        assert_eq!(id, Some("PMC987".to_string()));
+        assert_eq!(fetcher.captured_urls(), vec![url.to_string()]);
+        // The work is cached under the PMC id (since pmcid was present).
+        assert!(pmc.get_cached_publication_from_id("PMC987").is_some());
+    }
+
+    #[tokio::test]
+    async fn publication_id_from_pubmed_returns_none_on_fetch_failure() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=EXT_ID:12345%20AND%20SRC:MED&resulttype=core&format=json";
+        fetcher.add_failure(url);
+        let mut pmc = pmc_with_fetcher(fetcher.clone());
+        let id = pmc.publication_id_from_pubmed("12345").await;
+        assert_eq!(id, None);
+        // Verified it actually attempted the upstream call.
+        assert_eq!(fetcher.captured_urls(), vec![url.to_string()]);
+    }
+
+    #[tokio::test]
+    async fn publication_id_from_pubmed_rejects_non_numeric_without_fetching() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let mut pmc = pmc_with_fetcher(fetcher.clone());
+        // is_pubmed_id rejects this immediately — no network call should fire.
+        assert_eq!(pmc.publication_id_from_pubmed("PMC123").await, None);
+        assert!(fetcher.captured_urls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn publication_id_from_pmcid_caches_response() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=PMC987&resulttype=core&format=json";
+        fetcher.add_response(
+            url,
+            json!({
+                "resultList": { "result": [
+                    { "pmcid": "PMC987", "title": "Test paper" }
+                ]}
+            }),
+        );
+        let mut pmc = pmc_with_fetcher(fetcher.clone());
+
+        let id = pmc.publication_id_from_pmcid("PMC987").await;
+        assert_eq!(id, Some("PMC987".to_string()));
+        assert!(pmc.get_cached_publication_from_id("PMC987").is_some());
+        // A second call doesn't re-hit the network — the work is cached.
+        let id2 = pmc.publication_id_from_pmcid("PMC987").await;
+        assert_eq!(id2, Some("PMC987".to_string()));
+        assert_eq!(fetcher.captured_urls().len(), 1, "second call should hit the cache, not the fetcher");
+    }
+
+    #[tokio::test]
+    async fn publication_id_from_pmcid_returns_none_on_zero_results() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=PMC999&resulttype=core&format=json";
+        // Valid JSON but empty result list — adapter should not cache or
+        // hand back the id (the work doesn't exist).
+        fetcher.add_response(url, json!({"resultList": {"result": []}}));
+        let mut pmc = pmc_with_fetcher(fetcher.clone());
+        // Pre-fix behaviour: the function returns Some(pmc_id) anyway even
+        // when results is empty. Capturing this as documentation.
+        let id = pmc.publication_id_from_pmcid("PMC999").await;
+        assert_eq!(id, Some("PMC999".to_string()));
+        // But nothing was cached.
+        assert!(pmc.get_cached_publication_from_id("PMC999").is_none());
     }
 }

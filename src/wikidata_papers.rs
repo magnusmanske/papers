@@ -88,7 +88,7 @@ impl WikidataPapers {
             semanticscholar2wikidata::Semanticscholar2Wikidata,
         };
         let mut wdp = Self::new(cache);
-        wdp.add_adapter(Box::new(PMC2Wikidata::new()));
+        wdp.add_adapter(Box::new(PMC2Wikidata::default()));
         wdp.add_adapter(Box::new(Pubmed2Wikidata::new()));
         wdp.add_adapter(Box::new(Crossref2Wikidata::new()));
         wdp.add_adapter(Box::new(Semanticscholar2Wikidata::new()));
