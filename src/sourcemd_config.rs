@@ -477,3 +477,506 @@ mod tests {
         assert!(Arc::ptr_eq(&h1, &h2));
     }
 }
+
+/// Live-DB integration tests.
+///
+/// These tests exercise the actual MySQL code path against a real database.
+/// They are `#[ignore]` by default so they don't run in CI (or under a plain
+/// `cargo test`). To run them locally:
+///
+/// 1. Open an SSH tunnel to Toolforge:
+///    `ssh -L 3307:tools-db:3306 -N <user>@login.toolforge.org`
+///
+/// 2. Designate a TEST schema you control (NEVER point this at
+///    `s52680__sourcemd_batches_p` — the test setup drops and recreates the
+///    `batch` and `command` tables in whatever schema you specify):
+///
+///    ```
+///    PAPERS_TEST_DB_SCHEMA=s12345__papers_test_p \
+///    PAPERS_TEST_DB_USER=s12345 \
+///    PAPERS_TEST_DB_PASS=... \
+///    cargo test --lib live_db_tests -- --ignored --nocapture
+///    ```
+///
+/// 3. If the required env vars aren't set, every test in this module returns
+///    early with a one-line `skipping` notice instead of failing.
+///
+/// **Schema caveat.** This module CREATEs minimal `batch` and `command`
+/// tables matching what the production SQL reads/writes. The columns and the
+/// `batch_id_4` index are derived from the source code, not from production
+/// DDL. If production has additional columns/indexes the tests won't notice;
+/// if production lacks a column the tests rely on, that mismatch is not
+/// detectable from here.
+#[cfg(test)]
+mod live_db_tests {
+    use std::sync::Arc;
+
+    use dashmap::DashSet;
+    use mysql_async::prelude::Queryable;
+    use tokio::sync::RwLock;
+    use wikibase::mediawiki::api::Api;
+    use wiremock::{
+        matchers::{method, query_param},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    use super::*;
+    use crate::sourcemd_command::{SourceMDcommand, SourceMDcommandMode};
+
+    const SITEINFO: &str = include_str!("../test_data/api_siteinfo.json");
+
+    struct DbCreds {
+        host: String,
+        port: u16,
+        user: String,
+        pass: String,
+        schema: String,
+    }
+
+    /// Read DB credentials from environment; return `None` if any required
+    /// variable is missing so the caller can skip the test cleanly.
+    fn db_creds_from_env() -> Option<DbCreds> {
+        let user = std::env::var("PAPERS_TEST_DB_USER").ok()?;
+        let pass = std::env::var("PAPERS_TEST_DB_PASS").ok()?;
+        let schema = std::env::var("PAPERS_TEST_DB_SCHEMA").ok()?;
+        let host =
+            std::env::var("PAPERS_TEST_DB_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+        let port = std::env::var("PAPERS_TEST_DB_PORT")
+            .ok()
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(3307);
+        Some(DbCreds { host, port, user, pass, schema })
+    }
+
+    fn make_pool(creds: &DbCreds) -> my::Pool {
+        let opts: my::Opts = my::OptsBuilder::default()
+            .ip_or_hostname(creds.host.clone())
+            .tcp_port(creds.port)
+            .user(Some(creds.user.clone()))
+            .pass(Some(creds.pass.clone()))
+            .db_name(Some(creds.schema.clone()))
+            .into();
+        my::Pool::new(opts)
+    }
+
+    /// DROP-then-CREATE the two tables the production code touches. Each
+    /// test calls this so it starts from a known empty state.
+    async fn reset_tables(pool: &my::Pool) {
+        let mut conn = pool.get_conn().await.expect("connect to test DB");
+        conn.query_drop("DROP TABLE IF EXISTS `command`").await.unwrap();
+        conn.query_drop("DROP TABLE IF EXISTS `batch`").await.unwrap();
+        conn.query_drop(
+            r#"CREATE TABLE `batch` (
+                `id` BIGINT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+                `status` VARCHAR(32) NOT NULL DEFAULT 'TODO',
+                `last_action` DATETIME NULL,
+                `overview` TEXT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+        )
+        .await
+        .unwrap();
+        conn.query_drop(
+            r#"CREATE TABLE `command` (
+                `id` BIGINT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+                `batch_id` BIGINT NOT NULL,
+                `serial_number` BIGINT NOT NULL,
+                `mode` VARCHAR(64) NOT NULL,
+                `identifier` VARCHAR(512) NOT NULL,
+                `status` VARCHAR(32) NOT NULL DEFAULT 'TODO',
+                `note` TEXT NULL,
+                `q` VARCHAR(32) NOT NULL DEFAULT '',
+                `auto_escalate` TINYINT(1) NOT NULL DEFAULT 0,
+                INDEX `batch_id_4` (`batch_id`, `status`, `serial_number`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+        )
+        .await
+        .unwrap();
+    }
+
+    /// Insert a single batch row and return its id.
+    async fn insert_batch(pool: &my::Pool, status: &str) -> i64 {
+        let mut conn = pool.get_conn().await.unwrap();
+        conn.exec_drop(
+            r#"INSERT INTO `batch` (`status`, `last_action`) VALUES (?, NOW())"#,
+            (status,),
+        )
+        .await
+        .unwrap();
+        conn.exec_first::<i64, _, _>("SELECT LAST_INSERT_ID()", ()).await.unwrap().unwrap()
+    }
+
+    async fn insert_command(
+        pool: &my::Pool,
+        batch_id: i64,
+        serial: i64,
+        status: &str,
+        mode: &str,
+        identifier: &str,
+    ) -> i64 {
+        let mut conn = pool.get_conn().await.unwrap();
+        conn.exec_drop(
+            r#"INSERT INTO `command` (`batch_id`,`serial_number`,`mode`,`identifier`,`status`,`note`,`q`,`auto_escalate`)
+               VALUES (?, ?, ?, ?, ?, '', '', 0)"#,
+            (batch_id, serial, mode, identifier, status),
+        )
+        .await
+        .unwrap();
+        conn.exec_first::<i64, _, _>("SELECT LAST_INSERT_ID()", ()).await.unwrap().unwrap()
+    }
+
+    async fn fetch_batch_status(pool: &my::Pool, batch_id: i64) -> String {
+        let mut conn = pool.get_conn().await.unwrap();
+        conn.exec_first::<String, _, _>(
+            "SELECT `status` FROM `batch` WHERE id=?",
+            (batch_id,),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+    }
+
+    async fn fetch_batch_overview(pool: &my::Pool, batch_id: i64) -> Option<String> {
+        let mut conn = pool.get_conn().await.unwrap();
+        conn.exec_first::<Option<String>, _, _>(
+            "SELECT `overview` FROM `batch` WHERE id=?",
+            (batch_id,),
+        )
+        .await
+        .unwrap()
+        .flatten()
+    }
+
+    async fn fetch_command_status(pool: &my::Pool, command_id: i64) -> String {
+        let mut conn = pool.get_conn().await.unwrap();
+        conn.exec_first::<String, _, _>(
+            "SELECT `status` FROM `command` WHERE id=?",
+            (command_id,),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+    }
+
+    async fn start_mock_mw_api() -> (MockServer, Arc<RwLock<Api>>) {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(query_param("meta", "siteinfo"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/json; charset=utf-8")
+                    .set_body_string(SITEINFO),
+            )
+            .mount(&mock_server)
+            .await;
+        let api = Api::new(&mock_server.uri()).await.unwrap();
+        (mock_server, Arc::new(RwLock::new(api)))
+    }
+
+    /// Build a `SourceMD` wired to a real DB pool and a wiremock-backed
+    /// `mw_api`. The MockServer is returned so its lifetime extends through
+    /// the test.
+    async fn make_smd(pool: my::Pool) -> (SourceMD, MockServer) {
+        let (mock_server, mw_api) = start_mock_mw_api().await;
+        let smd = SourceMD {
+            running_batch_ids: DashSet::new(),
+            failed_batch_ids: DashSet::new(),
+            pool: Some(pool),
+            mw_api,
+        };
+        (smd, mock_server)
+    }
+
+    /// Run `body` with a fresh test DB. If env is missing, print a one-line
+    /// notice and return without running anything (so `--ignored` doesn't
+    /// fail on a developer machine that hasn't set up the tunnel).
+    async fn with_clean_db<F, Fut>(test_name: &str, body: F)
+    where
+        F: FnOnce(SourceMD, my::Pool, MockServer) -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        let Some(creds) = db_creds_from_env() else {
+            eprintln!(
+                "[skip] {test_name}: PAPERS_TEST_DB_USER / _PASS / _SCHEMA not set"
+            );
+            return;
+        };
+        let pool = make_pool(&creds);
+        reset_tables(&pool).await;
+        let (smd, mock_server) = make_smd(pool.clone()).await;
+        body(smd, pool, mock_server).await;
+    }
+
+    // === init ===========================================================
+
+    #[ignore]
+    #[tokio::test]
+    async fn live_init_resets_running_batches_to_todo() {
+        with_clean_db("live_init_resets_running_batches_to_todo", |mut smd, pool, _mock| async move {
+            // Arrange: drop the pre-wired pool so init() has to find one,
+            // and seed two RUNNING batches that init() should flip to TODO.
+            insert_batch(&pool, "RUNNING").await;
+            insert_batch(&pool, "RUNNING").await;
+            smd.pool = None;
+
+            // Use a throwaway ini file with both [user] and [client] sections.
+            let tmp = tempfile_with_credentials();
+
+            // Act
+            smd.init(tmp.path().to_str().unwrap()).await.expect("init should connect");
+
+            // Assert: both batches now TODO; pool is populated.
+            assert!(smd.pool.is_some(), "init must leave a pool behind");
+            let mut conn = pool.get_conn().await.unwrap();
+            let running_count: i64 = conn
+                .query_first("SELECT COUNT(*) FROM `batch` WHERE `status`='RUNNING'")
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(running_count, 0, "init should have flipped all RUNNING -> TODO");
+        })
+        .await;
+    }
+
+    /// Build a temp ini file that points init() at the test DB.
+    fn tempfile_with_credentials() -> tempfile::NamedTempFile {
+        use std::io::Write;
+        let creds = db_creds_from_env().expect("env should be set by caller");
+        let mut f = tempfile::Builder::new()
+            .suffix(".ini")
+            .tempfile()
+            .expect("create temp ini");
+        writeln!(f, "[user]").unwrap();
+        writeln!(f, "user = test").unwrap();
+        writeln!(f, "pass = test").unwrap();
+        writeln!(f, "[client]").unwrap();
+        writeln!(f, "user = {}", creds.user).unwrap();
+        writeln!(f, "password = {}", creds.pass).unwrap();
+        f
+    }
+
+    // === restart_batch =================================================
+
+    #[ignore]
+    #[tokio::test]
+    async fn live_restart_batch_sets_status_and_resets_commands() {
+        with_clean_db(
+            "live_restart_batch_sets_status_and_resets_commands",
+            |smd, pool, _mock| async move {
+                let batch_id = insert_batch(&pool, "TODO").await;
+                let cmd_run = insert_command(&pool, batch_id, 1, "RUNNING", "CREATE_PAPER_BY_ID", "x").await;
+                let cmd_done = insert_command(&pool, batch_id, 2, "DONE", "CREATE_PAPER_BY_ID", "y").await;
+
+                smd.restart_batch(batch_id).await.expect("restart_batch should succeed");
+
+                assert_eq!(fetch_batch_status(&pool, batch_id).await, "RUNNING");
+                assert_eq!(
+                    fetch_command_status(&pool, cmd_run).await,
+                    "TODO",
+                    "RUNNING commands should be reset to TODO"
+                );
+                assert_eq!(
+                    fetch_command_status(&pool, cmd_done).await,
+                    "DONE",
+                    "DONE commands should NOT be touched"
+                );
+            },
+        )
+        .await;
+    }
+
+    // === get_next_batch =================================================
+
+    #[ignore]
+    #[tokio::test]
+    async fn live_get_next_batch_returns_oldest_eligible_todo() {
+        with_clean_db(
+            "live_get_next_batch_returns_oldest_eligible_todo",
+            |smd, pool, _mock| async move {
+                // Two TODO batches, one with a RUNNING command (ineligible).
+                let blocked = insert_batch(&pool, "TODO").await;
+                insert_command(&pool, blocked, 1, "RUNNING", "CREATE_PAPER_BY_ID", "x").await;
+                let eligible = insert_batch(&pool, "TODO").await;
+
+                let got = smd.get_next_batch().await.expect("query should succeed");
+                assert_eq!(
+                    got,
+                    Some(eligible),
+                    "the batch with no RUNNING/TODO non-allowed commands should win"
+                );
+            },
+        )
+        .await;
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn live_get_next_batch_returns_none_when_empty() {
+        with_clean_db(
+            "live_get_next_batch_returns_none_when_empty",
+            |smd, _pool, _mock| async move {
+                assert_eq!(smd.get_next_batch().await.unwrap(), None);
+            },
+        )
+        .await;
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn live_get_next_batch_skips_in_memory_running_set() {
+        with_clean_db(
+            "live_get_next_batch_skips_in_memory_running_set",
+            |smd, pool, _mock| async move {
+                let only = insert_batch(&pool, "TODO").await;
+                smd.running_batch_ids.insert(only);
+                assert_eq!(smd.get_next_batch().await.unwrap(), None);
+                smd.running_batch_ids.remove(&only);
+                assert_eq!(smd.get_next_batch().await.unwrap(), Some(only));
+            },
+        )
+        .await;
+    }
+
+    // === get_next_command ===============================================
+
+    #[ignore]
+    #[tokio::test]
+    async fn live_get_next_command_returns_lowest_serial_todo() {
+        with_clean_db(
+            "live_get_next_command_returns_lowest_serial_todo",
+            |smd, pool, _mock| async move {
+                let batch_id = insert_batch(&pool, "TODO").await;
+                // Insert in deliberately non-sorted order to verify ORDER BY.
+                let _high = insert_command(&pool, batch_id, 9, "TODO", "CREATE_PAPER_BY_ID", "z").await;
+                let low = insert_command(&pool, batch_id, 1, "TODO", "CREATE_PAPER_BY_ID", "a").await;
+                let _done = insert_command(&pool, batch_id, 0, "DONE", "CREATE_PAPER_BY_ID", "b").await;
+
+                let cmd = smd
+                    .get_next_command(batch_id)
+                    .await
+                    .expect("query")
+                    .expect("expected one TODO command");
+                assert_eq!(cmd.id, low, "should return the lowest-serial TODO command");
+                assert_eq!(cmd.serial_number, 1);
+                assert_eq!(cmd.identifier, "a");
+                assert_eq!(cmd.mode, SourceMDcommandMode::CreatePaperById);
+            },
+        )
+        .await;
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn live_get_next_command_returns_none_when_no_todo() {
+        with_clean_db(
+            "live_get_next_command_returns_none_when_no_todo",
+            |smd, pool, _mock| async move {
+                let batch_id = insert_batch(&pool, "TODO").await;
+                insert_command(&pool, batch_id, 1, "DONE", "CREATE_PAPER_BY_ID", "a").await;
+                assert!(smd.get_next_command(batch_id).await.unwrap().is_none());
+            },
+        )
+        .await;
+    }
+
+    // === set_command_status =============================================
+
+    #[ignore]
+    #[tokio::test]
+    async fn live_set_command_status_persists_and_aggregates_overview() {
+        with_clean_db(
+            "live_set_command_status_persists_and_aggregates_overview",
+            |smd, pool, _mock| async move {
+                let batch_id = insert_batch(&pool, "RUNNING").await;
+                let cmd_id =
+                    insert_command(&pool, batch_id, 1, "TODO", "CREATE_PAPER_BY_ID", "x").await;
+                let _other = insert_command(
+                    &pool,
+                    batch_id,
+                    2,
+                    "TODO",
+                    "CREATE_PAPER_BY_ID",
+                    "y",
+                )
+                .await;
+
+                let mut cmd = SourceMDcommand {
+                    id: cmd_id,
+                    batch_id,
+                    serial_number: 1,
+                    mode: SourceMDcommandMode::CreatePaperById,
+                    identifier: "x".to_string(),
+                    status: "TODO".to_string(),
+                    note: String::new(),
+                    q: "Q42".to_string(),
+                    auto_escalate: false,
+                };
+                smd.set_command_status(&mut cmd, "DONE", Some("ok".to_string()))
+                    .await
+                    .expect("set_command_status should succeed");
+
+                // Command row reflects new status, q, and note.
+                assert_eq!(fetch_command_status(&pool, cmd_id).await, "DONE");
+                let mut conn = pool.get_conn().await.unwrap();
+                let (note, q): (String, String) = conn
+                    .exec_first("SELECT note, q FROM command WHERE id=?", (cmd_id,))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(note, "ok");
+                assert_eq!(q, "Q42");
+
+                // batch.overview was aggregated. Should contain "DONE":1, "TODO":1, "TOTAL":2.
+                let overview =
+                    fetch_batch_overview(&pool, batch_id).await.expect("overview not null");
+                let parsed: serde_json::Value = serde_json::from_str(&overview).unwrap();
+                assert_eq!(parsed["DONE"], 1);
+                assert_eq!(parsed["TODO"], 1);
+                assert_eq!(parsed["TOTAL"], 2);
+            },
+        )
+        .await;
+    }
+
+    // === set_batch_finished / check_batch_not_stopped ===================
+
+    #[ignore]
+    #[tokio::test]
+    async fn live_set_batch_finished_marks_done() {
+        with_clean_db("live_set_batch_finished_marks_done", |smd, pool, _mock| async move {
+            let batch_id = insert_batch(&pool, "RUNNING").await;
+            insert_command(&pool, batch_id, 1, "DONE", "CREATE_PAPER_BY_ID", "x").await;
+
+            smd.set_batch_finished(batch_id).await.expect("set_batch_finished");
+
+            assert_eq!(fetch_batch_status(&pool, batch_id).await, "DONE");
+            // update_batch_stats ran as part of set_batch_status.
+            let overview = fetch_batch_overview(&pool, batch_id).await.unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(&overview).unwrap();
+            assert_eq!(parsed["DONE"], 1);
+            assert_eq!(parsed["TOTAL"], 1);
+        })
+        .await;
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn live_check_batch_not_stopped_passes_for_running_and_fails_for_done() {
+        with_clean_db(
+            "live_check_batch_not_stopped_passes_for_running_and_fails_for_done",
+            |smd, pool, _mock| async move {
+                let running = insert_batch(&pool, "RUNNING").await;
+                let todo = insert_batch(&pool, "TODO").await;
+                let done = insert_batch(&pool, "DONE").await;
+
+                assert!(smd.check_batch_not_stopped(running).await.is_ok());
+                assert!(smd.check_batch_not_stopped(todo).await.is_ok());
+                let err = smd.check_batch_not_stopped(done).await.unwrap_err().to_string();
+                assert!(
+                    err.contains(&format!("batch #{done}")),
+                    "error should name the batch: {err}"
+                );
+            },
+        )
+        .await;
+    }
+}

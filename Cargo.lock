@@ -1867,6 +1867,7 @@ dependencies = [
  "reqwest 0.13.3",
  "semanticscholar",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

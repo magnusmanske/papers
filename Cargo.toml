@@ -41,3 +41,4 @@ crossref = { git = "https://github.com/magnusmanske/crossref-rs", branch = "asyn
 
 [dev-dependencies]
 wiremock = "0.6"
+tempfile = "3"
