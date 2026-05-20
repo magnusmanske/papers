@@ -17,6 +17,71 @@ const MIN_PAPERS_PER_AUTHOR: usize = 2;
 const MIN_SPACES_FOR_NAME: usize = 1;
 const MAX_PROCESS_PAPERS_CONCURRENCY: usize = 5;
 
+/// Extracts a Wikidata Q-id from a URI like `"http://www.wikidata.org/entity/Q12345"`.
+///
+/// `mediawiki::Api::extract_entity_from_uri` does the same; we duplicate the
+/// trivial logic here so the SPARQL-response parsers below don't have to
+/// borrow an `Api`. Returns `None` if the suffix isn't a valid Q-id.
+fn q_from_entity_uri(uri: &str) -> Option<String> {
+    let last = uri.rsplit('/').next()?;
+    if crate::identifiers::is_qid(last) {
+        Some(last.to_string())
+    } else {
+        None
+    }
+}
+
+/// Parses the `?paper ?ans` SPARQL bindings into a map from author-name
+/// string to paper Q-ids, applying the configured filters
+/// ([`MIN_PAPERS_PER_AUTHOR`], [`MIN_SPACES_FOR_NAME`]). Pure function so
+/// the filtering logic is unit-testable without a live SPARQL endpoint.
+fn parse_coauthor_ans_bindings(
+    bindings: &[serde_json::Value],
+) -> HashMap<String, Vec<String>> {
+    let pairs: Vec<(String, String)> = bindings
+        .iter()
+        .filter_map(|j| {
+            let ans = j["ans"]["value"].as_str()?;
+            let q = q_from_entity_uri(j["paper"]["value"].as_str()?)?;
+            Some((q, ans.to_string()))
+        })
+        .collect();
+
+    let mut ans2paper_qs: HashMap<String, Vec<String>> = HashMap::new();
+    for (paper_q, ans) in pairs {
+        // Already filtered to QIDs by q_from_entity_uri, but defensive:
+        if crate::identifiers::is_qid(&paper_q) {
+            ans2paper_qs.entry(ans).or_default().push(paper_q);
+        }
+    }
+    ans2paper_qs.retain(|_, v| v.len() >= MIN_PAPERS_PER_AUTHOR);
+    ans2paper_qs.retain(|ans, _| ans.chars().filter(|c| *c == ' ').count() >= MIN_SPACES_FOR_NAME);
+    ans2paper_qs
+}
+
+/// Parses the `?coauthor ?coauthorLabel` SPARQL bindings into a map from
+/// label-string to coauthor Q-ids. Pure function for unit testability.
+fn parse_coauthor_qs_bindings(
+    bindings: &[serde_json::Value],
+) -> HashMap<String, Vec<String>> {
+    let pairs: Vec<(String, String)> = bindings
+        .iter()
+        .filter_map(|j| {
+            let name = j["coauthorLabel"]["value"].as_str()?;
+            let q = q_from_entity_uri(j["coauthor"]["value"].as_str()?)?;
+            Some((q, name.to_string()))
+        })
+        .collect();
+
+    let mut name2qs: HashMap<String, Vec<String>> = HashMap::new();
+    for (author_q, name) in pairs {
+        if crate::identifiers::is_qid(&author_q) {
+            name2qs.entry(name).or_default().push(author_q);
+        }
+    }
+    name2qs
+}
+
 pub struct AuthorNameString {
     pub logging_level: u8,
     fetcher: Arc<dyn JsonFetcher>,
@@ -260,33 +325,15 @@ impl AuthorNameString {
         root_author_q: &str,
         api: &Api,
     ) -> Result<HashMap<String, Vec<String>>> {
-        // (paper Qid, author name string)
-        let result_ans: Vec<(String, String)> = api
+        let resp = api
             .sparql_query(&format!(
                 "SELECT ?paper ?ans {{ ?paper wdt:P50 wd:{root_author_q} ; wdt:P2093 ?ans }}"
             ))
-            .await?["results"]["bindings"]
+            .await?;
+        let bindings = resp["results"]["bindings"]
             .as_array()
-            .ok_or(anyhow::anyhow!("get_coauthor_ans: Not an array"))?
-            .iter()
-            .filter_map(|j| {
-                let ans = j["ans"]["value"].as_str()?;
-                let q = api.extract_entity_from_uri(j["paper"]["value"].as_str()?).ok()?;
-                Some((q.to_string(), ans.to_string()))
-            })
-            .collect();
-
-        let mut ans2paper_qs: HashMap<String, Vec<String>> = HashMap::new();
-        for (paper_q, ans) in result_ans {
-            if crate::identifiers::is_qid(&paper_q) {
-                let paper_qs = ans2paper_qs.entry(ans).or_default();
-                paper_qs.push(paper_q);
-            }
-        }
-        ans2paper_qs.retain(|_, v| v.len() >= MIN_PAPERS_PER_AUTHOR);
-        ans2paper_qs
-            .retain(|ans, _| ans.chars().filter(|c| *c == ' ').count() >= MIN_SPACES_FOR_NAME);
-        Ok(ans2paper_qs)
+            .ok_or(anyhow::anyhow!("get_coauthor_ans: Not an array"))?;
+        Ok(parse_coauthor_ans_bindings(bindings))
     }
 
     async fn get_coauthor_qs(
@@ -294,30 +341,13 @@ impl AuthorNameString {
         root_author_q: &str,
         api: &Api,
     ) -> Result<HashMap<String, Vec<String>>> {
-        // (Qid, name)
-        let result_coauthors: Vec<(String, String)> = api
-        .sparql_query(&format!("select DISTINCT ?coauthor ?coauthorLabel {{ ?paper wdt:P50 wd:{root_author_q} ; wdt:P50 ?coauthor . SERVICE wikibase:label {{ bd:serviceParam wikibase:language \"[AUTO_LANGUAGE],en\" }} }}"))
-        .await?["results"]["bindings"]
-        .as_array()
-        .ok_or(anyhow::anyhow!("get_coauthor_qs: Not an array"))?
-        .iter()
-        .filter_map(|j| {
-            let name = j["coauthorLabel"]["value"].as_str()?;
-            let q = api
-                .extract_entity_from_uri(j["coauthor"]["value"].as_str()?)
-                .ok()?;
-            Some((q.to_string(), name.to_string()))
-        })
-        .collect();
-
-        let mut name2qs: HashMap<String, Vec<String>> = HashMap::new();
-        for (author_q, name) in result_coauthors {
-            if crate::identifiers::is_qid(&author_q) {
-                let author_qs = name2qs.entry(name).or_default();
-                author_qs.push(author_q);
-            }
-        }
-        Ok(name2qs)
+        let resp = api
+            .sparql_query(&format!("select DISTINCT ?coauthor ?coauthorLabel {{ ?paper wdt:P50 wd:{root_author_q} ; wdt:P50 ?coauthor . SERVICE wikibase:label {{ bd:serviceParam wikibase:language \"[AUTO_LANGUAGE],en\" }} }}"))
+            .await?;
+        let bindings = resp["results"]["bindings"]
+            .as_array()
+            .ok_or(anyhow::anyhow!("get_coauthor_qs: Not an array"))?;
+        Ok(parse_coauthor_qs_bindings(bindings))
     }
 
     async fn create_new_author(
@@ -376,5 +406,196 @@ mod tests {
     fn format_name_for_initial_search_full_name() {
         // Full names without initials: no dots added
         assert_eq!(AuthorNameString::format_name_for_initial_search("Jenny Clarke"), "JennyClarke");
+    }
+
+    // === q_from_entity_uri =================================================
+
+    #[test]
+    fn q_from_entity_uri_extracts_q_id() {
+        assert_eq!(
+            q_from_entity_uri("http://www.wikidata.org/entity/Q12345"),
+            Some("Q12345".to_string())
+        );
+    }
+
+    #[test]
+    fn q_from_entity_uri_rejects_non_qid_suffix() {
+        assert_eq!(q_from_entity_uri("http://example.com/P31"), None);
+        assert_eq!(q_from_entity_uri("http://example.com/not-a-qid"), None);
+        assert_eq!(q_from_entity_uri(""), None);
+    }
+
+    // === parse_coauthor_ans_bindings =======================================
+    //
+    // Filters: MIN_PAPERS_PER_AUTHOR (= 2) and MIN_SPACES_FOR_NAME (= 1).
+    // Each `?paper` is a URI; `?ans` is a string. We group by ans → paper_qs,
+    // then drop anything below the thresholds.
+
+    fn ans_binding(paper_qid: &str, ans: &str) -> serde_json::Value {
+        serde_json::json!({
+            "paper": { "type": "uri", "value": format!("http://www.wikidata.org/entity/{paper_qid}") },
+            "ans":   { "type": "literal", "value": ans },
+        })
+    }
+
+    #[test]
+    fn parse_coauthor_ans_bindings_groups_by_ans() {
+        let bindings = vec![
+            ans_binding("Q1", "John Smith"),
+            ans_binding("Q2", "John Smith"),
+            ans_binding("Q3", "John Smith"),
+        ];
+        let out = parse_coauthor_ans_bindings(&bindings);
+        assert_eq!(out.len(), 1);
+        let papers = out.get("John Smith").unwrap();
+        assert_eq!(papers.len(), 3);
+    }
+
+    #[test]
+    fn parse_coauthor_ans_bindings_filters_below_min_papers() {
+        // "John Smith" has only 1 paper → below MIN_PAPERS_PER_AUTHOR (2); drop.
+        // "Jane Doe" has 2 → keep.
+        let bindings = vec![
+            ans_binding("Q1", "John Smith"),
+            ans_binding("Q2", "Jane Doe"),
+            ans_binding("Q3", "Jane Doe"),
+        ];
+        let out = parse_coauthor_ans_bindings(&bindings);
+        assert!(!out.contains_key("John Smith"), "below MIN_PAPERS_PER_AUTHOR should be dropped");
+        assert_eq!(out.get("Jane Doe").map(Vec::len), Some(2));
+    }
+
+    #[test]
+    fn parse_coauthor_ans_bindings_filters_names_without_spaces() {
+        // "Smith" has no space → below MIN_SPACES_FOR_NAME; drop even with
+        // enough papers.
+        let bindings = vec![
+            ans_binding("Q1", "Smith"),
+            ans_binding("Q2", "Smith"),
+            ans_binding("Q3", "John Smith"),
+            ans_binding("Q4", "John Smith"),
+        ];
+        let out = parse_coauthor_ans_bindings(&bindings);
+        assert!(!out.contains_key("Smith"), "single-token name should be dropped");
+        assert!(out.contains_key("John Smith"));
+    }
+
+    #[test]
+    fn parse_coauthor_ans_bindings_skips_non_qid_paper_uris() {
+        // A URI whose suffix isn't a Q-id must be ignored — guards against
+        // accidentally treating properties or files as papers.
+        let bindings = vec![
+            serde_json::json!({
+                "paper": { "type": "uri", "value": "http://www.wikidata.org/entity/P31" },
+                "ans":   { "type": "literal", "value": "John Smith" },
+            }),
+            ans_binding("Q1", "John Smith"),
+            ans_binding("Q2", "John Smith"),
+        ];
+        let out = parse_coauthor_ans_bindings(&bindings);
+        let papers = out.get("John Smith").unwrap();
+        assert_eq!(papers.len(), 2, "P31 binding should be filtered out");
+        assert!(papers.iter().all(|p| crate::identifiers::is_qid(p)));
+    }
+
+    #[test]
+    fn parse_coauthor_ans_bindings_returns_empty_for_no_bindings() {
+        let out = parse_coauthor_ans_bindings(&[]);
+        assert!(out.is_empty());
+    }
+
+    // === parse_coauthor_qs_bindings ========================================
+
+    fn qs_binding(coauthor_qid: &str, label: &str) -> serde_json::Value {
+        serde_json::json!({
+            "coauthor":      { "type": "uri", "value": format!("http://www.wikidata.org/entity/{coauthor_qid}") },
+            "coauthorLabel": { "type": "literal", "value": label },
+        })
+    }
+
+    #[test]
+    fn parse_coauthor_qs_bindings_groups_by_label() {
+        let bindings = vec![
+            qs_binding("Q1", "John Smith"),
+            qs_binding("Q2", "John Smith"), // same label, different Q
+            qs_binding("Q3", "Jane Doe"),
+        ];
+        let out = parse_coauthor_qs_bindings(&bindings);
+        assert_eq!(out.get("John Smith").map(Vec::len), Some(2));
+        assert_eq!(out.get("Jane Doe").map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn parse_coauthor_qs_bindings_skips_non_qid_uris() {
+        let bindings = vec![
+            serde_json::json!({
+                "coauthor":      { "type": "uri", "value": "http://www.wikidata.org/entity/P31" },
+                "coauthorLabel": { "type": "literal", "value": "John Smith" },
+            }),
+            qs_binding("Q5", "John Smith"),
+        ];
+        let out = parse_coauthor_qs_bindings(&bindings);
+        let qs = out.get("John Smith").unwrap();
+        assert_eq!(qs, &vec!["Q5".to_string()]);
+    }
+
+    #[test]
+    fn parse_coauthor_qs_bindings_does_not_apply_paper_count_filter() {
+        // Unlike parse_coauthor_ans_bindings, this one keeps single-entry
+        // labels — the threshold is only applied to the ans→papers map.
+        let bindings = vec![qs_binding("Q1", "John Smith")];
+        let out = parse_coauthor_qs_bindings(&bindings);
+        assert_eq!(out.len(), 1);
+    }
+
+    // === search_by_initials ================================================
+
+    use crate::http_client::MockJsonFetcher;
+
+    #[tokio::test]
+    async fn search_by_initials_hits_expected_url_and_returns_q_ids() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://wd-infernal.toolforge.org/initial_search/C.K.Clarke";
+        fetcher.add_response(url, serde_json::json!(["Q1", "Q2"]));
+        let ans = AuthorNameString::new(0, fetcher.clone());
+
+        let result = ans.search_by_initials("C K Clarke").await;
+        assert_eq!(result, Some(vec!["Q1".to_string(), "Q2".to_string()]));
+        assert_eq!(fetcher.captured_urls(), vec![url.to_string()]);
+    }
+
+    #[tokio::test]
+    async fn search_by_initials_returns_none_on_fetch_failure() {
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://wd-infernal.toolforge.org/initial_search/C.K.Clarke";
+        fetcher.add_failure(url);
+        let ans = AuthorNameString::new(0, fetcher);
+        assert!(ans.search_by_initials("C K Clarke").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn search_by_initials_returns_none_on_empty_formatted_name() {
+        // An empty-string input formats to "" → guard returns None before
+        // any HTTP call.
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let ans = AuthorNameString::new(0, fetcher.clone());
+        assert!(ans.search_by_initials("").await.is_none());
+        assert!(
+            fetcher.captured_urls().is_empty(),
+            "should not hit the fetcher for empty input, got {:?}",
+            fetcher.captured_urls()
+        );
+    }
+
+    #[tokio::test]
+    async fn search_by_initials_returns_none_on_non_array_response() {
+        // The endpoint contract is "JSON array of Q-id strings". If the
+        // server hands us something else (object, number, etc.), parsing
+        // should fail closed.
+        let fetcher = Arc::new(MockJsonFetcher::new());
+        let url = "https://wd-infernal.toolforge.org/initial_search/C.K.Clarke";
+        fetcher.add_response(url, serde_json::json!({"oops": "not an array"}));
+        let ans = AuthorNameString::new(0, fetcher);
+        assert!(ans.search_by_initials("C K Clarke").await.is_none());
     }
 }
