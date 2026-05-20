@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    generic_author_info::GenericAuthorInfo,
+    adapter_helpers::get_external_identifier_from_item, generic_author_info::GenericAuthorInfo,
     scientific_publication_adapter::ScientificPublicationAdapter, *,
 };
 
@@ -112,7 +112,7 @@ impl ScientificPublicationAdapter for Arxiv2Wikidata {
     }
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        let arxiv_id = self.get_external_identifier_from_item(item, &IdProp::ARXIV)?;
+        let arxiv_id = get_external_identifier_from_item(item, &IdProp::ARXIV)?;
         self.do_cache_work(&arxiv_id).await
     }
 

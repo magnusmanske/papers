@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use pubmed::*;
 
 use crate::{
+    adapter_helpers::{get_external_identifier_from_item, sanitize_author_name},
     generic_author_info::GenericAuthorInfo,
     identifiers::{is_pubmed_id, GenericWorkIdentifier, GenericWorkType, IdProp},
     scientific_publication_adapter::ScientificPublicationAdapter,
@@ -45,7 +46,7 @@ impl Pubmed2Wikidata {
             Some(first) => format!("{first} {last_name}"),
             None => last_name.to_string(),
         };
-        Some(self.sanitize_author_name(&full_name))
+        Some(sanitize_author_name(&full_name))
     }
 
     async fn publication_id_from_pubmed(&mut self, publication_id: &str) -> Option<String> {
@@ -192,7 +193,7 @@ impl ScientificPublicationAdapter for Pubmed2Wikidata {
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         let publication_id =
-            self.get_external_identifier_from_item(item, &self.publication_property()?)?;
+            get_external_identifier_from_item(item, &self.publication_property()?)?;
         self.publication_id_from_pubmed(&publication_id).await
     }
 

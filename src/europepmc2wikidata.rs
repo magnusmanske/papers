@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    generic_author_info::GenericAuthorInfo,
+    adapter_helpers::get_external_identifier_from_item, generic_author_info::GenericAuthorInfo,
     scientific_publication_adapter::ScientificPublicationAdapter, *,
 };
 
@@ -129,7 +129,7 @@ impl ScientificPublicationAdapter for EuropePMC2Wikidata {
     }
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        let doi = self.get_external_identifier_from_item(item, &IdProp::DOI)?;
+        let doi = get_external_identifier_from_item(item, &IdProp::DOI)?;
         self.fetch_work_by_doi(&doi).await
     }
 

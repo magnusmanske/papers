@@ -1,12 +1,17 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use regex::Regex;
 use tokio::sync::OnceCell;
 use wikibase::mediawiki::api::Api;
 
 use self::identifiers::{GenericWorkIdentifier, IdProp};
-use crate::{generic_author_info::GenericAuthorInfo, *};
+use crate::{
+    adapter_helpers::{
+        get_external_identifier_from_item, strip_html_tags, titles_are_equal, wb_time_from_partial,
+    },
+    generic_author_info::GenericAuthorInfo,
+    *,
+};
 
 /// Wikidata work-type vocabulary shared between adapters that report
 /// publication types via different upstream namespaces.
@@ -135,7 +140,7 @@ pub trait ScientificPublicationAdapter {
     /// item
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         match self.publication_property() {
-            Some(self_prop) => match self.get_external_identifier_from_item(item, &self_prop) {
+            Some(self_prop) => match get_external_identifier_from_item(item, &self_prop) {
                 Some(publication_id) => self.do_cache_work(&publication_id).await,
                 None => None,
             },
@@ -244,23 +249,6 @@ pub trait ScientificPublicationAdapter {
         Some(id.to_string())
     }
 
-    fn sanitize_author_name(&self, author_name: &str) -> String {
-        author_name.replace(['†', '‡'], "").trim().to_string()
-    }
-
-    /// Strips HTML/XML tags from a string, preserving text content.
-    /// E.g. "Correction: <i>Accidental aspiration</i>" → "Correction:
-    /// Accidental aspiration"
-    fn strip_html_tags(&self, s: &str) -> String {
-        lazy_static! {
-            static ref RE_HTML: Regex =
-                Regex::new(r"<[^>]+>").expect("strip_html_tags: could not compile RE_HTML");
-        }
-        let result = RE_HTML.replace_all(s, "");
-        // Collapse multiple whitespace into single space
-        result.split_whitespace().collect::<Vec<_>>().join(" ")
-    }
-
     async fn update_statements_for_publication_id_default(
         &self,
         publication_id: &str,
@@ -321,22 +309,9 @@ pub trait ScientificPublicationAdapter {
         }
         if let Some(pubdate) = self.get_publication_date(publication_id) {
             let statement =
-                self.get_wb_time_from_partial("P577".to_string(), pubdate.0, pubdate.1, pubdate.2);
+                wb_time_from_partial("P577", pubdate.0, pubdate.1, pubdate.2, self.reference());
             item.add_claim(statement);
         }
-    }
-
-    fn titles_are_equal(&self, t1: &str, t2: &str) -> bool {
-        // Maybe it's easy...
-        if t1 == t2 {
-            return true;
-        }
-        // Not so easy then...
-        let t1 = t1.to_lowercase();
-        let t1 = t1.trim_end_matches('.').trim();
-        let t2 = t2.to_lowercase();
-        let t2 = t2.trim_end_matches('.').trim();
-        t1 == t2
     }
 
     fn update_work_item_with_title(&self, publication_id: &str, item: &mut Entity) {
@@ -350,15 +325,15 @@ pub trait ScientificPublicationAdapter {
         let mut by_lang: HashMap<String, Vec<String>> = HashMap::new();
         titles.iter().for_each(|t| {
             let lv = by_lang.entry(t.language().to_string()).or_default();
-            lv.push(self.strip_html_tags(t.value()))
+            lv.push(strip_html_tags(t.value()))
         });
         for (language, titles) in by_lang.iter() {
             let mut titles = titles.clone();
             // Add title
             match item.label_in_locale(language) {
-                Some(t) => titles.retain(|x| !self.titles_are_equal(x, t)), /* Title exists,
-                                                                              * remove from title
-                                                                              * list */
+                Some(t) => titles.retain(|x| !titles_are_equal(x, t)), /* Title exists,
+                                                                          * remove from title
+                                                                          * list */
                 None => item.set_label(LocaleString::new("en", &titles.swap_remove(0))), /* No title, add and remove from title list */
             }
 
@@ -418,42 +393,6 @@ pub trait ScientificPublicationAdapter {
                 }
             }
         }
-    }
-
-    fn get_wb_time_from_partial(
-        &self,
-        property: String,
-        year: u32,
-        month: Option<u8>,
-        day: Option<u8>,
-    ) -> Statement {
-        let (month_str, precision) = match month {
-            Some(m) => (format!("-{m:02}"), 10u64),
-            None => ("-01".to_string(), 9),
-        };
-        let (day_str, precision) = match day {
-            Some(d) => (format!("-{d:02}"), 11u64),
-            None => ("-01".to_string(), precision),
-        };
-        let time = format!("+{year}{month_str}{day_str}T00:00:00Z");
-        Statement::new_normal(Snak::new_time(property, time, precision), vec![], self.reference())
-    }
-
-    fn get_external_identifier_from_item(
-        &self,
-        item: &Entity,
-        property: &IdProp,
-    ) -> Option<String> {
-        item.claims()
-            .iter()
-            .filter(|claim| {
-                claim.main_snak().property() == property.as_str()
-                    && *claim.main_snak().snak_type() == SnakType::Value
-            })
-            .find_map(|claim| match claim.main_snak().data_value().as_ref()?.value() {
-                Value::StringValue(s) => Some(s.to_string()),
-                _ => None,
-            })
     }
 
     fn set_author_cache_entry(&mut self, catalog_author_id: &str, q: &str) {
@@ -637,188 +576,11 @@ mod tests {
         }
     }
 
-    // === strip_html_tags tests ===
-
-    #[test]
-    fn strip_html_tags_removes_italic_tags() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert_eq!(
-            adapter.strip_html_tags(
-                "Correction: <i>Accidental aspiration of a solid tablet of sodium hydroxide</i>"
-            ),
-            "Correction: Accidental aspiration of a solid tablet of sodium hydroxide"
-        );
-    }
-
-    #[test]
-    fn strip_html_tags_removes_various_tags() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert_eq!(
-            adapter.strip_html_tags("The <i>Drosophila</i> <b>gene</b>"),
-            "The Drosophila gene"
-        );
-    }
-
-    #[test]
-    fn strip_html_tags_handles_sub_sup() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert_eq!(adapter.strip_html_tags("H<sub>2</sub>O and CO<sub>2</sub>"), "H2O and CO2");
-        assert_eq!(adapter.strip_html_tags("x<sup>2</sup> + y<sup>2</sup>"), "x2 + y2");
-    }
-
-    #[test]
-    fn strip_html_tags_no_tags_unchanged() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert_eq!(adapter.strip_html_tags("A simple title"), "A simple title");
-    }
-
-    #[test]
-    fn strip_html_tags_collapses_whitespace() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert_eq!(
-            adapter.strip_html_tags("Before  <i> middle </i>  after"),
-            "Before middle after"
-        );
-    }
-
-    // === sanitize_author_name ===
-
-    #[test]
-    fn sanitize_author_name_removes_dagger() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert_eq!(adapter.sanitize_author_name("Smith†"), "Smith");
-        assert_eq!(adapter.sanitize_author_name("Jones‡"), "Jones");
-    }
-
-    #[test]
-    fn sanitize_author_name_trims_whitespace_after_removal() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert_eq!(adapter.sanitize_author_name("Alice †"), "Alice");
-        assert_eq!(adapter.sanitize_author_name("Bob ‡ "), "Bob");
-    }
-
-    #[test]
-    fn sanitize_author_name_unchanged_when_no_special_chars() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert_eq!(adapter.sanitize_author_name("Jane Doe"), "Jane Doe");
-        assert_eq!(adapter.sanitize_author_name(""), "");
-    }
-
-    // === titles_are_equal ===
-
-    #[test]
-    fn titles_are_equal_exact_match() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert!(adapter.titles_are_equal("Hello World", "Hello World"));
-    }
-
-    #[test]
-    fn titles_are_equal_case_insensitive() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert!(adapter.titles_are_equal("hello world", "HELLO WORLD"));
-        assert!(adapter.titles_are_equal("Hello World", "hello world"));
-    }
-
-    #[test]
-    fn titles_are_equal_trailing_period_stripped() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert!(adapter.titles_are_equal("A title.", "A title"));
-        assert!(adapter.titles_are_equal("A title", "A title."));
-        assert!(adapter.titles_are_equal("A title.", "A title."));
-    }
-
-    #[test]
-    fn titles_are_equal_different_titles_return_false() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        assert!(!adapter.titles_are_equal("Title One", "Title Two"));
-    }
-
-    // === get_wb_time_from_partial ===
-
-    #[test]
-    fn get_wb_time_year_only_has_precision_9() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        let stmt = adapter.get_wb_time_from_partial("P577".to_string(), 2021, None, None);
-        assert_eq!(stmt.main_snak().property(), "P577");
-        if let Some(dv) = stmt.main_snak().data_value() {
-            if let Value::Time(tv) = dv.value() {
-                assert_eq!(tv.time(), "+2021-01-01T00:00:00Z");
-                assert_eq!(*tv.precision(), 9u64);
-            } else {
-                panic!("Expected Time value");
-            }
-        } else {
-            panic!("Expected data value");
-        }
-    }
-
-    #[test]
-    fn get_wb_time_year_month_has_precision_10() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        let stmt = adapter.get_wb_time_from_partial("P577".to_string(), 2021, Some(6), None);
-        if let Some(dv) = stmt.main_snak().data_value() {
-            if let Value::Time(tv) = dv.value() {
-                assert_eq!(tv.time(), "+2021-06-01T00:00:00Z");
-                assert_eq!(*tv.precision(), 10u64);
-            } else {
-                panic!("Expected Time value");
-            }
-        } else {
-            panic!("Expected data value");
-        }
-    }
-
-    #[test]
-    fn get_wb_time_full_date_has_precision_11() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        let stmt = adapter.get_wb_time_from_partial("P577".to_string(), 2021, Some(3), Some(15));
-        if let Some(dv) = stmt.main_snak().data_value() {
-            if let Value::Time(tv) = dv.value() {
-                assert_eq!(tv.time(), "+2021-03-15T00:00:00Z");
-                assert_eq!(*tv.precision(), 11u64);
-            } else {
-                panic!("Expected Time value");
-            }
-        } else {
-            panic!("Expected data value");
-        }
-    }
-
-    // === get_external_identifier_from_item ===
-
-    #[test]
-    fn get_external_identifier_finds_matching_property() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        let mut item = Entity::new_empty_item();
-        item.add_claim(Statement::new_normal(
-            Snak::new_external_id("P356", "10.1234/TEST"),
-            vec![],
-            vec![],
-        ));
-        let result = adapter.get_external_identifier_from_item(&item, &IdProp::DOI);
-        assert_eq!(result, Some("10.1234/TEST".to_string()));
-    }
-
-    #[test]
-    fn get_external_identifier_returns_none_for_wrong_property() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        let mut item = Entity::new_empty_item();
-        item.add_claim(Statement::new_normal(
-            Snak::new_external_id("P356", "10.1234/TEST"),
-            vec![],
-            vec![],
-        ));
-        let result = adapter.get_external_identifier_from_item(&item, &IdProp::PMID);
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn get_external_identifier_returns_none_for_empty_item() {
-        let adapter = TestAdapter::with_titles(vec![]);
-        let item = Entity::new_empty_item();
-        let result = adapter.get_external_identifier_from_item(&item, &IdProp::DOI);
-        assert_eq!(result, None);
-    }
+    // Pure-helper tests (strip_html_tags, titles_are_equal,
+    // sanitize_author_name, wb_time_from_partial,
+    // get_external_identifier_from_item) live in `adapter_helpers::tests`
+    // since the helpers themselves are now free functions there. The
+    // tests below exercise the trait *templates* that still use them.
 
     // === update_work_item_with_title with HTML tags (issue #7) ===
 

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use self::identifiers::{is_pubmed_id, GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    generic_author_info::GenericAuthorInfo,
+    adapter_helpers::get_external_identifier_from_item, generic_author_info::GenericAuthorInfo,
     scientific_publication_adapter::ScientificPublicationAdapter, *,
 };
 // use wikibase::mediawiki::api::Api;
@@ -164,11 +164,11 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         let pmcid =
-            match self.get_external_identifier_from_item(item, &self.publication_property()?) {
+            match get_external_identifier_from_item(item, &self.publication_property()?) {
                 Some(s) => "PMC".to_owned() + &s,
                 None => {
                     // Attempt fallback to PubMed ID
-                    return match self.get_external_identifier_from_item(item, &IdProp::PMID) {
+                    return match get_external_identifier_from_item(item, &IdProp::PMID) {
                         Some(pmid) => self.publication_id_from_pubmed(&pmid).await,
                         None => None,
                     };

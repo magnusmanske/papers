@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 
 use self::identifiers::IdProp;
 use crate::{
-    generic_author_info::GenericAuthorInfo,
+    adapter_helpers::get_external_identifier_from_item, generic_author_info::GenericAuthorInfo,
     scientific_publication_adapter::ScientificPublicationAdapter, *,
 };
 
@@ -144,7 +144,7 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
         // TODO other ID types than DOI?
-        let doi = self.get_external_identifier_from_item(item, &IdProp::DOI)?;
+        let doi = get_external_identifier_from_item(item, &IdProp::DOI)?;
         let author_ids = self.client.search_doi(&doi).await.ok()?;
 
         let work = PseudoWork { author_ids };

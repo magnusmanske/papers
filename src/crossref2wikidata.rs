@@ -6,6 +6,7 @@ use crossref::{response::work::PartialDate, Crossref};
 
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
+    adapter_helpers::{get_external_identifier_from_item, wb_time_from_partial},
     scientific_publication_adapter::{crossref_work_type_to_q, ScientificPublicationAdapter},
     *,
 };
@@ -142,7 +143,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
     }
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        let doi = self.get_external_identifier_from_item(item, &IdProp::DOI)?;
+        let doi = get_external_identifier_from_item(item, &IdProp::DOI)?;
         let work = match self.get_client().work(&doi).await {
             Ok(w) => w,
             _ => return None, // No such work
@@ -179,7 +180,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         // Date
         if !item.has_claims_with_property("P577") {
             if let Some((year, month, day)) = self.get_publication_date(publication_id) {
-                let statement = self.get_wb_time_from_partial("P577".to_string(), year, month, day);
+                let statement = wb_time_from_partial("P577", year, month, day, self.reference());
                 item.add_claim(statement);
             }
         }
