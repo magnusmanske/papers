@@ -17,6 +17,7 @@ pub mod openalex2wikidata;
 pub mod orcid2wikidata;
 pub mod pmc2wikidata;
 pub mod pubmed2wikidata;
+pub mod rate_limit_log;
 pub mod scientific_publication_adapter;
 pub mod semanticscholar2wikidata;
 pub mod sourcemd_bot;

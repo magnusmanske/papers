@@ -164,22 +164,21 @@ enum BotTick {
     Worked,
     /// No batch was found; loop should sleep on the "idle" cadence.
     Idle,
-    /// The DB query for the next batch failed; treat as transient and back off
-    /// on the "idle" cadence rather than spin tight.
-    DbError,
+    /// The DB query for the next batch failed. The error is carried out
+    /// so the outer loop can rate-limit the logging — a sustained outage
+    /// produces a tick every 5 s, and we don't want one error line per
+    /// tick. See `papers::rate_limit_log::ConsecutiveErrorLog`.
+    DbError(anyhow::Error),
 }
 
 async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> BotTick {
     let batch_id = match config.read().await.get_next_batch().await {
         Ok(Some(n)) => n,
         Ok(None) => return BotTick::Idle,
-        Err(e) => {
-            // P0-5: previously a DB failure was indistinguishable from "no
-            // work" and the bot would silently spin on a broken DB. Now we
-            // log and treat it as an idle tick so the caller backs off.
-            tracing::error!(error = %e, "get_next_batch failed; backing off");
-            return BotTick::DbError;
-        },
+        // P0-5: a DB failure used to be indistinguishable from "no work".
+        // Now we propagate the error; the outer loop logs it (rate-limited)
+        // and backs off.
+        Err(e) => return BotTick::DbError(e),
     };
 
     tracing::info!(batch_id, "starting batch");
@@ -216,12 +215,24 @@ async fn command_bot(ini_file: &str) {
     let smd = Arc::new(RwLock::new(smd));
     let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).await.unwrap()));
     let cache = Arc::new(WikidataStringCache::new(mw_api));
+    // Cross-tick state for rate-limiting DB-outage error logs: log on the
+    // 1st, 2nd, 4th, 8th, … consecutive failure, plus an info! on recovery.
+    let mut db_log =
+        papers::rate_limit_log::ConsecutiveErrorLog::new("get_next_batch failed; backing off");
     loop {
         let delay = match run_bot(smd.clone(), cache.clone()).await {
-            BotTick::Worked => Duration::from_millis(1000),
-            // Idle and DB-error tick get the same long delay; DB errors are
-            // already logged inside run_bot so a broken DB is no longer silent.
-            BotTick::Idle | BotTick::DbError => Duration::from_millis(5000),
+            BotTick::Worked => {
+                db_log.note_success();
+                Duration::from_millis(1000)
+            },
+            BotTick::Idle => {
+                db_log.note_success();
+                Duration::from_millis(5000)
+            },
+            BotTick::DbError(e) => {
+                db_log.note_error(&e);
+                Duration::from_millis(5000)
+            },
         };
         tokio::time::sleep(delay).await;
     }
