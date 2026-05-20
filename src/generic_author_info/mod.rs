@@ -199,68 +199,43 @@ impl GenericAuthorInfo {
 
     /// From all available names, pick the most human-readable one as label,
     /// and return the rest as aliases.
-    fn pick_best_label(&self) -> (Option<String>, Vec<String>) {
-        let mut all_names: Vec<String> = Vec::new();
+    /// Picks the best label for this author. Considers `self.name` plus
+    /// each entry in `alternative_names`, ranks them by name-readability
+    /// score (tie-break: longest), and returns the winner. Returns
+    /// `None` only when there are no usable names.
+    fn pick_best_label(&self) -> Option<String> {
+        let mut all_names: Vec<&str> = Vec::new();
         if let Some(name) = &self.name {
             if !name.is_empty() {
-                all_names.push(name.clone());
+                all_names.push(name);
             }
         }
         for n in &self.alternative_names {
-            if !n.is_empty() && !all_names.contains(n) {
-                all_names.push(n.clone());
+            if !n.is_empty() && !all_names.contains(&n.as_str()) {
+                all_names.push(n);
             }
         }
-        if all_names.is_empty() {
-            return (None, vec![]);
-        }
-        // Pick the name with the highest readability score; break ties by length
-        let best_idx = all_names
-            .iter()
-            .enumerate()
-            .max_by_key(|(_, n)| (Self::name_readability_score(n), n.len()))
-            .map(|(i, _)| i)
-            .unwrap();
-        let label = all_names.remove(best_idx);
-        (Some(label), all_names)
-    }
-
-    const fn add_aliases() -> bool {
-        false // Seems to go wrong more than it goes right
+        all_names
+            .into_iter()
+            .max_by_key(|n| (Self::name_readability_score(n), n.len()))
+            .map(|s| s.to_string())
     }
 
     pub fn amend_author_item(&self, item: &mut Entity) {
-        let (best_label, aliases) = self.pick_best_label();
-
-        // Set the best name as label, unless already set (then try alias)
-        if let Some(name) = &best_label {
-            match item.label_in_locale("en") {
-                Some(s) => {
-                    if s != name && Self::add_aliases() {
-                        item.add_alias(LocaleString::new("en", name));
-                    }
-                },
-                None => item.set_label(LocaleString::new("en", name)),
+        // Set the best name as label if the item doesn't already have
+        // one. Previously this also pushed alternative_names as Wikidata
+        // aliases, gated by an `add_aliases()` const fn that always
+        // returned `false` ("Seems to go wrong more than it goes right").
+        // The dead alias-push branches were removed as P3 polish; the
+        // `alternative_names` field is still populated by `merge_from`
+        // because tests observe it, but it no longer flows into the item.
+        if let Some(name) = self.pick_best_label() {
+            if item.label_in_locale("en").is_none() {
+                item.set_label(LocaleString::new("en", &name));
             }
         }
 
         item.descriptions_mut().push(LocaleString::new("en", "researcher"));
-
-        // Remaining names as aliases
-        for n in &aliases {
-            match item.label_in_locale("en") {
-                Some(s) => {
-                    if s != n && Self::add_aliases() {
-                        item.add_alias(LocaleString::new("en", n));
-                    }
-                },
-                None => {
-                    if Self::add_aliases() {
-                        item.add_alias(LocaleString::new("en", n));
-                    }
-                },
-            }
-        }
 
         // Human
         if !item.has_target_entity("P31", "Q5") {

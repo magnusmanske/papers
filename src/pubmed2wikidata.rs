@@ -92,35 +92,42 @@ impl Pubmed2Wikidata {
     }
 
     fn get_dois_from_cached_publication(&self, publication_id: &str) -> Vec<String> {
-        let work = match self.get_cached_publication_from_id(publication_id) {
-            Some(w) => w,
-            None => return vec![],
+        let Some(work) = self.get_cached_publication_from_id(publication_id) else {
+            return vec![];
         };
         let mut dois = vec![];
-        if let Some(pubmed_data) = &work.pubmed_data {
-            if let Some(article_ids) = &pubmed_data.article_ids {
-                for id in &article_ids.ids {
-                    if let (Some(key), Some(id)) = (&id.id_type, &id.id) {
-                        if key == "doi" {
-                            dois.push(id.to_uppercase());
-                        }
-                    }
+
+        // From pubmed_data.article_ids
+        if let Some(article_ids) =
+            work.pubmed_data.as_ref().and_then(|d| d.article_ids.as_ref())
+        {
+            for id in &article_ids.ids {
+                let (Some(key), Some(value)) = (&id.id_type, &id.id) else {
+                    continue;
+                };
+                if key == "doi" {
+                    dois.push(value.to_uppercase());
                 }
             }
         }
-        if let Some(medline_citation) = &work.medline_citation {
-            if let Some(article) = &medline_citation.article {
-                for elid in &article.e_location_ids {
-                    if elid.valid {
-                        if let (Some(id_type), Some(id)) = (&elid.e_id_type, &elid.id) {
-                            if id_type == "doi" {
-                                dois.push(id.to_uppercase());
-                            }
-                        }
-                    }
+
+        // From medline_citation.article.e_location_ids
+        if let Some(article) =
+            work.medline_citation.as_ref().and_then(|m| m.article.as_ref())
+        {
+            for elid in &article.e_location_ids {
+                if !elid.valid {
+                    continue;
+                }
+                let (Some(id_type), Some(value)) = (&elid.e_id_type, &elid.id) else {
+                    continue;
+                };
+                if id_type == "doi" {
+                    dois.push(value.to_uppercase());
                 }
             }
         }
+
         dois.sort();
         dois.dedup();
         dois

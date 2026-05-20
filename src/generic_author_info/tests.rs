@@ -120,10 +120,10 @@ fn amend_author_item() {
     let mut item = Entity::new_empty_item();
     ga.amend_author_item(&mut item);
     assert_eq!(item.label_in_locale("en"), Some("Magnus Manske"));
-    if GenericAuthorInfo::add_aliases() {
-        // Only test if this is switched on
-        assert_eq!(*item.aliases(), vec![LocaleString::new("en", "HM Manske")]);
-    }
+    // Note: alternative_names are no longer pushed as Wikidata aliases
+    // (the dead add_aliases() const fn was removed). The field stays
+    // populated as test-observable state via merge_from.
+    assert!(item.aliases().is_empty(), "amend_author_item should not push aliases anymore");
     assert_eq!(*item.claims()[0].main_snak(), Snak::new_item("P31", "Q5"));
     assert_eq!(*item.claims()[1].main_snak(), Snak::new_item("P106", "Q1650915"));
     assert_eq!(

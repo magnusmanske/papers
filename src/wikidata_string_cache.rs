@@ -279,7 +279,9 @@ mod tests {
         let mut wsc = WikidataStringCache::new(mock_api(&mock_server).await);
         for num in 1..10 {
             wsc.set("P123", &format!("Key #{}", num), Some(format!("Value #{}", num))).await;
-            thread::sleep(Duration::from_millis(10));
+            // tokio::time::sleep yields to the runtime instead of blocking the
+            // worker thread (which thread::sleep would do inside a tokio::test).
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
         wsc.max_cache_size_per_property = 5;
         wsc.prune_property("P123").await;
