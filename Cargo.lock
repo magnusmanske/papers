@@ -460,9 +460,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
-name = "crossref"
+name = "crossref-async"
 version = "0.3.0"
-source = "git+https://github.com/magnusmanske/crossref-rs?branch=async#85e2003ebc50d2aed3b57d2f171db59560566764"
 dependencies = [
  "chrono",
  "reqwest 0.13.5",
@@ -1831,7 +1830,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "config",
- "crossref",
+ "crossref-async",
  "dashmap",
  "deunicode",
  "futures",
@@ -1840,7 +1839,7 @@ dependencies = [
  "orcid",
  "pico-args",
  "pubmed",
- "rand 0.9.5",
+ "rand 0.10.2",
  "rayon",
  "regex",
  "reqwest 0.13.5",

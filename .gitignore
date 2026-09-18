@@ -4,3 +4,4 @@ bot.ini
 .claude
 CLAUDE.md
 audits/
+.cargo/

@@ -24,7 +24,7 @@ tokio = { version = "^1", features = ["full", "rt-multi-thread"] }
 futures = "*"
 async-trait = "*"
 anyhow = "*"
-rand = ">=0.9, <0.11"
+rand = "0.10"        # 0.10 moved `random_range` onto `RngExt`; do not widen across majors
 pico-args = "0.5"
 deunicode = "1"
 tracing = "0.1"
@@ -35,9 +35,12 @@ pubmed = "*"
 wikibase = { git = "https://gitlab.com/tobias47n9e/wikibase_rs" , version = "*" }
 arxiv-rs = "*"
 
-#crossref = "*"
-#crossref = { git = "https://github.com/MattsSe/crossref-rs" }
-crossref = { git = "https://github.com/magnusmanske/crossref-rs", branch = "async" , version = "*" }
+# Async fork of `crossref`, published separately as `crossref-async` because the
+# async API is not released upstream. Renamed back to `crossref` here so the
+# `use crossref::...` paths match the SDK's own crate name.
+# NOTE: must stay a registry dependency -- a `git` source cannot be published,
+# and `crossref` on crates.io is the old blocking 0.2.x API.
+crossref = { package = "crossref-async", version = "0.3" }
 
 [dev-dependencies]
 wiremock = "0.6"
