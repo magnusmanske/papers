@@ -3576,7 +3576,8 @@ dependencies = [
 [[package]]
 name = "wikibase"
 version = "0.7.6"
-source = "git+https://gitlab.com/tobias47n9e/wikibase_rs#0234065663090a471ca87c86434f2d2a5b05058e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de58bb2dadc0580004515a67b8ca1383258bf466e97f3e4d830e98d58d023e98"
 dependencies = [
  "curl",
  "futures",

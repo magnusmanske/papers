@@ -14,26 +14,26 @@ include = ["**/*.rs", "Cargo.toml"]
 serde_json = "1"
 mysql_async = "0.36"
 reqwest = { version = "0.13", features = ["json"] }
-config = "*"
+config = "0.15"
 regex = "1"
 lazy_static = "1"
-chrono = "*"
-dashmap = "*"
-rayon = "*"
+chrono = "0.4"
+dashmap = "6"
+rayon = "1"
 tokio = { version = "^1", features = ["full", "rt-multi-thread"] }
-futures = "*"
-async-trait = "*"
-anyhow = "*"
+futures = "0.3"
+async-trait = "0.1"
+anyhow = "1"
 rand = "0.10"        # 0.10 moved `random_range` onto `RngExt`; do not widen across majors
 pico-args = "0.5"
 deunicode = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-semanticscholar = "*"
-orcid="*"
-pubmed = "*"
-wikibase = { git = "https://gitlab.com/tobias47n9e/wikibase_rs" , version = "*" }
-arxiv-rs = "*"
+semanticscholar = "0.2"
+orcid = "0.2"
+pubmed = "0.2"
+wikibase = "0.7"
+arxiv-rs = "0.2"
 
 # Async fork of `crossref`, published separately as `crossref-async` because the
 # async API is not released upstream. Renamed back to `crossref` here so the
