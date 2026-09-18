@@ -32,7 +32,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 semanticscholar = "*"
 orcid="*"
 pubmed = "*"
-wikibase = { git = "https://gitlab.com/tobias47n9e/wikibase_rs" }
+wikibase = { git = "https://gitlab.com/tobias47n9e/wikibase_rs" , version = "*" }
 arxiv-rs = "*"
 
 #crossref = "*"
