@@ -37,7 +37,7 @@ arxiv-rs = "*"
 
 #crossref = "*"
 #crossref = { git = "https://github.com/MattsSe/crossref-rs" }
-crossref = { git = "https://github.com/magnusmanske/crossref-rs", branch = "async" }
+crossref = { git = "https://github.com/magnusmanske/crossref-rs", branch = "async" , version = "*" }
 
 [dev-dependencies]
 wiremock = "0.6"
