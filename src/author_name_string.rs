@@ -8,11 +8,14 @@ use wikibase::mediawiki::api::Api;
 use crate::{
     generic_author_info::GenericAuthorInfo,
     http_client::{HttpJsonFetcher, JsonFetcher},
+    wdqs::Wdqs,
     wikidata_interaction::WikidataInteraction,
     wikidata_papers::WikidataPapers,
     wikidata_string_cache::WikidataStringCache,
 };
 
+/// How many coauthors' labels one query asks for.
+const LABEL_BATCH: usize = 500;
 const MIN_PAPERS_PER_AUTHOR: usize = 2;
 const MIN_SPACES_FOR_NAME: usize = 1;
 const MAX_PROCESS_PAPERS_CONCURRENCY: usize = 5;
@@ -59,6 +62,24 @@ fn parse_coauthor_ans_bindings(
     ans2paper_qs
 }
 
+/// The `results.bindings` array of a SPARQL JSON result.
+fn bindings<'a>(result: &'a serde_json::Value, context: &str) -> Result<&'a Vec<serde_json::Value>> {
+    result["results"]["bindings"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("{context}: Not an array"))
+}
+
+/// A query for the English and multilingual (`mul`) labels of `qs`, which
+/// must be Q-ids, as `?coauthor ?coauthorLabel` rows. Many people now carry
+/// their name only as a `mul` label.
+fn coauthor_labels_query(qs: &[String]) -> String {
+    let values = qs.iter().map(|q| format!("wd:{q}")).collect::<Vec<_>>().join(" ");
+    format!(
+        "SELECT DISTINCT ?coauthor (STR(?label) AS ?coauthorLabel) {{ VALUES ?coauthor {{ {values} }} \
+         ?coauthor rdfs:label ?label FILTER(LANG(?label) IN (\"en\", \"mul\")) }}"
+    )
+}
+
 /// Parses the `?coauthor ?coauthorLabel` SPARQL bindings into a map from
 /// label-string to coauthor Q-ids. Pure function for unit testability.
 fn parse_coauthor_qs_bindings(
@@ -85,11 +106,12 @@ fn parse_coauthor_qs_bindings(
 pub struct AuthorNameString {
     pub logging_level: u8,
     fetcher: Arc<dyn JsonFetcher>,
+    wdqs: Wdqs,
 }
 
 impl Default for AuthorNameString {
     fn default() -> Self {
-        Self { logging_level: 0, fetcher: Arc::new(HttpJsonFetcher::default()) }
+        Self::new(0, Arc::new(HttpJsonFetcher::default()))
     }
 }
 
@@ -98,7 +120,13 @@ impl AuthorNameString {
     /// callers use `Self::new(level, Arc::new(HttpJsonFetcher::default()))`;
     /// tests inject a `MockJsonFetcher`.
     pub fn new(logging_level: u8, fetcher: Arc<dyn JsonFetcher>) -> Self {
-        Self { logging_level, fetcher }
+        Self { logging_level, fetcher, wdqs: Wdqs::default() }
+    }
+
+    /// Sends SPARQL queries to `wdqs` instead of the Wikidata Query Service.
+    pub fn with_wdqs(mut self, wdqs: Wdqs) -> Self {
+        self.wdqs = wdqs;
+        self
     }
 
     fn log<S: Into<String>>(&self, level: u8, msg: S) {
@@ -299,12 +327,14 @@ impl AuthorNameString {
         cache: &Arc<WikidataStringCache>,
     ) -> Result<()> {
         self.log(1, format!("Processing {}", root_author_q));
+        // It goes into SPARQL queries.
+        if !crate::identifiers::is_qid(&root_author_q) {
+            anyhow::bail!("not a Q-id: {root_author_q}");
+        }
         let mut author = GenericAuthorInfo::new();
         author.set_wikidata_item(Some(root_author_q.to_owned()));
-        let api = mw_api.read().await;
-        let ans2paper_qs = self.get_coauthor_ans(&root_author_q, &api).await?;
-        let name2author_qs = self.get_coauthor_qs(&root_author_q, &api).await?;
-        drop(api);
+        let ans2paper_qs = self.get_coauthor_ans(&root_author_q).await?;
+        let name2author_qs = self.get_coauthor_qs(&root_author_q).await?;
 
         let mut futures = vec![];
         for (ans, paper_qs) in ans2paper_qs.iter() {
@@ -319,35 +349,40 @@ impl AuthorNameString {
         Ok(())
     }
 
-    /// Get coauthors of a given author, author name string to paper Qids
-    async fn get_coauthor_ans(
-        &self,
-        root_author_q: &str,
-        api: &Api,
-    ) -> Result<HashMap<String, Vec<String>>> {
-        let resp = api
-            .sparql_query(&format!(
+    /// Get coauthors of a given author, author name string to paper Qids.
+    /// Papers are in the scholarly graph.
+    async fn get_coauthor_ans(&self, root_author_q: &str) -> Result<HashMap<String, Vec<String>>> {
+        let resp = self
+            .wdqs
+            .scholarly()
+            .query_json(&format!(
                 "SELECT ?paper ?ans {{ ?paper wdt:P50 wd:{root_author_q} ; wdt:P2093 ?ans }}"
             ))
             .await?;
-        let bindings = resp["results"]["bindings"]
-            .as_array()
-            .ok_or(anyhow::anyhow!("get_coauthor_ans: Not an array"))?;
-        Ok(parse_coauthor_ans_bindings(bindings))
+        Ok(parse_coauthor_ans_bindings(bindings(&resp, "get_coauthor_ans")?))
     }
 
-    async fn get_coauthor_qs(
-        &self,
-        root_author_q: &str,
-        api: &Api,
-    ) -> Result<HashMap<String, Vec<String>>> {
-        let resp = api
-            .sparql_query(&format!("select DISTINCT ?coauthor ?coauthorLabel {{ ?paper wdt:P50 wd:{root_author_q} ; wdt:P50 ?coauthor . SERVICE wikibase:label {{ bd:serviceParam wikibase:language \"[AUTO_LANGUAGE],en\" }} }}"))
+    /// Get coauthors of a given author, label to author Qids. Who coauthored
+    /// what is in the scholarly graph, what they are called in the main one.
+    async fn get_coauthor_qs(&self, root_author_q: &str) -> Result<HashMap<String, Vec<String>>> {
+        let resp = self
+            .wdqs
+            .scholarly()
+            .query_json(&format!(
+                "SELECT DISTINCT ?coauthor {{ ?paper wdt:P50 wd:{root_author_q} ; wdt:P50 ?coauthor }}"
+            ))
             .await?;
-        let bindings = resp["results"]["bindings"]
-            .as_array()
-            .ok_or(anyhow::anyhow!("get_coauthor_qs: Not an array"))?;
-        Ok(parse_coauthor_qs_bindings(bindings))
+        let coauthor_qs: Vec<String> = bindings(&resp, "get_coauthor_qs")?
+            .iter()
+            .filter_map(|j| q_from_entity_uri(j["coauthor"]["value"].as_str()?))
+            .collect();
+
+        let mut labels = Vec::new();
+        for batch in coauthor_qs.chunks(LABEL_BATCH) {
+            let resp = self.wdqs.main().query_json(&coauthor_labels_query(batch)).await?;
+            labels.extend(bindings(&resp, "get_coauthor_qs")?.iter().cloned());
+        }
+        Ok(parse_coauthor_qs_bindings(&labels))
     }
 
     async fn create_new_author(
@@ -597,5 +632,101 @@ mod tests {
         fetcher.add_response(url, serde_json::json!({"oops": "not an array"}));
         let ans = AuthorNameString::new(0, fetcher);
         assert!(ans.search_by_initials("C K Clarke").await.is_none());
+    }
+
+    // === graph split =======================================================
+
+    use wikimisc::sparql_endpoint::SparqlEndpoint;
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+
+    fn uri(q: &str) -> serde_json::Value {
+        serde_json::json!({"type": "uri", "value": format!("http://www.wikidata.org/entity/{q}")})
+    }
+
+    fn literal(text: &str) -> serde_json::Value {
+        serde_json::json!({"type": "literal", "value": text})
+    }
+
+    fn sparql_result(rows: Vec<serde_json::Value>) -> ResponseTemplate {
+        ResponseTemplate::new(200)
+            .set_body_json(serde_json::json!({"head": {"vars": []}, "results": {"bindings": rows}}))
+    }
+
+    /// The decoded `query` form field of a SPARQL request.
+    fn sent_query(request: &Request) -> String {
+        // A form body is encoded like a URL's query string.
+        let form = format!("http://form/?{}", String::from_utf8_lossy(&request.body));
+        reqwest::Url::parse(&form)
+            .ok()
+            .and_then(|url| url.query_pairs().find(|(key, _)| key == "query").map(|(_, q)| q.into_owned()))
+            .unwrap_or_default()
+    }
+
+    /// Answers queries that mention `marker` with `response`.
+    async fn mount_query(server: &MockServer, marker: &'static str, response: ResponseTemplate) {
+        Mock::given(move |request: &Request| sent_query(request).contains(marker))
+            .respond_with(response)
+            .expect(1)
+            .mount(server)
+            .await;
+    }
+
+    fn ans_for(main: &MockServer, scholarly: &MockServer) -> AuthorNameString {
+        AuthorNameString::new(0, Arc::new(MockJsonFetcher::new())).with_wdqs(Wdqs::new(
+            SparqlEndpoint::new(format!("{}/sparql", main.uri())),
+            SparqlEndpoint::new(format!("{}/sparql", scholarly.uri())),
+        ))
+    }
+
+    #[tokio::test]
+    async fn coauthor_names_come_from_the_scholarly_graph() {
+        let (main, scholarly) = (MockServer::start().await, MockServer::start().await);
+        mount_query(
+            &scholarly,
+            "wdt:P2093",
+            sparql_result(vec![
+                serde_json::json!({"paper": uri("Q10"), "ans": literal("Jane Doe")}),
+                serde_json::json!({"paper": uri("Q11"), "ans": literal("Jane Doe")}),
+            ]),
+        )
+        .await;
+
+        let ans = ans_for(&main, &scholarly).get_coauthor_ans("Q1").await.unwrap();
+        assert_eq!(ans["Jane Doe"], ["Q10", "Q11"]);
+    }
+
+    #[tokio::test]
+    async fn coauthors_from_the_scholarly_graph_are_named_from_the_main_graph() {
+        let (main, scholarly) = (MockServer::start().await, MockServer::start().await);
+        mount_query(
+            &scholarly,
+            "wdt:P50 ?coauthor",
+            sparql_result(vec![
+                serde_json::json!({"coauthor": uri("Q1")}),
+                serde_json::json!({"coauthor": uri("Q2")}),
+            ]),
+        )
+        .await;
+        mount_query(
+            &main,
+            "VALUES ?coauthor { wd:Q1 wd:Q2 }",
+            sparql_result(vec![
+                serde_json::json!({"coauthor": uri("Q1"), "coauthorLabel": literal("Root Author")}),
+                serde_json::json!({"coauthor": uri("Q2"), "coauthorLabel": literal("Co Author")}),
+            ]),
+        )
+        .await;
+
+        let names = ans_for(&main, &scholarly).get_coauthor_qs("Q1").await.unwrap();
+        assert_eq!(names["Root Author"], ["Q1"]);
+        assert_eq!(names["Co Author"], ["Q2"]);
+    }
+
+    #[test]
+    fn coauthor_labels_query_asks_for_english_and_mul_labels() {
+        let query = coauthor_labels_query(&["Q1".to_string(), "Q2".to_string()]);
+        assert!(query.contains("VALUES ?coauthor { wd:Q1 wd:Q2 }"), "{query}");
+        assert!(query.contains(r#"IN ("en", "mul")"#), "{query}");
+        assert!(!query.contains("SERVICE"), "{query}");
     }
 }

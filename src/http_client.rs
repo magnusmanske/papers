@@ -1,7 +1,8 @@
 //! Shared HTTP client + retry helper for outbound provider calls.
 //!
 //! Provides a single process-wide [`reqwest::Client`] (with timeouts and
-//! a `User-Agent`) and a [`send_with_retry`] helper that retries
+//! a `User-Agent`), a second one with a timeout long enough for SPARQL
+//! queries, and a [`send_with_retry`] helper that retries
 //! transient failures (timeouts, connect errors, HTTP 5xx, HTTP 429)
 //! with exponential backoff + jitter.
 //!
@@ -23,15 +24,28 @@ use async_trait::async_trait;
 use rand::RngExt;
 use reqwest::{Client, Response, StatusCode};
 
+/// What papers' requests say they are. Wikimedia's user-agent policy asks
+/// for contact information.
+pub const USER_AGENT: &str = concat!(
+    env!("CARGO_PKG_NAME"),
+    "/",
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("CARGO_PKG_REPOSITORY"),
+    ")"
+);
+
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+/// WDQS gives a query up to 60 s; this leaves room for sending the result.
+const SPARQL_TIMEOUT: Duration = Duration::from_secs(90);
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_POOL_MAX_IDLE_PER_HOST: usize = 8;
 
-fn build_client() -> Client {
+fn build_client(timeout: Duration) -> Client {
     Client::builder()
-        .user_agent(concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION")))
-        .timeout(DEFAULT_TIMEOUT)
+        .user_agent(USER_AGENT)
+        .timeout(timeout)
         .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
         .pool_idle_timeout(DEFAULT_POOL_IDLE_TIMEOUT)
         .pool_max_idle_per_host(DEFAULT_POOL_MAX_IDLE_PER_HOST)
@@ -42,7 +56,13 @@ fn build_client() -> Client {
 /// Returns the process-wide HTTP client.
 pub fn http_client() -> &'static Client {
     static HTTP: OnceLock<Client> = OnceLock::new();
-    HTTP.get_or_init(build_client)
+    HTTP.get_or_init(|| build_client(DEFAULT_TIMEOUT))
+}
+
+/// Returns the process-wide HTTP client for SPARQL queries.
+pub fn sparql_http_client() -> &'static Client {
+    static HTTP: OnceLock<Client> = OnceLock::new();
+    HTTP.get_or_init(|| build_client(SPARQL_TIMEOUT))
 }
 
 /// Retry policy for transient HTTP failures.

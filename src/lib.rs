@@ -27,6 +27,7 @@ pub mod semanticscholar2wikidata;
 pub mod sourcemd_bot;
 pub mod sourcemd_command;
 pub mod sourcemd_config;
+pub mod wdqs;
 pub mod wikidata_interaction;
 pub mod wikidata_papers;
 pub mod wikidata_string_cache;

@@ -33,6 +33,7 @@ semanticscholar = "0.2"
 orcid = "0.2"
 pubmed = "0.2"
 wikibase = "0.7"
+wikimisc = { git = "https://github.com/magnusmanske/wikimisc", features = ["sparql-client"] }
 arxiv-rs = "0.2"
 
 # Async fork of `crossref`, published separately as `crossref-async` because the
