@@ -4,20 +4,41 @@ use anyhow::{anyhow, Context, Result};
 use chrono::prelude::*;
 use config::{Config, File};
 use dashmap::DashSet;
-use mysql_async as my;
-use mysql_async::prelude::Queryable;
-use mysql_async::TxOpts;
+use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::info;
 use wikibase::mediawiki::api::Api;
+use wikimisc::mysql_async as my;
+use wikimisc::mysql_async::prelude::Queryable;
+use wikimisc::mysql_async::TxOpts;
+use wikimisc::toolforge::pool::ToolsDbPool;
 
 use crate::sourcemd_command::SourceMDcommand;
+
+/// The SourceMD tool's database on ToolsDB
+const DATABASE: &str = "s52680__sourcemd_batches_p";
+
+/// How long to wait for a database connection
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// A ToolsDB database and the pool to reach it
+#[derive(Debug, Clone)]
+struct Db {
+    pool: ToolsDbPool,
+    database: String,
+}
+
+impl Db {
+    async fn conn(&self) -> Result<my::Conn> {
+        Ok(self.pool.connect(&self.database).await?)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SourceMD {
     running_batch_ids: DashSet<i64>,
     failed_batch_ids: DashSet<i64>,
-    pool: Option<my::Pool>,
+    db: Option<Db>,
     mw_api: Arc<RwLock<Api>>,
 }
 
@@ -27,7 +48,7 @@ impl SourceMD {
         Self {
             running_batch_ids: DashSet::new(),
             failed_batch_ids: DashSet::new(),
-            pool: None,
+            db: None,
             mw_api,
         }
     }
@@ -36,7 +57,7 @@ impl SourceMD {
         Ok(Self {
             running_batch_ids: DashSet::new(),
             failed_batch_ids: DashSet::new(),
-            pool: None,
+            db: None,
             mw_api: Arc::new(RwLock::new(Self::create_mw_api(ini_file).await?)),
         })
     }
@@ -49,16 +70,12 @@ impl SourceMD {
         self.mw_api.clone()
     }
 
-    /// Borrow the configured MySQL pool, or return a contextual error if
-    /// `init()` has not been run / the connection could not be established.
-    fn pool(&self) -> Result<&my::Pool> {
-        self.pool.as_ref().ok_or_else(|| anyhow!("no MySQL pool configured"))
-    }
-
-    /// Check out a connection from the pool. All DB-touching public methods
-    /// flow through here so error context is uniform.
+    /// Check out a connection from the pool, or return a contextual error if
+    /// `init()` has not been run. All DB-touching public methods flow through
+    /// here so error context is uniform.
     async fn conn(&self) -> Result<my::Conn> {
-        self.pool()?.get_conn().await.context("checking out MySQL connection from pool")
+        let db = self.db.as_ref().ok_or_else(|| anyhow!("no MySQL pool configured"))?;
+        db.conn().await.context("checking out MySQL connection from pool")
     }
 
     pub async fn restart_batch(&self, batch_id: i64) -> Result<()> {
@@ -272,47 +289,24 @@ impl SourceMD {
     ///
     /// `ini_file` is the same path the user passes via `--config` — it must
     /// contain a `[client]` section with `user` and `password` fields for the
-    /// SourceMD database (in addition to the `[user]` section that
-    /// `create_mw_api` reads for Wikidata login).
+    /// SourceMD database on ToolsDB (in addition to the `[user]` section that
+    /// `create_mw_api` reads for Wikidata login). For local development, add
+    /// `local = true` to `[client]` and tunnel ToolsDB to the port given as
+    /// `toolsdb = <port>` in a `[tunnels]` section (see the `toolforge` crate).
     pub async fn init(&mut self, ini_file: &str) -> Result<()> {
-        let settings = Config::builder()
-            .add_source(File::with_name(ini_file))
+        self.init_database(ini_file, DATABASE).await
+    }
+
+    /// `init()` with the database to use, so tests can use their own
+    async fn init_database(&mut self, ini_file: &str, database: &str) -> Result<()> {
+        let pool = ToolsDbPool::builder()
+            .my_cnf_path(ini_file)
+            .connect_timeout(CONNECT_TIMEOUT)
             .build()
-            .with_context(|| format!("opening config file '{ini_file}'"))?;
-        let user = settings.get_string("client.user").context("missing client.user")?;
-        let pass = settings.get_string("client.password").context("missing client.password")?;
-        let schema = "s52680__sourcemd_batches_p".to_string();
-
-        // Try each known DB host in turn. `mysql_async::Pool::new` is lazy and
-        // never fails up-front, so verify reachability with a trial conn.
-        let candidates: [(&str, u16); 3] =
-            [("tools-db", 3306), ("tools.labsdb", 3306), ("localhost", 3307)];
-        for (host, port) in candidates {
-            let opts: my::Opts = my::OptsBuilder::default()
-                .ip_or_hostname(host)
-                .tcp_port(port)
-                .user(Some(user.clone()))
-                .pass(Some(pass.clone()))
-                .db_name(Some(schema.clone()))
-                .into();
-            let pool = my::Pool::new(opts);
-            match pool.get_conn().await {
-                Ok(_) => {
-                    info!(host, port, "MySQL pool connected");
-                    self.pool = Some(pool);
-                    break;
-                },
-                Err(e) => {
-                    info!(host, port, error = %e, "MySQL host unreachable, trying next");
-                    // pool drops here; lazy, so nothing to disconnect.
-                },
-            }
-        }
-
-        let mut conn = self.conn().await.context(
-            // Do NOT log connection-string contents — they include the password.
-            "could not establish a MySQL connection to any known host",
-        )?;
+            .with_context(|| format!("reading the database credentials from '{ini_file}'"))?;
+        info!(server = %pool.server(), database, "MySQL pool created");
+        self.db = Some(Db { pool, database: database.to_string() });
+        let mut conn = self.conn().await.context("could not connect to the SourceMD database")?;
         conn.exec_drop(r#"UPDATE `batch` SET `status`='TODO' WHERE status='RUNNING'"#, ())
             .await
             .context("resetting RUNNING batches to TODO on startup")?;
@@ -488,7 +482,8 @@ mod tests {
 /// `cargo test`). To run them locally:
 ///
 /// 1. Open an SSH tunnel to Toolforge:
-///    `ssh -L 3307:tools-db:3306 -N <user>@login.toolforge.org`
+///    `ssh -L 3307:tools.db.svc.wikimedia.cloud:3306 -N <user>@login.toolforge.org`
+///    (or `toolforge-tunnel toolsdb` with `toolsdb = 3307` in its config)
 ///
 /// 2. Designate a TEST schema you control (NEVER point this at
 ///    `s52680__sourcemd_batches_p` — the test setup drops and recreates the
@@ -515,7 +510,7 @@ mod live_db_tests {
     use std::sync::Arc;
 
     use dashmap::DashSet;
-    use mysql_async::prelude::Queryable;
+    use wikimisc::mysql_async::prelude::Queryable;
     use tokio::sync::RwLock;
     use wikibase::mediawiki::api::Api;
     use wiremock::{
@@ -529,7 +524,6 @@ mod live_db_tests {
     const SITEINFO: &str = include_str!("../test_data/api_siteinfo.json");
 
     struct DbCreds {
-        host: String,
         port: u16,
         user: String,
         pass: String,
@@ -542,30 +536,24 @@ mod live_db_tests {
         let user = std::env::var("PAPERS_TEST_DB_USER").ok()?;
         let pass = std::env::var("PAPERS_TEST_DB_PASS").ok()?;
         let schema = std::env::var("PAPERS_TEST_DB_SCHEMA").ok()?;
-        let host =
-            std::env::var("PAPERS_TEST_DB_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
         let port = std::env::var("PAPERS_TEST_DB_PORT")
             .ok()
             .and_then(|s| s.parse::<u16>().ok())
             .unwrap_or(3307);
-        Some(DbCreds { host, port, user, pass, schema })
+        Some(DbCreds { port, user, pass, schema })
     }
 
-    fn make_pool(creds: &DbCreds) -> my::Pool {
-        let opts: my::Opts = my::OptsBuilder::default()
-            .ip_or_hostname(creds.host.clone())
-            .tcp_port(creds.port)
-            .user(Some(creds.user.clone()))
-            .pass(Some(creds.pass.clone()))
-            .db_name(Some(creds.schema.clone()))
-            .into();
-        my::Pool::new(opts)
+    /// A pool for the test database, through the local tunnel
+    fn make_db(creds: &DbCreds) -> Db {
+        let ini = tempfile_with_credentials();
+        let pool = ToolsDbPool::builder().my_cnf_path(ini.path()).build().expect("test DB credentials");
+        Db { pool, database: creds.schema.clone() }
     }
 
     /// DROP-then-CREATE the two tables the production code touches. Each
     /// test calls this so it starts from a known empty state.
-    async fn reset_tables(pool: &my::Pool) {
-        let mut conn = pool.get_conn().await.expect("connect to test DB");
+    async fn reset_tables(pool: &Db) {
+        let mut conn = pool.conn().await.expect("connect to test DB");
         conn.query_drop("DROP TABLE IF EXISTS `command`").await.unwrap();
         conn.query_drop("DROP TABLE IF EXISTS `batch`").await.unwrap();
         conn.query_drop(
@@ -597,8 +585,8 @@ mod live_db_tests {
     }
 
     /// Insert a single batch row and return its id.
-    async fn insert_batch(pool: &my::Pool, status: &str) -> i64 {
-        let mut conn = pool.get_conn().await.unwrap();
+    async fn insert_batch(pool: &Db, status: &str) -> i64 {
+        let mut conn = pool.conn().await.unwrap();
         conn.exec_drop(
             r#"INSERT INTO `batch` (`status`, `last_action`) VALUES (?, NOW())"#,
             (status,),
@@ -609,14 +597,14 @@ mod live_db_tests {
     }
 
     async fn insert_command(
-        pool: &my::Pool,
+        pool: &Db,
         batch_id: i64,
         serial: i64,
         status: &str,
         mode: &str,
         identifier: &str,
     ) -> i64 {
-        let mut conn = pool.get_conn().await.unwrap();
+        let mut conn = pool.conn().await.unwrap();
         conn.exec_drop(
             r#"INSERT INTO `command` (`batch_id`,`serial_number`,`mode`,`identifier`,`status`,`note`,`q`,`auto_escalate`)
                VALUES (?, ?, ?, ?, ?, '', '', 0)"#,
@@ -627,8 +615,8 @@ mod live_db_tests {
         conn.exec_first::<i64, _, _>("SELECT LAST_INSERT_ID()", ()).await.unwrap().unwrap()
     }
 
-    async fn fetch_batch_status(pool: &my::Pool, batch_id: i64) -> String {
-        let mut conn = pool.get_conn().await.unwrap();
+    async fn fetch_batch_status(pool: &Db, batch_id: i64) -> String {
+        let mut conn = pool.conn().await.unwrap();
         conn.exec_first::<String, _, _>(
             "SELECT `status` FROM `batch` WHERE id=?",
             (batch_id,),
@@ -638,8 +626,8 @@ mod live_db_tests {
         .unwrap()
     }
 
-    async fn fetch_batch_overview(pool: &my::Pool, batch_id: i64) -> Option<String> {
-        let mut conn = pool.get_conn().await.unwrap();
+    async fn fetch_batch_overview(pool: &Db, batch_id: i64) -> Option<String> {
+        let mut conn = pool.conn().await.unwrap();
         conn.exec_first::<Option<String>, _, _>(
             "SELECT `overview` FROM `batch` WHERE id=?",
             (batch_id,),
@@ -649,8 +637,8 @@ mod live_db_tests {
         .flatten()
     }
 
-    async fn fetch_command_status(pool: &my::Pool, command_id: i64) -> String {
-        let mut conn = pool.get_conn().await.unwrap();
+    async fn fetch_command_status(pool: &Db, command_id: i64) -> String {
+        let mut conn = pool.conn().await.unwrap();
         conn.exec_first::<String, _, _>(
             "SELECT `status` FROM `command` WHERE id=?",
             (command_id,),
@@ -678,12 +666,12 @@ mod live_db_tests {
     /// Build a `SourceMD` wired to a real DB pool and a wiremock-backed
     /// `mw_api`. The MockServer is returned so its lifetime extends through
     /// the test.
-    async fn make_smd(pool: my::Pool) -> (SourceMD, MockServer) {
+    async fn make_smd(pool: Db) -> (SourceMD, MockServer) {
         let (mock_server, mw_api) = start_mock_mw_api().await;
         let smd = SourceMD {
             running_batch_ids: DashSet::new(),
             failed_batch_ids: DashSet::new(),
-            pool: Some(pool),
+            db: Some(pool),
             mw_api,
         };
         (smd, mock_server)
@@ -694,7 +682,7 @@ mod live_db_tests {
     /// fail on a developer machine that hasn't set up the tunnel).
     async fn with_clean_db<F, Fut>(test_name: &str, body: F)
     where
-        F: FnOnce(SourceMD, my::Pool, MockServer) -> Fut,
+        F: FnOnce(SourceMD, Db, MockServer) -> Fut,
         Fut: std::future::Future<Output = ()>,
     {
         let Some(creds) = db_creds_from_env() else {
@@ -703,7 +691,7 @@ mod live_db_tests {
             );
             return;
         };
-        let pool = make_pool(&creds);
+        let pool = make_db(&creds);
         reset_tables(&pool).await;
         let (smd, mock_server) = make_smd(pool.clone()).await;
         body(smd, pool, mock_server).await;
@@ -719,17 +707,20 @@ mod live_db_tests {
             // and seed two RUNNING batches that init() should flip to TODO.
             insert_batch(&pool, "RUNNING").await;
             insert_batch(&pool, "RUNNING").await;
-            smd.pool = None;
+            smd.db = None;
 
             // Use a throwaway ini file with both [user] and [client] sections.
             let tmp = tempfile_with_credentials();
 
             // Act
-            smd.init(tmp.path().to_str().unwrap()).await.expect("init should connect");
+            let creds = db_creds_from_env().unwrap();
+            smd.init_database(tmp.path().to_str().unwrap(), &creds.schema)
+                .await
+                .expect("init should connect");
 
             // Assert: both batches now TODO; pool is populated.
-            assert!(smd.pool.is_some(), "init must leave a pool behind");
-            let mut conn = pool.get_conn().await.unwrap();
+            assert!(smd.db.is_some(), "init must leave a pool behind");
+            let mut conn = pool.conn().await.unwrap();
             let running_count: i64 = conn
                 .query_first("SELECT COUNT(*) FROM `batch` WHERE `status`='RUNNING'")
                 .await
@@ -740,7 +731,8 @@ mod live_db_tests {
         .await;
     }
 
-    /// Build a temp ini file that points init() at the test DB.
+    /// Build a temp ini file that points init() at the test DB, through the
+    /// local tunnel on `PAPERS_TEST_DB_PORT`.
     fn tempfile_with_credentials() -> tempfile::NamedTempFile {
         use std::io::Write;
         let creds = db_creds_from_env().expect("env should be set by caller");
@@ -754,6 +746,9 @@ mod live_db_tests {
         writeln!(f, "[client]").unwrap();
         writeln!(f, "user = {}", creds.user).unwrap();
         writeln!(f, "password = {}", creds.pass).unwrap();
+        writeln!(f, "local = true").unwrap();
+        writeln!(f, "[tunnels]").unwrap();
+        writeln!(f, "toolsdb = {}", creds.port).unwrap();
         f
     }
 
@@ -919,7 +914,7 @@ mod live_db_tests {
 
                 // Command row reflects new status, q, and note.
                 assert_eq!(fetch_command_status(&pool, cmd_id).await, "DONE");
-                let mut conn = pool.get_conn().await.unwrap();
+                let mut conn = pool.conn().await.unwrap();
                 let (note, q): (String, String) = conn
                     .exec_first("SELECT note, q FROM command WHERE id=?", (cmd_id,))
                     .await

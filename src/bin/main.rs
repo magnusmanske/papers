@@ -213,8 +213,8 @@ async fn command_bot(ini_file: &str) {
     }
 }
 
-// For local testing:
-// ssh magnus@tools-login.wmflabs.org -L 3307:tools-db:3306 -N &
+// For local testing, add `local = true` to `[client]` in the config file,
+// `[tunnels]` with `toolsdb = 3307`, and run `toolforge-tunnel toolsdb`.
 
 fn init_tracing() {
     use tracing_subscriber::EnvFilter;
