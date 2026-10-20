@@ -18,8 +18,14 @@ fn author_names_match() {
     let ga = GenericAuthorInfo::new();
     assert_eq!(ga.author_names_match("Manske M", "Manske HM"), 1);
     assert_eq!(ga.author_names_match("Manske M", "HM Manske"), 1);
-    assert_eq!(ga.author_names_match("Heinrich M Manske", "manske heinrich"), 2);
-    assert_eq!(ga.author_names_match("Notmyname M Manske", "Heinrich M Manske"), 1);
+    assert_eq!(
+        ga.author_names_match("Heinrich M Manske", "manske heinrich"),
+        2
+    );
+    assert_eq!(
+        ga.author_names_match("Notmyname M Manske", "Heinrich M Manske"),
+        1
+    );
 }
 
 #[test]
@@ -73,7 +79,10 @@ fn compare_by_list_number() {
     assert_eq!(ga1.compare(&ga2), SCORE_LIST_NUMBER);
     ga1.name = Some("Foobar Baz".to_string());
     ga2.name = Some("Foobar B.".to_string());
-    assert_eq!(ga1.compare(&ga2), SCORE_LIST_NUMBER_AND_NAME + SCORE_NAME_MATCH);
+    assert_eq!(
+        ga1.compare(&ga2),
+        SCORE_LIST_NUMBER_AND_NAME + SCORE_NAME_MATCH
+    );
     ga1.name = None;
     ga2.name = None;
     ga1.list_number = Some("456".to_string());
@@ -116,16 +125,23 @@ fn amend_author_item() {
     let mut ga = GenericAuthorInfo::new();
     ga.name = Some("Magnus Manske".to_string());
     ga.alternative_names.push("HM Manske".to_string());
-    ga.prop2id.insert("P496".to_string(), "1234-5678-1234-5678".to_string());
+    ga.prop2id
+        .insert("P496".to_string(), "1234-5678-1234-5678".to_string());
     let mut item = Entity::new_empty_item();
     ga.amend_author_item(&mut item);
     assert_eq!(item.label_in_locale("en"), Some("Magnus Manske"));
     // Note: alternative_names are no longer pushed as Wikidata aliases
     // (the dead add_aliases() const fn was removed). The field stays
     // populated as test-observable state via merge_from.
-    assert!(item.aliases().is_empty(), "amend_author_item should not push aliases anymore");
+    assert!(
+        item.aliases().is_empty(),
+        "amend_author_item should not push aliases anymore"
+    );
     assert_eq!(*item.claims()[0].main_snak(), Snak::new_item("P31", "Q5"));
-    assert_eq!(*item.claims()[1].main_snak(), Snak::new_item("P106", "Q1650915"));
+    assert_eq!(
+        *item.claims()[1].main_snak(),
+        Snak::new_item("P106", "Q1650915")
+    );
     assert_eq!(
         *item.claims()[2].main_snak(),
         Snak::new_external_id("P496", "1234-5678-1234-5678")
@@ -198,12 +214,16 @@ fn merge_from_basic_name_and_props() {
     let mut ga2 = GenericAuthorInfo::new();
     ga2.name = Some("J Smith".to_string());
     ga2.list_number = Some("1".to_string());
-    ga2.prop2id.insert("P496".to_string(), "0000-1234-5678-9012".to_string());
+    ga2.prop2id
+        .insert("P496".to_string(), "0000-1234-5678-9012".to_string());
 
     assert!(ga1.merge_from(&ga2).is_ok());
     assert_eq!(ga1.name, Some("John Smith".to_string())); // primary name kept
     assert!(ga1.alternative_names.contains(&"J Smith".to_string())); // secondary added as alias
-    assert_eq!(ga1.prop2id.get("P496"), Some(&"0000-1234-5678-9012".to_string())); // prop absorbed
+    assert_eq!(
+        ga1.prop2id.get("P496"),
+        Some(&"0000-1234-5678-9012".to_string())
+    ); // prop absorbed
     assert_eq!(ga1.list_number, Some("1".to_string()));
 }
 
@@ -228,15 +248,21 @@ fn merge_from_conflicting_prop2id_succeeds_keeps_existing() {
     // Previously this would return Err; now it should succeed and keep existing
     // value.
     let mut ga1 = GenericAuthorInfo::new();
-    ga1.prop2id.insert("P496".to_string(), "0000-1111-2222-3333".to_string());
+    ga1.prop2id
+        .insert("P496".to_string(), "0000-1111-2222-3333".to_string());
 
     let mut ga2 = GenericAuthorInfo::new();
-    ga2.prop2id.insert("P496".to_string(), "9999-8888-7777-6666".to_string()); // Conflict
-    ga2.prop2id.insert("P1053".to_string(), "A-1234-5678".to_string()); // New, no conflict
+    ga2.prop2id
+        .insert("P496".to_string(), "9999-8888-7777-6666".to_string()); // Conflict
+    ga2.prop2id
+        .insert("P1053".to_string(), "A-1234-5678".to_string()); // New, no conflict
 
     assert!(ga1.merge_from(&ga2).is_ok());
     // Conflicting property: keep existing (higher-priority source)
-    assert_eq!(ga1.prop2id.get("P496"), Some(&"0000-1111-2222-3333".to_string()));
+    assert_eq!(
+        ga1.prop2id.get("P496"),
+        Some(&"0000-1111-2222-3333".to_string())
+    );
     // Non-conflicting property: absorbed
     assert_eq!(ga1.prop2id.get("P1053"), Some(&"A-1234-5678".to_string()));
 }
@@ -262,11 +288,15 @@ fn merge_from_adopts_wikidata_item_if_missing() {
 
     let mut ga2 = GenericAuthorInfo::new();
     ga2.wikidata_item = Some("Q42".to_string());
-    ga2.prop2id.insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+    ga2.prop2id
+        .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
     assert!(ga1.merge_from(&ga2).is_ok());
     assert_eq!(ga1.wikidata_item, Some("Q42".to_string())); // Adopted from ga2
-    assert_eq!(ga1.prop2id.get("P496"), Some(&"0000-0001-2345-6789".to_string()));
+    assert_eq!(
+        ga1.prop2id.get("P496"),
+        Some(&"0000-0001-2345-6789".to_string())
+    );
 }
 
 #[test]
@@ -299,7 +329,10 @@ fn compare_exact_name_scores_higher_than_partial() {
 
     let score_exact = ga_ref.compare(&ga_exact);
     let score_partial = ga_ref.compare(&ga_partial);
-    assert!(score_exact > score_partial, "Exact name match must outscore partial");
+    assert!(
+        score_exact > score_partial,
+        "Exact name match must outscore partial"
+    );
     // 101 (2 words × 50 + 1 bonus) vs 50 (1 word match, no bonus)
     assert_eq!(score_exact, SCORE_NAME_MATCH * 2 + 1);
     assert_eq!(score_partial, SCORE_NAME_MATCH);
@@ -318,7 +351,11 @@ fn compare_exact_name_bonus_isolated() {
     let mut ga_different = GenericAuthorInfo::new();
     ga_different.name = Some("Lo".to_string());
 
-    assert_eq!(ga_ref.compare(&ga_same), 1, "Only the +1 exact bonus contributes");
+    assert_eq!(
+        ga_ref.compare(&ga_same),
+        1,
+        "Only the +1 exact bonus contributes"
+    );
     assert_eq!(ga_ref.compare(&ga_different), 0, "No match, no bonus");
 }
 
@@ -426,10 +463,13 @@ fn has_partial_match_true_for_name_overlap() {
 fn has_partial_match_true_for_prop_match() {
     // A matching external ID (score 90) is a strong partial match.
     let mut ga = GenericAuthorInfo::new();
-    ga.prop2id.insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+    ga.prop2id
+        .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
     let mut other = GenericAuthorInfo::new();
-    other.prop2id.insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+    other
+        .prop2id
+        .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
     assert!(ga.has_partial_match(&[other]));
 }
@@ -509,7 +549,9 @@ fn deduplicate_abbreviated_name_same_list_number() {
     GenericAuthorInfo::deduplicate(&mut authors);
     assert_eq!(authors.len(), 1);
     assert_eq!(authors[0].name, Some("John Smith".to_string()));
-    assert!(authors[0].alternative_names.contains(&"J Smith".to_string()));
+    assert!(authors[0]
+        .alternative_names
+        .contains(&"J Smith".to_string()));
 }
 
 #[test]
@@ -518,27 +560,39 @@ fn deduplicate_absorbs_external_ids_from_duplicate() {
     // the first.
     let first = GenericAuthorInfo::new_from_name_num("John Smith", 1);
     let mut second = GenericAuthorInfo::new_from_name_num("John Smith", 1);
-    second.prop2id.insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+    second
+        .prop2id
+        .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
     let mut authors = vec![first, second];
     GenericAuthorInfo::deduplicate(&mut authors);
     assert_eq!(authors.len(), 1);
-    assert_eq!(authors[0].prop2id.get("P496"), Some(&"0000-0001-2345-6789".to_string()));
+    assert_eq!(
+        authors[0].prop2id.get("P496"),
+        Some(&"0000-0001-2345-6789".to_string())
+    );
 }
 
 #[test]
 fn deduplicate_preserves_first_entry_data() {
     // First entry's data must win; second entry's conflicting data is discarded.
     let mut first = GenericAuthorInfo::new_from_name_num("John Smith", 1);
-    first.prop2id.insert("P496".to_string(), "FIRST-ORCID".to_string());
+    first
+        .prop2id
+        .insert("P496".to_string(), "FIRST-ORCID".to_string());
 
     let mut second = GenericAuthorInfo::new_from_name_num("John Smith", 1);
-    second.prop2id.insert("P496".to_string(), "SECOND-ORCID".to_string()); // Conflict: first wins
+    second
+        .prop2id
+        .insert("P496".to_string(), "SECOND-ORCID".to_string()); // Conflict: first wins
 
     let mut authors = vec![first, second];
     GenericAuthorInfo::deduplicate(&mut authors);
     assert_eq!(authors.len(), 1);
-    assert_eq!(authors[0].prop2id.get("P496"), Some(&"FIRST-ORCID".to_string()));
+    assert_eq!(
+        authors[0].prop2id.get("P496"),
+        Some(&"FIRST-ORCID".to_string())
+    );
 }
 
 #[test]
@@ -548,7 +602,9 @@ fn deduplicate_tolerates_different_list_numbers_when_names_match_strongly() {
     // number is kept.
     let first = GenericAuthorInfo::new_from_name_num("Heinrich Manske", 1);
     let mut second = GenericAuthorInfo::new_from_name_num("Heinrich Manske", 3); // shifted position
-    second.prop2id.insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+    second
+        .prop2id
+        .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
     let mut authors = vec![first.clone(), second];
     GenericAuthorInfo::deduplicate(&mut authors);
@@ -564,7 +620,10 @@ fn author_names_match_rejects_conflicting_first_initials() {
     let ga = GenericAuthorInfo::new();
     // Cases from the false-positive Wikidata edit:
     assert_eq!(ga.author_names_match("Bruce Allen", "G. Allen"), 0);
-    assert_eq!(ga.author_names_match("Jonathan Anderson", "S. B. Anderson"), 0);
+    assert_eq!(
+        ga.author_names_match("Jonathan Anderson", "S. B. Anderson"),
+        0
+    );
     assert_eq!(ga.author_names_match("Carl Blair", "D. G. Blair"), 0);
     assert_eq!(ga.author_names_match("R Gustafson", "E. K. Gustafson"), 0);
     assert_eq!(ga.author_names_match("Andrew M. Hopkins", "P. Hopkins"), 0);
@@ -586,7 +645,10 @@ fn author_names_match_no_conflict_when_one_side_fully_matched() {
     let ga = GenericAuthorInfo::new();
     // "Heinrich Manske" vs "manske heinrich" — all long words match, no remaining
     // parts
-    assert_eq!(ga.author_names_match("Heinrich Manske", "manske heinrich"), 2);
+    assert_eq!(
+        ga.author_names_match("Heinrich Manske", "manske heinrich"),
+        2
+    );
 }
 
 #[test]
@@ -625,7 +687,9 @@ fn names_have_conflicting_initials_compatible() {
     let ga = GenericAuthorInfo::new();
     let n1 = ga.asciify_string("J. Smith").replace('.', " ");
     let n2 = ga.asciify_string("John Smith").replace('.', " ");
-    assert!(!GenericAuthorInfo::names_have_conflicting_initials(&n1, &n2));
+    assert!(!GenericAuthorInfo::names_have_conflicting_initials(
+        &n1, &n2
+    ));
 }
 
 #[test]
@@ -633,7 +697,9 @@ fn names_have_conflicting_initials_fully_matched() {
     let ga = GenericAuthorInfo::new();
     let n1 = ga.asciify_string("Heinrich Manske").replace('.', " ");
     let n2 = ga.asciify_string("manske heinrich").replace('.', " ");
-    assert!(!GenericAuthorInfo::names_have_conflicting_initials(&n1, &n2));
+    assert!(!GenericAuthorInfo::names_have_conflicting_initials(
+        &n1, &n2
+    ));
 }
 
 #[test]
@@ -650,7 +716,9 @@ fn names_have_conflicting_initials_partial_initial_overlap() {
     // "C K Smith" vs "C J Smith" — 'c' overlaps, so no conflict
     let n1 = ga.asciify_string("C K Smith").replace('.', " ");
     let n2 = ga.asciify_string("C J Smith").replace('.', " ");
-    assert!(!GenericAuthorInfo::names_have_conflicting_initials(&n1, &n2));
+    assert!(!GenericAuthorInfo::names_have_conflicting_initials(
+        &n1, &n2
+    ));
 }
 
 // --- Bug scenario tests ---

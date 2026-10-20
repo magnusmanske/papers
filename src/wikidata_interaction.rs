@@ -34,11 +34,7 @@ pub trait WikidataInteraction {
     /// item. Returns `Ok(None)` if the diff is empty (nothing to write);
     /// `Err(_)` if the underlying API call fails so callers can mark the
     /// command failed instead of silently dropping the write.
-    async fn create_item(
-        &self,
-        item: &Entity,
-        mw_api: Arc<RwLock<Api>>,
-    ) -> Result<Option<String>> {
+    async fn create_item(&self, item: &Entity, mw_api: Arc<RwLock<Api>>) -> Result<Option<String>> {
         let params = EntityDiffParams::all();
         let mut diff = EntityDiff::new(&Entity::new_empty_item(), item, &params);
         diff.set_edit_summary(Some("(automated edit by SourceMD)".to_string()));
@@ -83,10 +79,18 @@ mod tests {
     #[tokio::test]
     async fn search_wikibase_returns_titles_when_search_has_hits() {
         let mock_server = start_mock_server().await;
-        add_search_mock(&mock_server, "haswbstatement:P698=16116339", SEARCH_Q46664291).await;
+        add_search_mock(
+            &mock_server,
+            "haswbstatement:P698=16116339",
+            SEARCH_Q46664291,
+        )
+        .await;
         let api = mock_api(&mock_server).await;
         let d = DummyInteractor;
-        let result = d.search_wikibase("haswbstatement:P698=16116339", api).await.unwrap();
+        let result = d
+            .search_wikibase("haswbstatement:P698=16116339", api)
+            .await
+            .unwrap();
         assert_eq!(result, vec!["Q46664291".to_string()]);
     }
 
@@ -96,7 +100,10 @@ mod tests {
         add_search_mock(&mock_server, "haswbstatement:P698=missing", SEARCH_EMPTY).await;
         let api = mock_api(&mock_server).await;
         let d = DummyInteractor;
-        let result = d.search_wikibase("haswbstatement:P698=missing", api).await.unwrap();
+        let result = d
+            .search_wikibase("haswbstatement:P698=missing", api)
+            .await
+            .unwrap();
         assert!(result.is_empty());
     }
 
@@ -109,6 +116,10 @@ mod tests {
         let d = DummyInteractor;
         let empty = Entity::new_empty_item();
         let r = d.create_item(&empty, api).await;
-        assert!(matches!(r, Ok(None)), "expected Ok(None), got {:?}", r.as_ref().err());
+        assert!(
+            matches!(r, Ok(None)),
+            "expected Ok(None), got {:?}",
+            r.as_ref().err()
+        );
     }
 }

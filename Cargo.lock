@@ -447,9 +447,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.5.2"
+version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01a7799fd6b852db0e61728dde9a204c423b44d689dbd432522543614b490e78"
+checksum = "0ba106e844045ddc02c20768ac4b0b7cb45f2cc2ecbd833ac9f5dacb183c2055"
 dependencies = [
  "cfg-if",
 ]
@@ -1501,9 +1501,9 @@ dependencies = [
 
 [[package]]
 name = "mediawiki"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74c8d226168e906734f86608d4f920b48c0df660fe20bd71d1d46bf528b562e3"
+checksum = "70574187620c4980540ab9b678ac6b7e0477aec9c267a0ddab312be7082f35c6"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3487,7 +3487,7 @@ dependencies = [
 [[package]]
 name = "wikimisc"
 version = "0.3.0"
-source = "git+https://github.com/magnusmanske/wikimisc#f29c8aa15b21f9dfa6962126a913f7652aeddcc2"
+source = "git+https://github.com/magnusmanske/wikimisc#4a4a52270f80a658b565e6f03d4633aef4daf517"
 dependencies = [
  "chrono",
  "csv",

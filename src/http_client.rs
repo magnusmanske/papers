@@ -94,14 +94,18 @@ pub async fn fetch_json_with(url: &str, policy: &HttpRetryPolicy) -> Option<serd
         Err(e) if e.is_retryable() && policy.retries() > 0 => {
             tracing::error!(error = %e, url, "HTTP gave up on retriable failure");
             return None;
-        },
+        }
         Err(e) => {
             tracing::warn!(error = %e, url, "HTTP request failed");
             return None;
-        },
+        }
     };
     if !resp.status().is_success() {
-        tracing::warn!(status = resp.status().as_u16(), url, "non-success HTTP response");
+        tracing::warn!(
+            status = resp.status().as_u16(),
+            url,
+            "non-success HTTP response"
+        );
         return None;
     }
     match resp.json::<serde_json::Value>().await {
@@ -109,7 +113,7 @@ pub async fn fetch_json_with(url: &str, policy: &HttpRetryPolicy) -> Option<serd
         Err(e) => {
             tracing::warn!(error = %e, url, "JSON decode failed");
             None
-        },
+        }
     }
 }
 

@@ -7,7 +7,8 @@ use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
     adapter_helpers::{wb_time_from_partial, PUBLICATION_DATE},
     generic_author_info::GenericAuthorInfo,
-    scientific_publication_adapter::ScientificPublicationAdapter, *,
+    scientific_publication_adapter::ScientificPublicationAdapter,
+    *,
 };
 
 pub struct Semanticscholar2Wikidata {
@@ -61,7 +62,6 @@ impl Semanticscholar2Wikidata {
         self.work_cache.insert(publication_id.clone(), work);
         vec![publication_id]
     }
-
 }
 
 #[async_trait(?Send)]
@@ -102,7 +102,8 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
     }
 
     fn has_cached_publication(&self, publication_id: &str) -> bool {
-        self.get_cached_publication_from_id(publication_id).is_some()
+        self.get_cached_publication_from_id(publication_id)
+            .is_some()
     }
 
     fn extract_extra_ids(&self, publication_id: &str) -> Vec<GenericWorkIdentifier> {
@@ -190,7 +191,9 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
             entry.set_name(author.name.clone());
             entry.set_list_number(Some((num + 1).to_string()));
             if let Some(id) = &author.author_id {
-                entry.prop2id_mut().insert(author_property.to_owned(), id.to_string());
+                entry
+                    .prop2id_mut()
+                    .insert(author_property.to_owned(), id.to_string());
             }
             ret.push(entry);
         }
@@ -360,7 +363,10 @@ mod tests {
         let mut ss = make_ss("abc123", work);
         let authors = ss.get_author_list("abc123").await;
         assert_eq!(authors.len(), 1);
-        assert_eq!(authors[0].prop2id().get("P4012"), Some(&"ss_auth_42".to_string()));
+        assert_eq!(
+            authors[0].prop2id().get("P4012"),
+            Some(&"ss_auth_42".to_string())
+        );
     }
 
     #[tokio::test]

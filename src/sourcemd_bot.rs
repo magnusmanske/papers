@@ -27,7 +27,11 @@ impl SourceMDbot {
         cache: Arc<WikidataStringCache>,
         batch_id: i64,
     ) -> Result<Self> {
-        let ret = Self { config, batch_id, cache };
+        let ret = Self {
+            config,
+            batch_id,
+            cache,
+        };
         ret.start().await?;
         Ok(ret)
     }
@@ -54,20 +58,22 @@ impl SourceMDbot {
                     .await
                     .with_context(|| format!("deactivating batch #{}", self.batch_id))?;
                 return Ok(false);
-            },
+            }
         };
 
-        self.set_command_status("RUNNING", None, &mut command).await?;
+        self.set_command_status("RUNNING", None, &mut command)
+            .await?;
         match self.execute_command(&mut command).await {
             Ok(b) => {
                 let status = if b { "DONE" } else { "DUNNO" };
                 self.set_command_status(status, None, &mut command).await?;
                 Ok(b)
-            },
+            }
             Err(e) => {
-                self.set_command_status("FAILED", Some(&e.to_string()), &mut command).await?;
+                self.set_command_status("FAILED", Some(&e.to_string()), &mut command)
+                    .await?;
                 Err(e)
-            },
+            }
         }
     }
 
@@ -82,10 +88,14 @@ impl SourceMDbot {
                 } else {
                     self.process_author_metadata(command).await
                 }
-            },
+            }
             SourceMDcommandMode::EditPaperForOrcidAuthor => Ok(false), // TODO
             SourceMDcommandMode::CreateBookFromIsbn => Ok(false),      // TODO
-            other => Err(anyhow!("Unrecognized command '{}' on command #{}", other, command.id)),
+            other => Err(anyhow!(
+                "Unrecognized command '{}' on command #{}",
+                other,
+                command.id
+            )),
         }
     }
 
@@ -94,7 +104,9 @@ impl SourceMDbot {
         if crate::identifiers::is_qid(identifier) {
             author.set_wikidata_item(Some(identifier.to_owned()));
         } else if crate::identifiers::is_orcid(identifier) {
-            author.prop2id_mut().insert("P496".to_string(), identifier.to_owned());
+            author
+                .prop2id_mut()
+                .insert("P496".to_string(), identifier.to_owned());
             author = author
                 .get_or_create_author_item(
                     self.config.read().await.mw_api(),
@@ -103,12 +115,18 @@ impl SourceMDbot {
                 )
                 .await
         } else {
-            return Err(anyhow!("Not a Wikidata item, nor an ORCID ID {}", identifier));
+            return Err(anyhow!(
+                "Not a Wikidata item, nor an ORCID ID {}",
+                identifier
+            ));
         }
 
         // Paranoia
         if author.wikidata_item().is_none() {
-            return Err(anyhow!("Failed to get/create author item for {}", identifier));
+            return Err(anyhow!(
+                "Failed to get/create author item for {}",
+                identifier
+            ));
         }
 
         Ok(author)
@@ -124,7 +142,8 @@ impl SourceMDbot {
             self.batch_id, self.batch_id, command.serial_number
         )));
         let config = self.config.read().await;
-        wdp.update_author_items(&vec![author], config.mw_api()).await;
+        wdp.update_author_items(&vec![author], config.mw_api())
+            .await;
         Ok(true)
     }
 
@@ -186,7 +205,7 @@ impl SourceMDbot {
                     command.q = er.q().to_string();
                 }
                 Ok(true)
-            },
+            }
             None => Ok(false),
         }
     }
@@ -211,7 +230,11 @@ impl SourceMDbot {
     }
 
     async fn get_next_command(&self) -> Result<Option<SourceMDcommand>> {
-        self.config.read().await.get_next_command(self.batch_id).await
+        self.config
+            .read()
+            .await
+            .get_next_command(self.batch_id)
+            .await
     }
 
     fn new_wdp(&self, _command: &SourceMDcommand) -> WikidataPapers {
@@ -235,7 +258,11 @@ mod tests {
         let mw_api = Arc::new(RwLock::new(api));
         let config = SourceMD::new_for_testing(mw_api.clone());
         let cache = Arc::new(WikidataStringCache::new(mw_api));
-        SourceMDbot { config: Arc::new(RwLock::new(config)), cache, batch_id: 1 }
+        SourceMDbot {
+            config: Arc::new(RwLock::new(config)),
+            cache,
+            batch_id: 1,
+        }
     }
 
     #[tokio::test]
@@ -245,7 +272,10 @@ mod tests {
         let mut cmd = SourceMDcommand::new_dummy("978-3-16-148410-0");
         cmd.mode = SourceMDcommandMode::CreateBookFromIsbn;
         let result = bot.execute_command(&mut cmd).await.unwrap();
-        assert!(!result, "CreateBookFromIsbn is unimplemented and should return Ok(false)");
+        assert!(
+            !result,
+            "CreateBookFromIsbn is unimplemented and should return Ok(false)"
+        );
     }
 
     #[tokio::test]
@@ -255,7 +285,10 @@ mod tests {
         let mut cmd = SourceMDcommand::new_dummy("0000-0001-2345-6789");
         cmd.mode = SourceMDcommandMode::EditPaperForOrcidAuthor;
         let result = bot.execute_command(&mut cmd).await.unwrap();
-        assert!(!result, "EditPaperForOrcidAuthor is unimplemented and should return Ok(false)");
+        assert!(
+            !result,
+            "EditPaperForOrcidAuthor is unimplemented and should return Ok(false)"
+        );
     }
 
     #[tokio::test]
@@ -307,7 +340,9 @@ mod tests {
         let bot = make_bot(&mock_server).await;
         // Not a Q-id and not an ORCID -> error
         let err = bot.get_author_item("not-an-id").await.unwrap_err();
-        assert!(err.to_string().contains("Not a Wikidata item, nor an ORCID ID"));
+        assert!(err
+            .to_string()
+            .contains("Not a Wikidata item, nor an ORCID ID"));
     }
 
     #[tokio::test]
@@ -317,6 +352,9 @@ mod tests {
         // Pure-regex branch: a valid Q-id is set as the wikidata_item without
         // any further lookups.
         let author = bot.get_author_item("Q42").await.unwrap();
-        assert_eq!(author.wikidata_item().map(str::to_string), Some("Q42".to_string()));
+        assert_eq!(
+            author.wikidata_item().map(str::to_string),
+            Some("Q42".to_string())
+        );
     }
 }

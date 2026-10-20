@@ -49,7 +49,7 @@ impl Arxiv2Wikidata {
                     && !id[pos + 1..].is_empty() =>
             {
                 id[..pos].to_string()
-            },
+            }
             _ => id.to_string(),
         }
     }
@@ -91,8 +91,10 @@ impl ScientificPublicationAdapter for Arxiv2Wikidata {
         let futures: Vec<_> = arxiv_ids
             .iter()
             .map(|arxiv_id| {
-                let query =
-                    arxiv::ArxivQueryBuilder::new().id_list(arxiv_id).max_results(1).build();
+                let query = arxiv::ArxivQueryBuilder::new()
+                    .id_list(arxiv_id)
+                    .max_results(1)
+                    .build();
                 arxiv::fetch_arxivs(query)
             })
             .collect();
@@ -120,7 +122,10 @@ impl ScientificPublicationAdapter for Arxiv2Wikidata {
         if self.work_cache.contains_key(publication_id) {
             return Some(publication_id.to_string());
         }
-        let query = arxiv::ArxivQueryBuilder::new().id_list(publication_id).max_results(1).build();
+        let query = arxiv::ArxivQueryBuilder::new()
+            .id_list(publication_id)
+            .max_results(1)
+            .build();
         let results = arxiv::fetch_arxivs(query).await.ok()?;
         let arxiv = results.into_iter().next()?;
         let arxiv_id = Self::extract_arxiv_id(&arxiv.id);
@@ -132,7 +137,7 @@ impl ScientificPublicationAdapter for Arxiv2Wikidata {
         match self.get_cached_publication_from_id(publication_id) {
             Some(arxiv) if !arxiv.title.is_empty() => {
                 vec![LocaleString::new("en", &arxiv.title)]
-            },
+            }
             _ => vec![],
         }
     }
@@ -228,7 +233,10 @@ mod tests {
     #[test]
     fn test_parse_date_invalid() {
         assert_eq!(crate::scientific_publication_adapter::parse_date(""), None);
-        assert_eq!(crate::scientific_publication_adapter::parse_date("not-a-date"), None);
+        assert_eq!(
+            crate::scientific_publication_adapter::parse_date("not-a-date"),
+            None
+        );
     }
 
     #[test]
@@ -236,7 +244,12 @@ mod tests {
         let mut adapter = Arxiv2Wikidata::new();
         adapter.work_cache.insert(
             "2301.12345".to_string(),
-            make_arxiv("2301.12345", "Test Paper Title", vec![], "2023-01-15T00:00:00Z"),
+            make_arxiv(
+                "2301.12345",
+                "Test Paper Title",
+                vec![],
+                "2023-01-15T00:00:00Z",
+            ),
         );
         let titles = adapter.get_work_titles("2301.12345");
         assert_eq!(titles.len(), 1);
@@ -267,7 +280,10 @@ mod tests {
             "2301.12345".to_string(),
             make_arxiv("2301.12345", "Title", vec![], "2023-01-15T00:00:00Z"),
         );
-        assert_eq!(adapter.get_publication_date("2301.12345"), Some((2023, Some(1), Some(15))));
+        assert_eq!(
+            adapter.get_publication_date("2301.12345"),
+            Some((2023, Some(1), Some(15)))
+        );
     }
 
     #[tokio::test]

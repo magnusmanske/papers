@@ -35,7 +35,10 @@ impl LanguageCache {
     /// Build a cache querying through `client`. Lazy: no HTTP is issued
     /// until the first `get` call.
     pub fn new(client: SparqlClient) -> Self {
-        Self { map: OnceCell::new(), client }
+        Self {
+            map: OnceCell::new(),
+            client,
+        }
     }
 
     /// Build a cache querying Wikidata's main graph.
@@ -48,7 +51,11 @@ impl LanguageCache {
     /// (the failure is logged and the cache stays empty so the next
     /// call doesn't repeatedly retry).
     pub async fn get(&self, language: &str) -> Option<String> {
-        self.map.get_or_init(|| self.load()).await.get(language).cloned()
+        self.map
+            .get_or_init(|| self.load())
+            .await
+            .get(language)
+            .cloned()
     }
 
     async fn load(&self) -> HashMap<String, String> {
@@ -56,7 +63,7 @@ impl LanguageCache {
             Ok(map) => {
                 tracing::info!(entries = map.len(), "LanguageCache loaded");
                 map
-            },
+            }
             Err(e) => {
                 tracing::warn!(
                     error = %e,
@@ -64,7 +71,7 @@ impl LanguageCache {
                     "LanguageCache: SPARQL load failed; degrading to empty cache",
                 );
                 HashMap::new()
-            },
+            }
         }
     }
 
@@ -130,7 +137,10 @@ mod tests {
             .await;
 
         let cache = cache_for(&server);
-        assert!(cache.get("en").await.is_none(), "expected None on SPARQL failure");
+        assert!(
+            cache.get("en").await.is_none(),
+            "expected None on SPARQL failure"
+        );
         // Second call also returns None: the cache holds the empty map,
         // we don't re-attempt the failed SPARQL on every lookup.
         assert!(cache.get("de").await.is_none());

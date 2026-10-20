@@ -311,11 +311,13 @@ pub trait ScientificPublicationAdapter {
     ) {
         self.update_work_item_with_title(publication_id, item);
         self.update_work_item_with_property(publication_id, item);
-        self.update_work_item_with_journal(publication_id, item).await;
+        self.update_work_item_with_journal(publication_id, item)
+            .await;
         self.update_work_item_with_volume(publication_id, item);
         self.update_work_item_with_issue(publication_id, item);
         self.update_work_item_with_publication_date(publication_id, item);
-        self.update_work_item_with_language(publication_id, item).await;
+        self.update_work_item_with_language(publication_id, item)
+            .await;
     }
 
     async fn update_work_item_with_language(&self, publication_id: &str, item: &mut Entity) {
@@ -361,9 +363,11 @@ pub trait ScientificPublicationAdapter {
         if item.has_claims_with_property("P577") {
             return;
         }
-        let statement = self.get_publication_date(publication_id).and_then(|(year, month, day)| {
-            wb_time_from_partial(PUBLICATION_DATE, year, month, day, self.reference())
-        });
+        let statement = self
+            .get_publication_date(publication_id)
+            .and_then(|(year, month, day)| {
+                wb_time_from_partial(PUBLICATION_DATE, year, month, day, self.reference())
+            });
         if let Some(statement) = statement {
             item.add_claim(statement);
         }
@@ -387,8 +391,8 @@ pub trait ScientificPublicationAdapter {
             // Add title
             match item.label_in_locale(language) {
                 Some(t) => titles.retain(|x| !titles_are_equal(x, t)), /* Title exists,
-                                                                          * remove from title
-                                                                          * list */
+                * remove from title
+                 * list */
                 None => item.set_label(LocaleString::new("en", &titles.swap_remove(0))), /* No title, add and remove from title list */
             }
 
@@ -451,7 +455,8 @@ pub trait ScientificPublicationAdapter {
     }
 
     fn set_author_cache_entry(&mut self, catalog_author_id: &str, q: &str) {
-        self.author_cache_mut().insert(catalog_author_id.to_string(), q.to_string());
+        self.author_cache_mut()
+            .insert(catalog_author_id.to_string(), q.to_string());
     }
 
     fn get_author_item_from_cache(&self, catalog_author_id: &str) -> Option<&String> {
@@ -506,22 +511,44 @@ mod tests {
         let mut unique = qs.clone();
         unique.sort();
         unique.dedup();
-        assert_eq!(qs.len(), unique.len(), "duplicate Q-ID across WorkType variants: {qs:?}");
+        assert_eq!(
+            qs.len(),
+            unique.len(),
+            "duplicate Q-ID across WorkType variants: {qs:?}"
+        );
         // And every Q-ID must look like a Q-ID.
         for q in &qs {
-            assert!(q.starts_with('Q') && q[1..].chars().all(|c| c.is_ascii_digit()), "bad Q: {q}");
+            assert!(
+                q.starts_with('Q') && q[1..].chars().all(|c| c.is_ascii_digit()),
+                "bad Q: {q}"
+            );
         }
     }
 
     #[test]
     fn work_type_from_crossref_known_inputs() {
-        assert_eq!(WorkType::from_crossref("journal-article"), Some(WorkType::JournalArticle));
+        assert_eq!(
+            WorkType::from_crossref("journal-article"),
+            Some(WorkType::JournalArticle)
+        );
         assert_eq!(WorkType::from_crossref("book"), Some(WorkType::Book));
         assert_eq!(WorkType::from_crossref("edited-book"), Some(WorkType::Book));
-        assert_eq!(WorkType::from_crossref("reference-book"), Some(WorkType::Book));
-        assert_eq!(WorkType::from_crossref("posted-content"), Some(WorkType::Preprint));
-        assert_eq!(WorkType::from_crossref("report-series"), Some(WorkType::Report));
-        assert_eq!(WorkType::from_crossref("peer-review"), Some(WorkType::PeerReview));
+        assert_eq!(
+            WorkType::from_crossref("reference-book"),
+            Some(WorkType::Book)
+        );
+        assert_eq!(
+            WorkType::from_crossref("posted-content"),
+            Some(WorkType::Preprint)
+        );
+        assert_eq!(
+            WorkType::from_crossref("report-series"),
+            Some(WorkType::Report)
+        );
+        assert_eq!(
+            WorkType::from_crossref("peer-review"),
+            Some(WorkType::PeerReview)
+        );
     }
 
     #[test]
@@ -534,12 +561,27 @@ mod tests {
 
     #[test]
     fn work_type_from_datacite_known_inputs() {
-        assert_eq!(WorkType::from_datacite("JournalArticle"), Some(WorkType::JournalArticle));
+        assert_eq!(
+            WorkType::from_datacite("JournalArticle"),
+            Some(WorkType::JournalArticle)
+        );
         // DataCite also produces the spaced variant.
-        assert_eq!(WorkType::from_datacite("Journal Article"), Some(WorkType::JournalArticle));
-        assert_eq!(WorkType::from_datacite("ConferenceProceeding"), Some(WorkType::Proceedings));
-        assert_eq!(WorkType::from_datacite("Software"), Some(WorkType::Software));
-        assert_eq!(WorkType::from_datacite("Preprint"), Some(WorkType::Preprint));
+        assert_eq!(
+            WorkType::from_datacite("Journal Article"),
+            Some(WorkType::JournalArticle)
+        );
+        assert_eq!(
+            WorkType::from_datacite("ConferenceProceeding"),
+            Some(WorkType::Proceedings)
+        );
+        assert_eq!(
+            WorkType::from_datacite("Software"),
+            Some(WorkType::Software)
+        );
+        assert_eq!(
+            WorkType::from_datacite("Preprint"),
+            Some(WorkType::Preprint)
+        );
     }
 
     #[test]
@@ -587,7 +629,10 @@ mod tests {
     impl TestAdapter {
         fn with_titles(titles: Vec<&str>) -> Self {
             Self {
-                titles: titles.into_iter().map(|t| LocaleString::new("en", t)).collect(),
+                titles: titles
+                    .into_iter()
+                    .map(|t| LocaleString::new("en", t))
+                    .collect(),
                 author_cache: HashMap::new(),
             }
         }

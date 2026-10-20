@@ -64,7 +64,7 @@ impl GenericAuthorInfo {
                     match snak.property() {
                         "P1545" => ret.list_number = Some(s.to_string()),
                         "P1932" => ret.name = Some(s.to_string()),
-                        _ => {},
+                        _ => {}
                     }
                 }
             }
@@ -169,13 +169,13 @@ impl GenericAuthorInfo {
                     qualifiers.push(Snak::new_string("P1932", &name));
                 }
                 Statement::new_normal(Snak::new_item("P50", q), qualifiers, vec![])
-            },
+            }
             None => {
                 if name.is_empty() && qualifiers.is_empty() {
                     return None; // No addition
                 }
                 Statement::new_normal(Snak::new_string("P2093", &name), qualifiers, vec![])
-            },
+            }
         };
         Some(statement)
     }
@@ -235,11 +235,16 @@ impl GenericAuthorInfo {
             }
         }
 
-        item.descriptions_mut().push(LocaleString::new("en", "researcher"));
+        item.descriptions_mut()
+            .push(LocaleString::new("en", "researcher"));
 
         // Human
         if !item.has_target_entity("P31", "Q5") {
-            item.add_claim(Statement::new_normal(Snak::new_item("P31", "Q5"), vec![], vec![]));
+            item.add_claim(Statement::new_normal(
+                Snak::new_item("P31", "Q5"),
+                vec![],
+                vec![],
+            ));
         }
 
         // Researcher
@@ -303,7 +308,7 @@ impl GenericAuthorInfo {
             Err(e) => {
                 tracing::warn!(error = %e, "create_item failed for author");
                 None
-            },
+            }
         };
 
         // Update external IDs cache
@@ -354,13 +359,14 @@ impl GenericAuthorInfo {
                             "merge_from: conflicting property values, keeping higher-priority value",
                         );
                     }
-                },
+                }
                 None => {
                     self.prop2id.insert(k.to_string(), v.to_string());
-                },
+                }
             }
         }
-        self.alternative_names.extend(author2.alternative_names.iter().cloned());
+        self.alternative_names
+            .extend(author2.alternative_names.iter().cloned());
         self.alternative_names.sort();
         self.alternative_names.dedup();
         Ok(())
@@ -405,14 +411,21 @@ impl GenericAuthorInfo {
             static ref RE_ALL_C: Regex = Regex::new(r"\b(\w+)\b")
                 .expect("names_have_conflicting_initials: could not compile RE_ALL_C");
         }
-        let all1: Vec<String> =
-            RE_ALL_C.captures_iter(name1_mod).map(|c| c[1].to_string()).collect();
-        let all2: Vec<String> =
-            RE_ALL_C.captures_iter(name2_mod).map(|c| c[1].to_string()).collect();
+        let all1: Vec<String> = RE_ALL_C
+            .captures_iter(name1_mod)
+            .map(|c| c[1].to_string())
+            .collect();
+        let all2: Vec<String> = RE_ALL_C
+            .captures_iter(name2_mod)
+            .map(|c| c[1].to_string())
+            .collect();
         let parts1 = Self::sorted_name_parts(&RE_LONG_C, name1_mod);
         let parts2 = Self::sorted_name_parts(&RE_LONG_C, name2_mod);
-        let matched_words: Vec<String> =
-            parts1.iter().filter(|p| parts2.contains(p)).cloned().collect();
+        let matched_words: Vec<String> = parts1
+            .iter()
+            .filter(|p| parts2.contains(p))
+            .cloned()
+            .collect();
         let remaining1 = Self::remove_matched_words(&all1, &matched_words);
         let remaining2 = Self::remove_matched_words(&all2, &matched_words);
         if !remaining1.is_empty() && !remaining2.is_empty() {

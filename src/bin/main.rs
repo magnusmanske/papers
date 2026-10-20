@@ -34,7 +34,9 @@ async fn command_authors(ini_file: &str) {
 
 async fn author_from_id(id: &str, cache: Arc<WikidataStringCache>, smd: Arc<RwLock<SourceMD>>) {
     let mut command = SourceMDcommand::new_dummy(id);
-    let bot = SourceMDbot::new(smd.clone(), cache.clone(), 0).await.unwrap();
+    let bot = SourceMDbot::new(smd.clone(), cache.clone(), 0)
+        .await
+        .unwrap();
     bot.process_author_metadata(&mut command).await.unwrap();
 }
 
@@ -43,7 +45,10 @@ async fn command_ans(ini_file: &str) {
     let smd = Arc::new(RwLock::new(SourceMD::new(ini_file).await.unwrap()));
     let mw_api = smd.read().await.mw_api();
     let cache = Arc::new(WikidataStringCache::new(mw_api.clone()));
-    let ans = AuthorNameString::new(2, std::sync::Arc::new(papers::http_client::HttpJsonFetcher::default()));
+    let ans = AuthorNameString::new(
+        2,
+        std::sync::Arc::new(papers::http_client::HttpJsonFetcher::default()),
+    );
 
     let mut futures: Vec<_> = io::stdin()
         .lock()
@@ -61,7 +66,9 @@ async fn command_ans(ini_file: &str) {
 }
 
 async fn command_papers(ini_file: &str) {
-    let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).await.unwrap()));
+    let mw_api = Arc::new(RwLock::new(
+        SourceMD::create_mw_api(ini_file).await.unwrap(),
+    ));
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         let line = match line {
@@ -100,11 +107,17 @@ async fn paper_from_id(id: &str, mw_api: Arc<RwLock<Api>>) {
     match wdp.create_or_update_item_from_ids(mw_api, &ids).await {
         Ok(Some(er)) => {
             if er.edited() {
-                println!("Created or updated https://www.wikidata.org/wiki/{}", er.q())
+                println!(
+                    "Created or updated https://www.wikidata.org/wiki/{}",
+                    er.q()
+                )
             } else {
-                println!("Exists as https://www.wikidata.org/wiki/{}, no changes ", er.q())
+                println!(
+                    "Exists as https://www.wikidata.org/wiki/{}, no changes ",
+                    er.q()
+                )
             }
-        },
+        }
         Ok(None) => println!("No item ID for '{}'!", id),
         Err(e) => eprintln!("Error processing '{}': {:#}", id, e),
     }
@@ -114,11 +127,14 @@ async fn save_item_changes(wdp: &mut WikidataPapers, mw_api: Arc<RwLock<Api>>, q
     match wdp.create_or_update_item_from_q(mw_api, q).await {
         Ok(Some(er)) => {
             if er.edited() {
-                println!("Created or updated https://www.wikidata.org/wiki/{}", er.q())
+                println!(
+                    "Created or updated https://www.wikidata.org/wiki/{}",
+                    er.q()
+                )
             } else {
                 println!("https://www.wikidata.org/wiki/{}, no changes ", er.q())
             }
-        },
+        }
         Ok(None) => println!("No item ID!"),
         Err(e) => eprintln!("Error saving {}: {:#}", q, e),
     }
@@ -127,7 +143,10 @@ async fn save_item_changes(wdp: &mut WikidataPapers, mw_api: Arc<RwLock<Api>>, q
 fn usage(prog: &str) {
     println!("USAGE: {} [--config <file>] <subcommand>", prog);
     println!("Subcommands: papers, authors, bot, ans");
-    println!("  --config <file>  Configuration file (default: {})", INI_FILE);
+    println!(
+        "  --config <file>  Configuration file (default: {})",
+        INI_FILE
+    );
     println!("                   For the `bot` subcommand the file must also");
     println!("                   contain a [client] section with `user` and");
     println!("                   `password` for the SourceMD MySQL DB.");
@@ -163,7 +182,7 @@ async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>)
             tracing::error!(batch_id, error = %error, "failed to start bot for batch");
             config.read().await.set_batch_failed(batch_id).await;
             return BotTick::Idle;
-        },
+        }
     };
 
     tracing::info!(batch_id, "batch spawned");
@@ -174,7 +193,7 @@ async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>)
             Err(e) => {
                 tracing::error!(batch_id, error = %e, "bot run failed; ending batch tick");
                 break;
-            },
+            }
         }
     }
     BotTick::Worked
@@ -188,7 +207,9 @@ async fn command_bot(ini_file: &str) {
         std::process::exit(1);
     }
     let smd = Arc::new(RwLock::new(smd));
-    let mw_api = Arc::new(RwLock::new(SourceMD::create_mw_api(ini_file).await.unwrap()));
+    let mw_api = Arc::new(RwLock::new(
+        SourceMD::create_mw_api(ini_file).await.unwrap(),
+    ));
     let cache = Arc::new(WikidataStringCache::new(mw_api));
     // Cross-tick state for rate-limiting DB-outage error logs: log on the
     // 1st, 2nd, 4th, 8th, … consecutive failure, plus an info! on recovery.
@@ -199,15 +220,15 @@ async fn command_bot(ini_file: &str) {
             BotTick::Worked => {
                 db_log.note_success();
                 Duration::from_millis(1000)
-            },
+            }
             BotTick::Idle => {
                 db_log.note_success();
                 Duration::from_millis(5000)
-            },
+            }
             BotTick::DbError(e) => {
                 db_log.note_error(&e);
                 Duration::from_millis(5000)
-            },
+            }
         };
         tokio::time::sleep(delay).await;
     }
@@ -226,7 +247,9 @@ fn init_tracing() {
 #[tokio::main]
 async fn main() {
     init_tracing();
-    let prog = std::env::args().next().unwrap_or_else(|| "papers".to_string());
+    let prog = std::env::args()
+        .next()
+        .unwrap_or_else(|| "papers".to_string());
     let mut pargs = Arguments::from_env();
 
     let config: String = pargs

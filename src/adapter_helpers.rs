@@ -90,10 +90,12 @@ pub fn get_external_identifier_from_item(item: &Entity, property: &IdProp) -> Op
             claim.main_snak().property() == property.as_str()
                 && *claim.main_snak().snak_type() == SnakType::Value
         })
-        .find_map(|claim| match claim.main_snak().data_value().as_ref()?.value() {
-            Value::StringValue(s) => Some(s.to_string()),
-            _ => None,
-        })
+        .find_map(
+            |claim| match claim.main_snak().data_value().as_ref()?.value() {
+                Value::StringValue(s) => Some(s.to_string()),
+                _ => None,
+            },
+        )
 }
 
 /// Parses a date string like `"2023-01-15"` or `"2023-01-15T00:00:00Z"`
@@ -146,12 +148,18 @@ mod tests {
 
     #[test]
     fn strip_html_tags_removes_various_tags() {
-        assert_eq!(strip_html_tags("The <i>Drosophila</i> <b>gene</b>"), "The Drosophila gene");
+        assert_eq!(
+            strip_html_tags("The <i>Drosophila</i> <b>gene</b>"),
+            "The Drosophila gene"
+        );
     }
 
     #[test]
     fn strip_html_tags_handles_sub_sup() {
-        assert_eq!(strip_html_tags("H<sub>2</sub>O and CO<sub>2</sub>"), "H2O and CO2");
+        assert_eq!(
+            strip_html_tags("H<sub>2</sub>O and CO<sub>2</sub>"),
+            "H2O and CO2"
+        );
         assert_eq!(strip_html_tags("x<sup>2</sup> + y<sup>2</sup>"), "x2 + y2");
     }
 
@@ -162,7 +170,10 @@ mod tests {
 
     #[test]
     fn strip_html_tags_collapses_whitespace() {
-        assert_eq!(strip_html_tags("Before  <i> middle </i>  after"), "Before middle after");
+        assert_eq!(
+            strip_html_tags("Before  <i> middle </i>  after"),
+            "Before middle after"
+        );
     }
 
     // === sanitize_author_name ==============================================
@@ -295,7 +306,10 @@ mod tests {
 
     #[test]
     fn parse_date_with_time_suffix() {
-        assert_eq!(parse_date("2023-06-15T00:00:00Z"), Some((2023, Some(6), Some(15))));
+        assert_eq!(
+            parse_date("2023-06-15T00:00:00Z"),
+            Some((2023, Some(6), Some(15)))
+        );
     }
 
     #[test]

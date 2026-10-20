@@ -37,7 +37,10 @@ impl Wdqs {
         let client = |endpoint| {
             SparqlClient::with_client(endpoint, sparql_http_client().clone()).with_retries(RETRIES)
         };
-        Self { main: client(main), scholarly: client(scholarly) }
+        Self {
+            main: client(main),
+            scholarly: client(scholarly),
+        }
     }
 
     /// Everything but scholarly articles: people, their labels, languages.

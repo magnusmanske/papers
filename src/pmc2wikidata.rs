@@ -37,7 +37,11 @@ impl PMC2Wikidata {
     /// `WikidataPapers::with_default_adapters` does); tests pass an
     /// `Arc::new(MockJsonFetcher::new())`.
     pub fn new(fetcher: Arc<dyn JsonFetcher>) -> Self {
-        Self { fetcher, author_cache: HashMap::new(), work_cache: HashMap::new() }
+        Self {
+            fetcher,
+            author_cache: HashMap::new(),
+            work_cache: HashMap::new(),
+        }
     }
 
     async fn publication_id_from_pubmed(&mut self, pubmed_id: &str) -> Option<String> {
@@ -56,7 +60,7 @@ impl PMC2Wikidata {
                             publication_id = pmc_id.to_string()
                         }
                         self.work_cache.insert(publication_id.clone(), json.clone());
-                    },
+                    }
                     None => return None,
                 }
             }
@@ -80,7 +84,7 @@ impl PMC2Wikidata {
                 match results.first() {
                     Some(json) => {
                         self.work_cache.insert(pmc_id.to_string(), json.clone());
-                    },
+                    }
                     None => return None,
                 }
             }
@@ -102,7 +106,6 @@ impl PMC2Wikidata {
     fn get_pmid_from_work(&self, json: &serde_json::Value) -> Option<String> {
         json["pmid"].as_str().map(|pmid| pmid.to_string())
     }
-
 }
 
 #[async_trait(?Send)]
@@ -124,7 +127,8 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
     }
 
     fn has_cached_publication(&self, publication_id: &str) -> bool {
-        self.get_cached_publication_from_id(publication_id).is_some()
+        self.get_cached_publication_from_id(publication_id)
+            .is_some()
     }
 
     /// PMC overrides the default `extract_self_id` because its cached
@@ -182,17 +186,16 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
     }
 
     async fn publication_id_from_item(&mut self, item: &Entity) -> Option<String> {
-        let pmcid =
-            match get_external_identifier_from_item(item, &self.publication_property()?) {
-                Some(s) => "PMC".to_owned() + &s,
-                None => {
-                    // Attempt fallback to PubMed ID
-                    return match get_external_identifier_from_item(item, &IdProp::PMID) {
-                        Some(pmid) => self.publication_id_from_pubmed(&pmid).await,
-                        None => None,
-                    };
-                },
-            };
+        let pmcid = match get_external_identifier_from_item(item, &self.publication_property()?) {
+            Some(s) => "PMC".to_owned() + &s,
+            None => {
+                // Attempt fallback to PubMed ID
+                return match get_external_identifier_from_item(item, &IdProp::PMID) {
+                    Some(pmid) => self.publication_id_from_pubmed(&pmid).await,
+                    None => None,
+                };
+            }
+        };
         self.publication_id_from_pmcid(&pmcid).await
     }
 
@@ -252,14 +255,14 @@ impl ScientificPublicationAdapter for PMC2Wikidata {
                         {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
-                    },
+                    }
                     IdProp::PMCID => {
                         if let Some(publication_id) = self.publication_id_from_pmcid(id.id()).await
                         {
                             self.add_identifiers_from_cached_publication(&publication_id, &mut ret);
                         }
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
         }
@@ -347,7 +350,10 @@ mod tests {
     #[test]
     fn publication_id_for_statement_strips_pmc_prefix() {
         let pmc = PMC2Wikidata::default();
-        assert_eq!(pmc.publication_id_for_statement("PMC12345"), Some("12345".to_string()));
+        assert_eq!(
+            pmc.publication_id_for_statement("PMC12345"),
+            Some("12345".to_string())
+        );
     }
 
     #[test]
@@ -433,7 +439,10 @@ mod tests {
 
     #[test]
     fn get_work_issn_extracts_from_journal_info() {
-        let pmc = make_pmc("PMC1", json!({"journalInfo": {"journal": {"issn": "1234-5678"}}}));
+        let pmc = make_pmc(
+            "PMC1",
+            json!({"journalInfo": {"journal": {"issn": "1234-5678"}}}),
+        );
         assert_eq!(pmc.get_work_issn("PMC1"), Some("1234-5678".to_string()));
     }
 
@@ -457,7 +466,10 @@ mod tests {
             "PMC1",
             json!({"journalInfo": {"yearOfPublication": 2021, "monthOfPublication": 6}}),
         );
-        assert_eq!(pmc.get_publication_date("PMC1"), Some((2021, Some(6), None)));
+        assert_eq!(
+            pmc.get_publication_date("PMC1"),
+            Some((2021, Some(6), None))
+        );
     }
 
     #[test]
@@ -470,7 +482,10 @@ mod tests {
                 "dayOfPublication": 15
             }}),
         );
-        assert_eq!(pmc.get_publication_date("PMC1"), Some((2021, Some(3), Some(15))));
+        assert_eq!(
+            pmc.get_publication_date("PMC1"),
+            Some((2021, Some(3), Some(15)))
+        );
     }
 
     #[test]
@@ -611,7 +626,11 @@ mod tests {
         // A second call doesn't re-hit the network — the work is cached.
         let id2 = pmc.publication_id_from_pmcid("PMC987").await;
         assert_eq!(id2, Some("PMC987".to_string()));
-        assert_eq!(fetcher.captured_urls().len(), 1, "second call should hit the cache, not the fetcher");
+        assert_eq!(
+            fetcher.captured_urls().len(),
+            1,
+            "second call should hit the cache, not the fetcher"
+        );
     }
 
     #[tokio::test]

@@ -35,13 +35,17 @@ impl FromStr for IdProp {
 
 impl std::fmt::Display for IdProp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            IdProp::PMID => PROP_PMID,
-            IdProp::PMCID => PROP_PMCID,
-            IdProp::DOI => PROP_DOI,
-            IdProp::ARXIV => PROP_ARXIV,
-            IdProp::SemanticScholar => PROP_SEMANTIC_SCHOLAR,
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                IdProp::PMID => PROP_PMID,
+                IdProp::PMCID => PROP_PMCID,
+                IdProp::DOI => PROP_DOI,
+                IdProp::ARXIV => PROP_ARXIV,
+                IdProp::SemanticScholar => PROP_SEMANTIC_SCHOLAR,
+            }
+        )
     }
 }
 
@@ -65,10 +69,14 @@ pub enum GenericWorkType {
 
 impl std::fmt::Display for GenericWorkType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            GenericWorkType::Property(prop) => prop.to_string(),
-            GenericWorkType::Item => "Item".to_string(),
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                GenericWorkType::Property(prop) => prop.to_string(),
+                GenericWorkType::Item => "Item".to_string(),
+            }
+        )
     }
 }
 
@@ -83,7 +91,7 @@ impl GenericWorkIdentifier {
         let id = match &prop {
             IdProp::DOI => id.to_uppercase(), // DOIs are always uppercase
             IdProp::SemanticScholar => id.to_lowercase(), /* Semantic Scholar IDs are always
-                                                            * lowercase */
+            * lowercase */
             _other => id.to_string(),
         };
         Self {
@@ -165,7 +173,10 @@ mod tests {
         assert_eq!(IdProp::from_str(PROP_PMCID).unwrap(), IdProp::PMCID);
         assert_eq!(IdProp::from_str(PROP_DOI).unwrap(), IdProp::DOI);
         assert_eq!(IdProp::from_str(PROP_ARXIV).unwrap(), IdProp::ARXIV);
-        assert_eq!(IdProp::from_str(PROP_SEMANTIC_SCHOLAR).unwrap(), IdProp::SemanticScholar);
+        assert_eq!(
+            IdProp::from_str(PROP_SEMANTIC_SCHOLAR).unwrap(),
+            IdProp::SemanticScholar
+        );
         assert!(IdProp::from_str("P123").is_err());
     }
 
@@ -189,14 +200,14 @@ mod tests {
     fn is_qid_rejects_invalid() {
         assert!(!is_qid(""));
         assert!(!is_qid("Q"));
-        assert!(!is_qid("q12"));        // lowercase
-        assert!(!is_qid("Q12 "));       // trailing space
-        assert!(!is_qid(" Q12"));       // leading space
-        assert!(!is_qid("Q12abc"));     // mixed
-        assert!(!is_qid("P12"));        // property, not item
+        assert!(!is_qid("q12")); // lowercase
+        assert!(!is_qid("Q12 ")); // trailing space
+        assert!(!is_qid(" Q12")); // leading space
+        assert!(!is_qid("Q12abc")); // mixed
+        assert!(!is_qid("P12")); // property, not item
         assert!(!is_qid("Q0"));
-        assert!(!is_qid("Q012"));       // leading zero
-        assert!(!is_qid("Q12\nQ34"));   // multi-line (anchors are line-anchored by default? regex has ^$ so only matches a single line)
+        assert!(!is_qid("Q012")); // leading zero
+        assert!(!is_qid("Q12\nQ34")); // multi-line (anchors are line-anchored by default? regex has ^$ so only matches a single line)
     }
 
     #[test]
@@ -209,7 +220,7 @@ mod tests {
     fn is_pmcid_rejects_invalid() {
         assert!(!is_pmcid(""));
         assert!(!is_pmcid("PMC"));
-        assert!(!is_pmcid("pmc1"));    // lowercase
+        assert!(!is_pmcid("pmc1")); // lowercase
         assert!(!is_pmcid("1234567")); // no prefix
         assert!(!is_pmcid("PMC12 34"));
     }
@@ -224,10 +235,10 @@ mod tests {
     #[test]
     fn is_orcid_rejects_invalid() {
         assert!(!is_orcid(""));
-        assert!(!is_orcid("0000000123456789"));      // no dashes
-        assert!(!is_orcid("0000-0001-2345"));        // too short
+        assert!(!is_orcid("0000000123456789")); // no dashes
+        assert!(!is_orcid("0000-0001-2345")); // too short
         assert!(!is_orcid("0000-0001-2345-6789-0")); // too long
-        assert!(!is_orcid("000A-0001-2345-6789"));   // non-digit
+        assert!(!is_orcid("000A-0001-2345-6789")); // non-digit
         assert!(!is_orcid("https://orcid.org/0000-0001-2345-6789")); // URL form
     }
 
@@ -300,7 +311,10 @@ mod tests {
         let ids = GenericWorkIdentifier::parse_ids_from_str("PMC12345");
         assert_eq!(ids.len(), 1);
         assert_eq!(ids[0].id(), "PMC12345");
-        assert_eq!(ids[0].work_type(), &GenericWorkType::Property(IdProp::PMCID));
+        assert_eq!(
+            ids[0].work_type(),
+            &GenericWorkType::Property(IdProp::PMCID)
+        );
     }
 
     #[test]
@@ -326,6 +340,8 @@ mod tests {
     fn parse_ids_from_str_doi_with_slash_only() {
         // A slash-containing string should be recognised as a DOI
         let ids = GenericWorkIdentifier::parse_ids_from_str("a/b");
-        assert!(ids.iter().any(|id| id.work_type() == &GenericWorkType::Property(IdProp::DOI)));
+        assert!(ids
+            .iter()
+            .any(|id| id.work_type() == &GenericWorkType::Property(IdProp::DOI)));
     }
 }

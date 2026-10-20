@@ -62,9 +62,16 @@ impl Orcid2Wikidata {
     pub async fn get_or_load_author_data(&self, orcid_author_id: &str) -> Option<Author> {
         if !self.author_data.lock().await.contains_key(orcid_author_id) {
             let data = self.client.author(orcid_author_id).await.ok();
-            self.author_data.lock().await.insert(orcid_author_id.to_string(), data);
+            self.author_data
+                .lock()
+                .await
+                .insert(orcid_author_id.to_string(), data);
         }
-        self.author_data.lock().await.get(orcid_author_id).and_then(|r| r.clone())
+        self.author_data
+            .lock()
+            .await
+            .get(orcid_author_id)
+            .and_then(|r| r.clone())
     }
 
     async fn get_author_data(
@@ -83,49 +90,54 @@ impl Orcid2Wikidata {
                     match (given_names, last_name) {
                         (Some(f), Some(l)) => gai.set_name(Some(format!("{} {}", f, l))),
                         (None, Some(l)) => gai.set_name(Some(l.to_string())),
-                        _ => {},
+                        _ => {}
                     }
-                },
+                }
             }
             if let Some(id) = author.orcid_id() {
-                gai.prop2id_mut().insert(author_property.to_string(), id.to_string());
+                gai.prop2id_mut()
+                    .insert(author_property.to_string(), id.to_string());
             }
             let ext_ids = author.external_ids();
             for id in ext_ids {
                 match id.0.as_str() {
                     "ResearcherID" => {
                         gai.prop2id_mut().insert("P1053".to_string(), id.1);
-                    },
+                    }
                     "Researcher ID" => {
                         gai.prop2id_mut().insert("P1053".to_string(), id.1);
-                    },
+                    }
                     "Scopus Author ID" => {
                         gai.prop2id_mut().insert("P1153".to_string(), id.1);
-                    },
+                    }
                     "Scopus ID" => {
                         gai.prop2id_mut().insert("P1153".to_string(), id.1);
-                    },
+                    }
                     "Loop profile" => {
                         gai.prop2id_mut().insert("P2798".to_string(), id.1);
-                    },
+                    }
                     "SciProfiles" => {
                         gai.prop2id_mut().insert("P8159".to_string(), id.1);
-                    },
+                    }
                     "GitHub" => {
                         gai.prop2id_mut().insert("P2037".to_string(), id.1);
-                    },
+                    }
                     "Ciência ID" => {
                         gai.prop2id_mut().insert("P7893".to_string(), id.1);
-                    },
+                    }
                     // "Researcher Name Resolver ID" => {
                     //     gai.prop2id.insert("P9776".to_string(), id.1);
                     // }
                     "ISNI" => {
-                        gai.prop2id_mut().insert("P213".to_string(), id.1.replace("-", ""));
-                    },
+                        gai.prop2id_mut()
+                            .insert("P213".to_string(), id.1.replace("-", ""));
+                    }
                     other => {
-                        self.warn(&format!("orcid2wikidata: Unknown ID '{}':'{}'", other, id.1));
-                    },
+                        self.warn(&format!(
+                            "orcid2wikidata: Unknown ID '{}':'{}'",
+                            other, id.1
+                        ));
+                    }
                 }
             }
             return Some(gai);
@@ -185,7 +197,11 @@ impl ScientificPublicationAdapter for Orcid2Wikidata {
             let future = self.get_author_data(orcid_author_id, &author_property);
             futures.push(future);
         }
-        futures::future::join_all(futures).await.into_iter().flatten().collect()
+        futures::future::join_all(futures)
+            .await
+            .into_iter()
+            .flatten()
+            .collect()
     }
 }
 
@@ -241,8 +257,12 @@ mod tests {
     #[test]
     fn author_cache_mut_allows_insertion() {
         let mut o = Orcid2Wikidata::new();
-        o.author_cache_mut().insert("0000-0002-1825-0097".to_string(), "Q42".to_string());
-        assert_eq!(o.author_cache().get("0000-0002-1825-0097"), Some(&"Q42".to_string()));
+        o.author_cache_mut()
+            .insert("0000-0002-1825-0097".to_string(), "Q42".to_string());
+        assert_eq!(
+            o.author_cache().get("0000-0002-1825-0097"),
+            Some(&"Q42".to_string())
+        );
     }
 
     #[test]
@@ -258,7 +278,9 @@ mod tests {
         work.author_ids.push("0000-0002-1825-0097".to_string());
         o.work_cache.insert("10.0/test".to_string(), work);
 
-        let got = o.get_cached_publication_from_id("10.0/test").expect("should be cached");
+        let got = o
+            .get_cached_publication_from_id("10.0/test")
+            .expect("should be cached");
         assert_eq!(got.author_ids, vec!["0000-0002-1825-0097".to_string()]);
     }
 
@@ -275,7 +297,8 @@ mod tests {
         let mut item = wikibase::Entity::new_empty_item();
         let before = item.claims().len();
         // Calling on an unknown publication ID should not mutate the item
-        o.update_statements_for_publication_id("nonexistent", &mut item).await;
+        o.update_statements_for_publication_id("nonexistent", &mut item)
+            .await;
         assert_eq!(item.claims().len(), before);
     }
 
@@ -319,8 +342,14 @@ mod tests {
 
         let sdk = Client::new().base_url(format!("{}/", server.uri()));
         let adapter = Orcid2Wikidata::new_with_client(sdk);
-        assert!(adapter.get_or_load_author_data("0000-0002-1825-0097").await.is_none());
-        assert!(adapter.get_or_load_author_data("0000-0002-1825-0097").await.is_none());
+        assert!(adapter
+            .get_or_load_author_data("0000-0002-1825-0097")
+            .await
+            .is_none());
+        assert!(adapter
+            .get_or_load_author_data("0000-0002-1825-0097")
+            .await
+            .is_none());
         // .expect(1) asserts the mock was hit exactly once (second call
         // should hit the cache, not the mock).
     }
@@ -341,10 +370,12 @@ mod tests {
     fn author_with_external_ids(orcid_id: &str, ext_ids: &[(&str, &str)]) -> Author {
         let ids_json: Vec<serde_json::Value> = ext_ids
             .iter()
-            .map(|(t, v)| serde_json::json!({
-                "external-id-type": t,
-                "external-id-value": v,
-            }))
+            .map(|(t, v)| {
+                serde_json::json!({
+                    "external-id-type": t,
+                    "external-id-value": v,
+                })
+            })
             .collect();
         Author::new_from_json(serde_json::json!({
             "orcid-identifier": { "path": orcid_id },
@@ -386,17 +417,41 @@ mod tests {
         );
         let adapter = adapter_with_cached_author(orcid_id, author).await;
 
-        let gai = adapter.get_author_data(orcid_id, "P496").await.expect("author data");
+        let gai = adapter
+            .get_author_data(orcid_id, "P496")
+            .await
+            .expect("author data");
 
         // Self-id: orcid_id under author_property.
-        assert_eq!(gai.prop2id().get("P496").map(String::as_str), Some(orcid_id));
+        assert_eq!(
+            gai.prop2id().get("P496").map(String::as_str),
+            Some(orcid_id)
+        );
         // External IDs:
-        assert_eq!(gai.prop2id().get("P1053").map(String::as_str), Some("ABC-1234"));
-        assert_eq!(gai.prop2id().get("P1153").map(String::as_str), Some("55555"));
-        assert_eq!(gai.prop2id().get("P2798").map(String::as_str), Some("12345"));
-        assert_eq!(gai.prop2id().get("P8159").map(String::as_str), Some("sp-67890"));
-        assert_eq!(gai.prop2id().get("P2037").map(String::as_str), Some("octocat"));
-        assert_eq!(gai.prop2id().get("P7893").map(String::as_str), Some("C8F1-A2B3-D4E5"));
+        assert_eq!(
+            gai.prop2id().get("P1053").map(String::as_str),
+            Some("ABC-1234")
+        );
+        assert_eq!(
+            gai.prop2id().get("P1153").map(String::as_str),
+            Some("55555")
+        );
+        assert_eq!(
+            gai.prop2id().get("P2798").map(String::as_str),
+            Some("12345")
+        );
+        assert_eq!(
+            gai.prop2id().get("P8159").map(String::as_str),
+            Some("sp-67890")
+        );
+        assert_eq!(
+            gai.prop2id().get("P2037").map(String::as_str),
+            Some("octocat")
+        );
+        assert_eq!(
+            gai.prop2id().get("P7893").map(String::as_str),
+            Some("C8F1-A2B3-D4E5")
+        );
     }
 
     #[tokio::test]
@@ -407,7 +462,10 @@ mod tests {
         let author = author_with_external_ids(orcid_id, &[("Researcher ID", "XYZ-9999")]);
         let adapter = adapter_with_cached_author(orcid_id, author).await;
         let gai = adapter.get_author_data(orcid_id, "P496").await.unwrap();
-        assert_eq!(gai.prop2id().get("P1053").map(String::as_str), Some("XYZ-9999"));
+        assert_eq!(
+            gai.prop2id().get("P1053").map(String::as_str),
+            Some("XYZ-9999")
+        );
     }
 
     #[tokio::test]
@@ -426,8 +484,7 @@ mod tests {
         // stripped. P213 expects the bare digit string "0000000123456789",
         // not the upstream "0000-0001-2345-6789".
         let orcid_id = "0000-0002-1825-0097";
-        let author =
-            author_with_external_ids(orcid_id, &[("ISNI", "0000-0001-2345-6789")]);
+        let author = author_with_external_ids(orcid_id, &[("ISNI", "0000-0001-2345-6789")]);
         let adapter = adapter_with_cached_author(orcid_id, author).await;
         let gai = adapter.get_author_data(orcid_id, "P496").await.unwrap();
         assert_eq!(
@@ -443,10 +500,8 @@ mod tests {
         // pollute prop2id — otherwise a typo upstream could create
         // bogus Wikidata statements.
         let orcid_id = "0000-0002-1825-0097";
-        let author = author_with_external_ids(
-            orcid_id,
-            &[("SomeNewIdType", "value-we-do-not-understand")],
-        );
+        let author =
+            author_with_external_ids(orcid_id, &[("SomeNewIdType", "value-we-do-not-understand")]);
         let adapter = adapter_with_cached_author(orcid_id, author).await;
         let gai = adapter.get_author_data(orcid_id, "P496").await.unwrap();
         // Only the orcid_id (P496) should be in prop2id; nothing else.

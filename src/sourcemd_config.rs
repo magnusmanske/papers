@@ -74,8 +74,13 @@ impl SourceMD {
     /// `init()` has not been run. All DB-touching public methods flow through
     /// here so error context is uniform.
     async fn conn(&self) -> Result<my::Conn> {
-        let db = self.db.as_ref().ok_or_else(|| anyhow!("no MySQL pool configured"))?;
-        db.conn().await.context("checking out MySQL connection from pool")
+        let db = self
+            .db
+            .as_ref()
+            .ok_or_else(|| anyhow!("no MySQL pool configured"))?;
+        db.conn()
+            .await
+            .context("checking out MySQL connection from pool")
     }
 
     pub async fn restart_batch(&self, batch_id: i64) -> Result<()> {
@@ -107,7 +112,10 @@ impl SourceMD {
     pub async fn set_batch_running(&self, batch_id: i64) {
         info!(batch_id, "starting batch");
         self.running_batch_ids.insert(batch_id);
-        info!(running = self.number_of_bots_running().await, "bots currently running");
+        info!(
+            running = self.number_of_bots_running().await,
+            "bots currently running"
+        );
     }
 
     pub async fn number_of_bots_running(&self) -> usize {
@@ -155,7 +163,10 @@ impl SourceMD {
         info!(batch_id, "deactivating batch");
         self.set_batch_finished(batch_id).await?;
         self.running_batch_ids.remove(&batch_id);
-        info!(running = self.number_of_bots_running().await, "bots currently running");
+        info!(
+            running = self.number_of_bots_running().await,
+            "bots currently running"
+        );
         Ok(())
     }
 
@@ -219,9 +230,12 @@ impl SourceMD {
         new_message: Option<String>,
     ) -> Result<()> {
         let mut conn = self.conn().await?;
-        let mut txn = conn.start_transaction(TxOpts::default()).await.with_context(|| {
-            format!("set_command_status: opening txn for command {}", command.id)
-        })?;
+        let mut txn = conn
+            .start_transaction(TxOpts::default())
+            .await
+            .with_context(|| {
+                format!("set_command_status: opening txn for command {}", command.id)
+            })?;
         txn.exec_drop(
             r#"UPDATE `command` SET `status`=?,`note`=?,`q`=? WHERE `id`=?"#,
             (
@@ -233,12 +247,15 @@ impl SourceMD {
         )
         .await
         .with_context(|| {
-            format!("set_command_status: command {} -> {}", command.id, new_status)
+            format!(
+                "set_command_status: command {} -> {}",
+                command.id, new_status
+            )
         })?;
         self.update_batch_stats(command.batch_id, &mut txn).await?;
-        txn.commit().await.with_context(|| {
-            format!("set_command_status: commit for command {}", command.id)
-        })?;
+        txn.commit()
+            .await
+            .with_context(|| format!("set_command_status: commit for command {}", command.id))?;
         Ok(())
     }
 
@@ -305,30 +322,41 @@ impl SourceMD {
             .build()
             .with_context(|| format!("reading the database credentials from '{ini_file}'"))?;
         info!(server = %pool.server(), database, "MySQL pool created");
-        self.db = Some(Db { pool, database: database.to_string() });
-        let mut conn = self.conn().await.context("could not connect to the SourceMD database")?;
-        conn.exec_drop(r#"UPDATE `batch` SET `status`='TODO' WHERE status='RUNNING'"#, ())
+        self.db = Some(Db {
+            pool,
+            database: database.to_string(),
+        });
+        let mut conn = self
+            .conn()
             .await
-            .context("resetting RUNNING batches to TODO on startup")?;
+            .context("could not connect to the SourceMD database")?;
+        conn.exec_drop(
+            r#"UPDATE `batch` SET `status`='TODO' WHERE status='RUNNING'"#,
+            (),
+        )
+        .await
+        .context("resetting RUNNING batches to TODO on startup")?;
         Ok(())
     }
 
     pub async fn create_mw_api(ini_file: &str) -> Result<Api> {
         let mut mw_api = crate::wikidata_interaction::wikidata().api().await?;
         // File::with_name(..) is shorthand for File::from(Path::new(..))
-        let settings = Config::builder().add_source(File::with_name(ini_file)).build()?;
+        let settings = Config::builder()
+            .add_source(File::with_name(ini_file))
+            .build()?;
         match settings.get_string("user.token") {
             Ok(token) => {
                 // Use OAuth2 token
                 mw_api.set_oauth2(&token);
-            },
+            }
             Err(_) => {
                 // Use username/password login
                 let lgname = settings.get_string("user.user")?;
                 let lgpass = settings.get_string("user.pass")?;
                 info!(user = %lgname, "Wikidata login (username/password)");
                 mw_api.login(lgname, lgpass).await?;
-            },
+            }
         }
         Ok(mw_api)
     }
@@ -357,7 +385,11 @@ mod tests {
         let ts = smd.timestamp();
         // Format is "YYYY-MM-DD HH:MM:SS"
         let re = Regex::new(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$").unwrap();
-        assert!(re.is_match(&ts), "timestamp {} does not match expected format", ts);
+        assert!(
+            re.is_match(&ts),
+            "timestamp {} does not match expected format",
+            ts
+        );
     }
 
     #[tokio::test]
@@ -510,9 +542,9 @@ mod live_db_tests {
     use std::sync::Arc;
 
     use dashmap::DashSet;
-    use wikimisc::mysql_async::prelude::Queryable;
     use tokio::sync::RwLock;
     use wikibase::mediawiki::api::Api;
+    use wikimisc::mysql_async::prelude::Queryable;
     use wiremock::{
         matchers::{method, query_param},
         Mock, MockServer, ResponseTemplate,
@@ -540,22 +572,37 @@ mod live_db_tests {
             .ok()
             .and_then(|s| s.parse::<u16>().ok())
             .unwrap_or(3307);
-        Some(DbCreds { port, user, pass, schema })
+        Some(DbCreds {
+            port,
+            user,
+            pass,
+            schema,
+        })
     }
 
     /// A pool for the test database, through the local tunnel
     fn make_db(creds: &DbCreds) -> Db {
         let ini = tempfile_with_credentials();
-        let pool = ToolsDbPool::builder().my_cnf_path(ini.path()).build().expect("test DB credentials");
-        Db { pool, database: creds.schema.clone() }
+        let pool = ToolsDbPool::builder()
+            .my_cnf_path(ini.path())
+            .build()
+            .expect("test DB credentials");
+        Db {
+            pool,
+            database: creds.schema.clone(),
+        }
     }
 
     /// DROP-then-CREATE the two tables the production code touches. Each
     /// test calls this so it starts from a known empty state.
     async fn reset_tables(pool: &Db) {
         let mut conn = pool.conn().await.expect("connect to test DB");
-        conn.query_drop("DROP TABLE IF EXISTS `command`").await.unwrap();
-        conn.query_drop("DROP TABLE IF EXISTS `batch`").await.unwrap();
+        conn.query_drop("DROP TABLE IF EXISTS `command`")
+            .await
+            .unwrap();
+        conn.query_drop("DROP TABLE IF EXISTS `batch`")
+            .await
+            .unwrap();
         conn.query_drop(
             r#"CREATE TABLE `batch` (
                 `id` BIGINT NOT NULL PRIMARY KEY AUTO_INCREMENT,
@@ -593,7 +640,10 @@ mod live_db_tests {
         )
         .await
         .unwrap();
-        conn.exec_first::<i64, _, _>("SELECT LAST_INSERT_ID()", ()).await.unwrap().unwrap()
+        conn.exec_first::<i64, _, _>("SELECT LAST_INSERT_ID()", ())
+            .await
+            .unwrap()
+            .unwrap()
     }
 
     async fn insert_command(
@@ -612,18 +662,18 @@ mod live_db_tests {
         )
         .await
         .unwrap();
-        conn.exec_first::<i64, _, _>("SELECT LAST_INSERT_ID()", ()).await.unwrap().unwrap()
+        conn.exec_first::<i64, _, _>("SELECT LAST_INSERT_ID()", ())
+            .await
+            .unwrap()
+            .unwrap()
     }
 
     async fn fetch_batch_status(pool: &Db, batch_id: i64) -> String {
         let mut conn = pool.conn().await.unwrap();
-        conn.exec_first::<String, _, _>(
-            "SELECT `status` FROM `batch` WHERE id=?",
-            (batch_id,),
-        )
-        .await
-        .unwrap()
-        .unwrap()
+        conn.exec_first::<String, _, _>("SELECT `status` FROM `batch` WHERE id=?", (batch_id,))
+            .await
+            .unwrap()
+            .unwrap()
     }
 
     async fn fetch_batch_overview(pool: &Db, batch_id: i64) -> Option<String> {
@@ -639,13 +689,10 @@ mod live_db_tests {
 
     async fn fetch_command_status(pool: &Db, command_id: i64) -> String {
         let mut conn = pool.conn().await.unwrap();
-        conn.exec_first::<String, _, _>(
-            "SELECT `status` FROM `command` WHERE id=?",
-            (command_id,),
-        )
-        .await
-        .unwrap()
-        .unwrap()
+        conn.exec_first::<String, _, _>("SELECT `status` FROM `command` WHERE id=?", (command_id,))
+            .await
+            .unwrap()
+            .unwrap()
     }
 
     async fn start_mock_mw_api() -> (MockServer, Arc<RwLock<Api>>) {
@@ -686,9 +733,7 @@ mod live_db_tests {
         Fut: std::future::Future<Output = ()>,
     {
         let Some(creds) = db_creds_from_env() else {
-            eprintln!(
-                "[skip] {test_name}: PAPERS_TEST_DB_USER / _PASS / _SCHEMA not set"
-            );
+            eprintln!("[skip] {test_name}: PAPERS_TEST_DB_USER / _PASS / _SCHEMA not set");
             return;
         };
         let pool = make_db(&creds);
@@ -702,32 +747,38 @@ mod live_db_tests {
     #[ignore]
     #[tokio::test]
     async fn live_init_resets_running_batches_to_todo() {
-        with_clean_db("live_init_resets_running_batches_to_todo", |mut smd, pool, _mock| async move {
-            // Arrange: drop the pre-wired pool so init() has to find one,
-            // and seed two RUNNING batches that init() should flip to TODO.
-            insert_batch(&pool, "RUNNING").await;
-            insert_batch(&pool, "RUNNING").await;
-            smd.db = None;
+        with_clean_db(
+            "live_init_resets_running_batches_to_todo",
+            |mut smd, pool, _mock| async move {
+                // Arrange: drop the pre-wired pool so init() has to find one,
+                // and seed two RUNNING batches that init() should flip to TODO.
+                insert_batch(&pool, "RUNNING").await;
+                insert_batch(&pool, "RUNNING").await;
+                smd.db = None;
 
-            // Use a throwaway ini file with both [user] and [client] sections.
-            let tmp = tempfile_with_credentials();
+                // Use a throwaway ini file with both [user] and [client] sections.
+                let tmp = tempfile_with_credentials();
 
-            // Act
-            let creds = db_creds_from_env().unwrap();
-            smd.init_database(tmp.path().to_str().unwrap(), &creds.schema)
-                .await
-                .expect("init should connect");
+                // Act
+                let creds = db_creds_from_env().unwrap();
+                smd.init_database(tmp.path().to_str().unwrap(), &creds.schema)
+                    .await
+                    .expect("init should connect");
 
-            // Assert: both batches now TODO; pool is populated.
-            assert!(smd.db.is_some(), "init must leave a pool behind");
-            let mut conn = pool.conn().await.unwrap();
-            let running_count: i64 = conn
-                .query_first("SELECT COUNT(*) FROM `batch` WHERE `status`='RUNNING'")
-                .await
-                .unwrap()
-                .unwrap();
-            assert_eq!(running_count, 0, "init should have flipped all RUNNING -> TODO");
-        })
+                // Assert: both batches now TODO; pool is populated.
+                assert!(smd.db.is_some(), "init must leave a pool behind");
+                let mut conn = pool.conn().await.unwrap();
+                let running_count: i64 = conn
+                    .query_first("SELECT COUNT(*) FROM `batch` WHERE `status`='RUNNING'")
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    running_count, 0,
+                    "init should have flipped all RUNNING -> TODO"
+                );
+            },
+        )
         .await;
     }
 
@@ -761,10 +812,14 @@ mod live_db_tests {
             "live_restart_batch_sets_status_and_resets_commands",
             |smd, pool, _mock| async move {
                 let batch_id = insert_batch(&pool, "TODO").await;
-                let cmd_run = insert_command(&pool, batch_id, 1, "RUNNING", "CREATE_PAPER_BY_ID", "x").await;
-                let cmd_done = insert_command(&pool, batch_id, 2, "DONE", "CREATE_PAPER_BY_ID", "y").await;
+                let cmd_run =
+                    insert_command(&pool, batch_id, 1, "RUNNING", "CREATE_PAPER_BY_ID", "x").await;
+                let cmd_done =
+                    insert_command(&pool, batch_id, 2, "DONE", "CREATE_PAPER_BY_ID", "y").await;
 
-                smd.restart_batch(batch_id).await.expect("restart_batch should succeed");
+                smd.restart_batch(batch_id)
+                    .await
+                    .expect("restart_batch should succeed");
 
                 assert_eq!(fetch_batch_status(&pool, batch_id).await, "RUNNING");
                 assert_eq!(
@@ -844,9 +899,12 @@ mod live_db_tests {
             |smd, pool, _mock| async move {
                 let batch_id = insert_batch(&pool, "TODO").await;
                 // Insert in deliberately non-sorted order to verify ORDER BY.
-                let _high = insert_command(&pool, batch_id, 9, "TODO", "CREATE_PAPER_BY_ID", "z").await;
-                let low = insert_command(&pool, batch_id, 1, "TODO", "CREATE_PAPER_BY_ID", "a").await;
-                let _done = insert_command(&pool, batch_id, 0, "DONE", "CREATE_PAPER_BY_ID", "b").await;
+                let _high =
+                    insert_command(&pool, batch_id, 9, "TODO", "CREATE_PAPER_BY_ID", "z").await;
+                let low =
+                    insert_command(&pool, batch_id, 1, "TODO", "CREATE_PAPER_BY_ID", "a").await;
+                let _done =
+                    insert_command(&pool, batch_id, 0, "DONE", "CREATE_PAPER_BY_ID", "b").await;
 
                 let cmd = smd
                     .get_next_command(batch_id)
@@ -887,15 +945,8 @@ mod live_db_tests {
                 let batch_id = insert_batch(&pool, "RUNNING").await;
                 let cmd_id =
                     insert_command(&pool, batch_id, 1, "TODO", "CREATE_PAPER_BY_ID", "x").await;
-                let _other = insert_command(
-                    &pool,
-                    batch_id,
-                    2,
-                    "TODO",
-                    "CREATE_PAPER_BY_ID",
-                    "y",
-                )
-                .await;
+                let _other =
+                    insert_command(&pool, batch_id, 2, "TODO", "CREATE_PAPER_BY_ID", "y").await;
 
                 let mut cmd = SourceMDcommand {
                     id: cmd_id,
@@ -924,8 +975,9 @@ mod live_db_tests {
                 assert_eq!(q, "Q42");
 
                 // batch.overview was aggregated. Should contain "DONE":1, "TODO":1, "TOTAL":2.
-                let overview =
-                    fetch_batch_overview(&pool, batch_id).await.expect("overview not null");
+                let overview = fetch_batch_overview(&pool, batch_id)
+                    .await
+                    .expect("overview not null");
                 let parsed: serde_json::Value = serde_json::from_str(&overview).unwrap();
                 assert_eq!(parsed["DONE"], 1);
                 assert_eq!(parsed["TODO"], 1);
@@ -940,19 +992,24 @@ mod live_db_tests {
     #[ignore]
     #[tokio::test]
     async fn live_set_batch_finished_marks_done() {
-        with_clean_db("live_set_batch_finished_marks_done", |smd, pool, _mock| async move {
-            let batch_id = insert_batch(&pool, "RUNNING").await;
-            insert_command(&pool, batch_id, 1, "DONE", "CREATE_PAPER_BY_ID", "x").await;
+        with_clean_db(
+            "live_set_batch_finished_marks_done",
+            |smd, pool, _mock| async move {
+                let batch_id = insert_batch(&pool, "RUNNING").await;
+                insert_command(&pool, batch_id, 1, "DONE", "CREATE_PAPER_BY_ID", "x").await;
 
-            smd.set_batch_finished(batch_id).await.expect("set_batch_finished");
+                smd.set_batch_finished(batch_id)
+                    .await
+                    .expect("set_batch_finished");
 
-            assert_eq!(fetch_batch_status(&pool, batch_id).await, "DONE");
-            // update_batch_stats ran as part of set_batch_status.
-            let overview = fetch_batch_overview(&pool, batch_id).await.unwrap();
-            let parsed: serde_json::Value = serde_json::from_str(&overview).unwrap();
-            assert_eq!(parsed["DONE"], 1);
-            assert_eq!(parsed["TOTAL"], 1);
-        })
+                assert_eq!(fetch_batch_status(&pool, batch_id).await, "DONE");
+                // update_batch_stats ran as part of set_batch_status.
+                let overview = fetch_batch_overview(&pool, batch_id).await.unwrap();
+                let parsed: serde_json::Value = serde_json::from_str(&overview).unwrap();
+                assert_eq!(parsed["DONE"], 1);
+                assert_eq!(parsed["TOTAL"], 1);
+            },
+        )
         .await;
     }
 
@@ -968,7 +1025,11 @@ mod live_db_tests {
 
                 assert!(smd.check_batch_not_stopped(running).await.is_ok());
                 assert!(smd.check_batch_not_stopped(todo).await.is_ok());
-                let err = smd.check_batch_not_stopped(done).await.unwrap_err().to_string();
+                let err = smd
+                    .check_batch_not_stopped(done)
+                    .await
+                    .unwrap_err()
+                    .to_string();
                 assert!(
                     err.contains(&format!("batch #{done}")),
                     "error should name the batch: {err}"

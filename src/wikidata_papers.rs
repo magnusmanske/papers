@@ -259,8 +259,10 @@ impl WikidataPapers {
         for author in authors2.iter() {
             match author.find_best_match(authors) {
                 Some((candidate, _points)) => match authors[candidate].merge_from(author) {
-                    Ok(_) => {},
-                    Err(e) => tracing::warn!(?author, error = %e, "merge_authors: merge_from failed"),
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(?author, error = %e, "merge_authors: merge_from failed")
+                    }
                 },
                 None => {
                     // Only add if there's truly no overlap with any existing author.
@@ -268,7 +270,7 @@ impl WikidataPapers {
                     if !author.has_partial_match(authors) {
                         authors.push(author.clone());
                     }
-                },
+                }
             }
         }
     }
@@ -281,11 +283,13 @@ impl WikidataPapers {
     ) -> Result<()> {
         let mut authors: Vec<GenericAuthorInfo> = vec![];
         for adapter_id in 0..self.adapters.len() {
-            let publication_id =
-                match self.adapters[adapter_id].publication_id_from_item(item).await {
-                    Some(id) => id,
-                    _ => continue,
-                };
+            let publication_id = match self.adapters[adapter_id]
+                .publication_id_from_item(item)
+                .await
+            {
+                Some(id) => id,
+                _ => continue,
+            };
 
             let adapter = &mut self.adapters[adapter_id];
             adapter2work_id.insert(adapter_id, publication_id.clone());
@@ -296,7 +300,9 @@ impl WikidataPapers {
                     // self.cache.clone(),
                 )
                 .await;
-            adapter.update_statements_for_publication_id(&publication_id, item).await;
+            adapter
+                .update_statements_for_publication_id(&publication_id, item)
+                .await;
 
             // Authors
             let authors2 = adapter.get_author_list(&publication_id).await;
@@ -343,8 +349,10 @@ impl WikidataPapers {
         authors: &Vec<GenericAuthorInfo>,
         mw_api: Arc<RwLock<Api>>,
     ) {
-        let qs: Vec<String> =
-            authors.iter().filter_map(|a| a.wikidata_item().map(str::to_string)).collect();
+        let qs: Vec<String> = authors
+            .iter()
+            .filter_map(|a| a.wikidata_item().map(str::to_string))
+            .collect();
         if qs.is_empty() {
             return;
         }
@@ -356,7 +364,9 @@ impl WikidataPapers {
         drop(api);
 
         for author in authors {
-            author.update_author_item(&mut self.entities, mw_api.clone()).await;
+            author
+                .update_author_item(&mut self.entities, mw_api.clone())
+                .await;
         }
     }
 
@@ -397,7 +407,8 @@ impl WikidataPapers {
             true => vec![],
             false => self.get_items_for_ids(ids).await,
         };
-        self.create_or_update_item_from_items(mw_api, ids, &items).await
+        self.create_or_update_item_from_items(mw_api, ids, &items)
+            .await
     }
 
     pub async fn create_or_update_item_from_q(
@@ -406,7 +417,8 @@ impl WikidataPapers {
         q: &str,
     ) -> Result<Option<EditResult>> {
         let items = vec![q.to_owned()];
-        self.create_or_update_item_from_items(mw_api, &vec![], &items).await
+        self.create_or_update_item_from_items(mw_api, &vec![], &items)
+            .await
     }
 
     fn new_publication_item(&self) -> Entity {
@@ -432,7 +444,7 @@ impl WikidataPapers {
                     .to_owned();
                 drop(api);
                 original_item = item.clone();
-            },
+            }
             None => item = self.new_publication_item(),
         }
 
@@ -444,7 +456,11 @@ impl WikidataPapers {
 
         // Paranoia
         if item.claims().len() < 4 {
-            tracing::warn!(?ids, claim_count = item.claims().len(), "skipping: too few claims to write");
+            tracing::warn!(
+                ?ids,
+                claim_count = item.claims().len(),
+                "skipping: too few claims to write"
+            );
             return Ok(None);
         }
 
@@ -471,15 +487,20 @@ impl WikidataPapers {
         params.aliases.add = EntityDiffParamState::All;
         params.claims.add = EntityDiffParamState::All;
         params.claims.remove = EntityDiffParamState::some(&vec!["P2093"]);
-        params.references.list =
-            vec![(EntityDiffParamState::All, EntityDiffParamState::except(&vec!["P813"]))];
+        params.references.list = vec![(
+            EntityDiffParamState::All,
+            EntityDiffParamState::except(&vec!["P813"]),
+        )];
         let mut diff = EntityDiff::new(&original_item, &item, &params);
         diff.set_edit_summary(self.edit_summary.to_owned());
 
         if diff.is_empty() {
             return Ok(match original_item.id().as_str() {
                 "" => None,
-                id => Some(EditResult { q: id.to_string(), edited: false }),
+                id => Some(EditResult {
+                    q: id.to_string(),
+                    edited: false,
+                }),
             });
         }
 
@@ -521,9 +542,12 @@ impl WikidataPapers {
         original_ids: &[GenericWorkIdentifier],
     ) -> Vec<GenericWorkIdentifier> {
         let mut ids: HashSet<GenericWorkIdentifier> = HashSet::new();
-        original_ids.iter().filter(|id| id.is_legit()).for_each(|id| {
-            ids.insert(id.to_owned());
-        });
+        original_ids
+            .iter()
+            .filter(|id| id.is_legit())
+            .for_each(|id| {
+                ids.insert(id.to_owned());
+            });
         // Hard-cap the convergence loop: a misbehaving adapter that returns
         // a new ID on every call would otherwise spin forever. Real adapters
         // converge in 2–3 passes; MAX_ID_DISCOVERY_PASSES leaves slack for
@@ -582,10 +606,12 @@ impl WikidataPapers {
         item.claims()
             .par_iter()
             .filter(|statement| statement.property() == "P50")
-            .filter_map(|statement| match statement.main_snak().data_value().as_ref()?.value() {
-                Value::Entity(entity) => Some(entity.id().to_string()),
-                _ => None,
-            })
+            .filter_map(
+                |statement| match statement.main_snak().data_value().as_ref()?.value() {
+                    Value::Entity(entity) => Some(entity.id().to_string()),
+                    _ => None,
+                },
+            )
             .collect()
     }
 
@@ -602,8 +628,11 @@ impl WikidataPapers {
         p2093_statement: &Statement,
         p50_statement: &Statement,
     ) -> Vec<Snak> {
-        let p2093_props: HashSet<&str> =
-            p2093_statement.qualifiers().iter().map(|q| q.property()).collect();
+        let p2093_props: HashSet<&str> = p2093_statement
+            .qualifiers()
+            .iter()
+            .map(|q| q.property())
+            .collect();
 
         // Start with all of P2093's qualifiers (precedence).
         let mut merged: Vec<Snak> = p2093_statement.qualifiers().to_vec();
@@ -634,10 +663,7 @@ impl WikidataPapers {
     /// because it literally builds a new `Statement` and assigns it via
     /// `*p2093_statement = …`; calling it "update" historically hid
     /// that the entire statement is rewritten.
-    fn replace_p2093_with_p50_in_place(
-        p50_statement: &Statement,
-        p2093_statement: &mut Statement,
-    ) {
+    fn replace_p2093_with_p50_in_place(p50_statement: &Statement, p2093_statement: &mut Statement) {
         let merged_qualifiers =
             Self::merge_qualifiers_with_p2093_precedence(p2093_statement, p50_statement);
         // Preserve references from the original P2093 — they may carry the
@@ -698,7 +724,9 @@ mod tests {
             .await;
 
         let mw_api = Arc::new(tokio::sync::RwLock::new(
-            wikibase::mediawiki::api::Api::new(&mock_server.uri()).await.unwrap(),
+            wikibase::mediawiki::api::Api::new(&mock_server.uri())
+                .await
+                .unwrap(),
         ));
         let cache = Arc::new(WikidataStringCache::new(mw_api));
         // mock_server is intentionally dropped here: the tests below do not
@@ -989,7 +1017,10 @@ mod tests {
             ids.len()
         );
         // And we should make some progress: at least the initial id survives.
-        assert!(!ids.is_empty(), "expected at least the initial id to survive");
+        assert!(
+            !ids.is_empty(),
+            "expected at least the initial id to survive"
+        );
     }
 
     #[tokio::test]
@@ -998,8 +1029,10 @@ mod tests {
         // last_id_size == ids.len(). Output should be the legit inputs
         // (DOIs are canonicalised to uppercase by GenericWorkIdentifier).
         let mut wdp = make_wdp().await;
-        let initial =
-            vec![GenericWorkIdentifier::new_prop(crate::identifiers::IdProp::DOI, "10.0/a")];
+        let initial = vec![GenericWorkIdentifier::new_prop(
+            crate::identifiers::IdProp::DOI,
+            "10.0/a",
+        )];
         let ids = wdp.update_from_paper_ids(&initial).await;
         assert_eq!(ids.len(), 1);
         assert_eq!(ids[0].id(), "10.0/A");
@@ -1016,7 +1049,11 @@ mod tests {
             GenericWorkIdentifier::new_prop(crate::identifiers::IdProp::DOI, "0"),
         ];
         let ids = wdp.update_from_paper_ids(&initial).await;
-        assert_eq!(ids.len(), 1, "expected only the legit DOI to survive; got {ids:?}");
+        assert_eq!(
+            ids.len(),
+            1,
+            "expected only the legit DOI to survive; got {ids:?}"
+        );
         assert_eq!(ids[0].id(), "10.0/LEGIT");
     }
 
@@ -1064,7 +1101,8 @@ mod tests {
         let wdp = make_wdp().await;
         let mut a1 = author_named("Alice Smith", 1);
         let mut a2 = author_named("Alice Smith", 1);
-        a2.prop2id_mut().insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+        a2.prop2id_mut()
+            .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
         let mut authors = vec![a1.clone()];
         let authors2 = vec![a2];
         wdp.merge_authors(&mut authors, &authors2);
@@ -1086,11 +1124,13 @@ mod tests {
         // duplicate person in the paper.
         let wdp = make_wdp().await;
         let mut a1 = author_named("Alice Smith", 1);
-        a1.prop2id_mut().insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+        a1.prop2id_mut()
+            .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
         // Same ORCID, different name (partial match via has_partial_match).
         let mut a2 = author_named("A. Smith", 5);
-        a2.prop2id_mut().insert("P496".to_string(), "0000-0001-2345-6789".to_string());
+        a2.prop2id_mut()
+            .insert("P496".to_string(), "0000-0001-2345-6789".to_string());
 
         let mut authors = vec![a1];
         let authors2 = vec![a2];
@@ -1098,7 +1138,12 @@ mod tests {
         // Partial match → either merged or skipped, depending on
         // find_best_match score. Either way, no duplicate must appear.
         assert!(
-            authors.len() <= 1 || authors.iter().filter(|a| a.prop2id().get("P496").is_some()).count() <= 1,
+            authors.len() <= 1
+                || authors
+                    .iter()
+                    .filter(|a| a.prop2id().get("P496").is_some())
+                    .count()
+                    <= 1,
             "ORCID-sharing authors must not appear twice; got {authors:?}",
         );
     }
@@ -1117,8 +1162,11 @@ mod tests {
         let mut item = Entity::new_empty_item();
         wdp.create_author_statements(&vec![a1, a2], &mut item);
 
-        let p50_count =
-            item.claims().iter().filter(|s| s.main_snak().property() == "P50").count();
+        let p50_count = item
+            .claims()
+            .iter()
+            .filter(|s| s.main_snak().property() == "P50")
+            .count();
         assert_eq!(p50_count, 1, "duplicate Q-item must produce only one P50");
     }
 
@@ -1133,9 +1181,15 @@ mod tests {
         let mut item = Entity::new_empty_item();
         wdp.create_author_statements(&vec![a1, a2], &mut item);
 
-        let p2093_count =
-            item.claims().iter().filter(|s| s.main_snak().property() == "P2093").count();
-        assert_eq!(p2093_count, 1, "duplicate simplified-name must produce only one P2093");
+        let p2093_count = item
+            .claims()
+            .iter()
+            .filter(|s| s.main_snak().property() == "P2093")
+            .count();
+        assert_eq!(
+            p2093_count, 1,
+            "duplicate simplified-name must produce only one P2093"
+        );
     }
 
     #[tokio::test]
@@ -1149,12 +1203,21 @@ mod tests {
         let mut item = Entity::new_empty_item();
         wdp.create_author_statements(&vec![a1, a2], &mut item);
 
-        let p50_count =
-            item.claims().iter().filter(|s| s.main_snak().property() == "P50").count();
-        let p2093_count =
-            item.claims().iter().filter(|s| s.main_snak().property() == "P2093").count();
+        let p50_count = item
+            .claims()
+            .iter()
+            .filter(|s| s.main_snak().property() == "P50")
+            .count();
+        let p2093_count = item
+            .claims()
+            .iter()
+            .filter(|s| s.main_snak().property() == "P2093")
+            .count();
         assert_eq!(p50_count, 1, "Alice's Q-item should produce a P50");
-        assert_eq!(p2093_count, 1, "Bob's nameless author should produce a P2093");
+        assert_eq!(
+            p2093_count, 1,
+            "Bob's nameless author should produce a P2093"
+        );
     }
 
     #[tokio::test]
@@ -1171,11 +1234,20 @@ mod tests {
         let mut item = Entity::new_empty_item();
         wdp.create_author_statements(&vec![a1, a2], &mut item);
 
-        let p50_count =
-            item.claims().iter().filter(|s| s.main_snak().property() == "P50").count();
-        let p2093_count =
-            item.claims().iter().filter(|s| s.main_snak().property() == "P2093").count();
+        let p50_count = item
+            .claims()
+            .iter()
+            .filter(|s| s.main_snak().property() == "P50")
+            .count();
+        let p2093_count = item
+            .claims()
+            .iter()
+            .filter(|s| s.main_snak().property() == "P2093")
+            .count();
         assert_eq!(p50_count, 1);
-        assert_eq!(p2093_count, 1, "nameless author with same name as a Q-item author still gets a P2093");
+        assert_eq!(
+            p2093_count, 1,
+            "nameless author with same name as a Q-item author still gets a P2093"
+        );
     }
 }

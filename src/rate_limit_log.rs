@@ -30,7 +30,10 @@ pub struct ConsecutiveErrorLog {
 
 impl ConsecutiveErrorLog {
     pub fn new(context: &'static str) -> Self {
-        Self { consecutive: 0, context }
+        Self {
+            consecutive: 0,
+            context,
+        }
     }
 
     /// Record a failure. Logs at `error` level on the 1st, 2nd, 4th, 8th, …
@@ -52,7 +55,11 @@ impl ConsecutiveErrorLog {
     /// `info` line documenting the recovery and resets the counter.
     pub fn note_success(&mut self) {
         if self.consecutive > 0 {
-            tracing::info!(cleared_after = self.consecutive, "{}: recovered", self.context);
+            tracing::info!(
+                cleared_after = self.consecutive,
+                "{}: recovered",
+                self.context
+            );
         }
         self.consecutive = 0;
     }

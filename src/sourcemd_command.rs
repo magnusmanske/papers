@@ -21,7 +21,7 @@ impl FromStr for SourceMDcommandMode {
             "ADD_AUTHOR_TO_PUBLICATION" => Ok(SourceMDcommandMode::AddAutthorToPublication),
             "ADD_METADATA_FROM_ORCID_TO_AUTHOR" => {
                 Ok(SourceMDcommandMode::AddOrcidMetadataToAuthor)
-            },
+            }
             "EDIT_PAPER_FOR_ORCID_AUTHOR" => Ok(SourceMDcommandMode::EditPaperForOrcidAuthor),
             "CREATE_BOOK_FROM_ISBN" => Ok(SourceMDcommandMode::CreateBookFromIsbn),
             _ => Err(format!("Invalid command: {s}")),
@@ -31,14 +31,19 @@ impl FromStr for SourceMDcommandMode {
 
 impl std::fmt::Display for SourceMDcommandMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            SourceMDcommandMode::Dummy => "DUMMY",
-            SourceMDcommandMode::CreatePaperById => "CREATE_PAPER_BY_ID",
-            SourceMDcommandMode::AddAutthorToPublication => "ADD_AUTHOR_TO_PUBLICATION",
-            SourceMDcommandMode::AddOrcidMetadataToAuthor => "ADD_METADATA_FROM_ORCID_TO_AUTHOR",
-            SourceMDcommandMode::EditPaperForOrcidAuthor => "EDIT_PAPER_FOR_ORCID_AUTHOR",
-            SourceMDcommandMode::CreateBookFromIsbn => "CREATE_BOOK_FROM_ISBN",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                SourceMDcommandMode::Dummy => "DUMMY",
+                SourceMDcommandMode::CreatePaperById => "CREATE_PAPER_BY_ID",
+                SourceMDcommandMode::AddAutthorToPublication => "ADD_AUTHOR_TO_PUBLICATION",
+                SourceMDcommandMode::AddOrcidMetadataToAuthor =>
+                    "ADD_METADATA_FROM_ORCID_TO_AUTHOR",
+                SourceMDcommandMode::EditPaperForOrcidAuthor => "EDIT_PAPER_FOR_ORCID_AUTHOR",
+                SourceMDcommandMode::CreateBookFromIsbn => "CREATE_BOOK_FROM_ISBN",
+            }
+        )
     }
 }
 

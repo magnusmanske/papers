@@ -42,8 +42,10 @@ impl OpenAlex2Wikidata {
     }
 
     async fn fetch_doi_data(&self, doi: &str) -> Option<(String, serde_json::Value)> {
-        fetch_doi_json(&*self.fetcher, doi, |d| format!("https://api.openalex.org/works/doi:{d}"))
-            .await
+        fetch_doi_json(&*self.fetcher, doi, |d| {
+            format!("https://api.openalex.org/works/doi:{d}")
+        })
+        .await
     }
 
     async fn fetch_work_by_doi(&mut self, doi: &str) -> Option<String> {
@@ -51,7 +53,6 @@ impl OpenAlex2Wikidata {
         self.work_cache.insert(pub_id.clone(), json);
         Some(pub_id)
     }
-
 }
 
 #[async_trait(?Send)]
@@ -69,7 +70,8 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
     }
 
     fn has_cached_publication(&self, publication_id: &str) -> bool {
-        self.get_cached_publication_from_id(publication_id).is_some()
+        self.get_cached_publication_from_id(publication_id)
+            .is_some()
     }
 
     fn extract_extra_ids(&self, publication_id: &str) -> Vec<GenericWorkIdentifier> {
@@ -148,7 +150,7 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
                     }
                 }
                 vec![]
-            },
+            }
             None => vec![],
         }
     }
@@ -180,7 +182,9 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
     fn get_work_issn(&self, publication_id: &str) -> Option<String> {
         let work = self.get_cached_publication_from_id(publication_id)?;
         // Primary location's source has ISSN
-        work["primary_location"]["source"]["issn_l"].as_str().map(|s| s.to_string())
+        work["primary_location"]["source"]["issn_l"]
+            .as_str()
+            .map(|s| s.to_string())
     }
 
     async fn get_author_list(&mut self, publication_id: &str) -> Vec<GenericAuthorInfo> {
@@ -203,7 +207,9 @@ impl ScientificPublicationAdapter for OpenAlex2Wikidata {
                     // Format: "https://orcid.org/0000-0001-2345-6789"
                     if let Some(orcid) = orcid_url.rsplit('/').next() {
                         if !orcid.is_empty() {
-                            entry.prop2id_mut().insert("P496".to_string(), orcid.to_string());
+                            entry
+                                .prop2id_mut()
+                                .insert("P496".to_string(), orcid.to_string());
                         }
                     }
                 }
@@ -276,7 +282,9 @@ mod tests {
     #[test]
     fn test_get_work_titles() {
         let mut adapter = OpenAlex2Wikidata::default();
-        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
+        adapter
+            .work_cache
+            .insert("10.1234/TEST".to_string(), make_work());
         let titles = adapter.get_work_titles("10.1234/TEST");
         assert_eq!(titles.len(), 1);
         assert_eq!(titles[0].value(), "Test Paper Title");
@@ -302,8 +310,13 @@ mod tests {
     #[test]
     fn test_get_work_type() {
         let mut adapter = OpenAlex2Wikidata::default();
-        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
-        assert_eq!(adapter.get_work_type("10.1234/TEST"), Some("Q13442814".to_string()));
+        adapter
+            .work_cache
+            .insert("10.1234/TEST".to_string(), make_work());
+        assert_eq!(
+            adapter.get_work_type("10.1234/TEST"),
+            Some("Q13442814".to_string())
+        );
     }
 
     #[test]
@@ -312,20 +325,30 @@ mod tests {
         let mut work = make_work();
         work["type_crossref"] = json!("book");
         adapter.work_cache.insert("10.1234/TEST".to_string(), work);
-        assert_eq!(adapter.get_work_type("10.1234/TEST"), Some("Q571".to_string()));
+        assert_eq!(
+            adapter.get_work_type("10.1234/TEST"),
+            Some("Q571".to_string())
+        );
     }
 
     #[test]
     fn test_get_publication_date() {
         let mut adapter = OpenAlex2Wikidata::default();
-        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
-        assert_eq!(adapter.get_publication_date("10.1234/TEST"), Some((2023, Some(6), Some(15))));
+        adapter
+            .work_cache
+            .insert("10.1234/TEST".to_string(), make_work());
+        assert_eq!(
+            adapter.get_publication_date("10.1234/TEST"),
+            Some((2023, Some(6), Some(15)))
+        );
     }
 
     #[test]
     fn test_get_volume_and_issue() {
         let mut adapter = OpenAlex2Wikidata::default();
-        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
+        adapter
+            .work_cache
+            .insert("10.1234/TEST".to_string(), make_work());
         assert_eq!(adapter.get_volume("10.1234/TEST"), Some("42".to_string()));
         assert_eq!(adapter.get_issue("10.1234/TEST"), Some("3".to_string()));
     }
@@ -333,19 +356,29 @@ mod tests {
     #[test]
     fn test_get_work_issn() {
         let mut adapter = OpenAlex2Wikidata::default();
-        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
-        assert_eq!(adapter.get_work_issn("10.1234/TEST"), Some("1234-5678".to_string()));
+        adapter
+            .work_cache
+            .insert("10.1234/TEST".to_string(), make_work());
+        assert_eq!(
+            adapter.get_work_issn("10.1234/TEST"),
+            Some("1234-5678".to_string())
+        );
     }
 
     #[tokio::test]
     async fn test_get_author_list() {
         let mut adapter = OpenAlex2Wikidata::default();
-        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
+        adapter
+            .work_cache
+            .insert("10.1234/TEST".to_string(), make_work());
         let authors = adapter.get_author_list("10.1234/TEST").await;
         assert_eq!(authors.len(), 2);
         assert_eq!(authors[0].name(), Some("Alice Smith"));
         assert_eq!(authors[0].list_number(), Some("1"));
-        assert_eq!(authors[0].prop2id().get("P496"), Some(&"0000-0001-2345-6789".to_string()));
+        assert_eq!(
+            authors[0].prop2id().get("P496"),
+            Some(&"0000-0001-2345-6789".to_string())
+        );
         assert_eq!(authors[1].name(), Some("Bob Jones"));
         assert_eq!(authors[1].list_number(), Some("2"));
         assert!(!authors[1].prop2id().contains_key("P496"));
@@ -363,15 +396,23 @@ mod tests {
     #[test]
     fn test_add_identifiers_from_cached_publication() {
         let mut adapter = OpenAlex2Wikidata::default();
-        adapter.work_cache.insert("10.1234/TEST".to_string(), make_work());
+        adapter
+            .work_cache
+            .insert("10.1234/TEST".to_string(), make_work());
         let mut ret = vec![];
         adapter.add_identifiers_from_cached_publication("10.1234/TEST", &mut ret);
-        assert!(ret.iter().any(|id| *id.work_type() == GenericWorkType::Property(IdProp::DOI)
-            && id.id() == "10.1234/TEST"));
-        assert!(ret.iter().any(|id| *id.work_type() == GenericWorkType::Property(IdProp::PMID)
-            && id.id() == "12345678"));
-        assert!(ret.iter().any(|id| *id.work_type() == GenericWorkType::Property(IdProp::PMCID)
-            && id.id() == "PMC9876543"));
+        assert!(ret.iter().any(
+            |id| *id.work_type() == GenericWorkType::Property(IdProp::DOI)
+                && id.id() == "10.1234/TEST"
+        ));
+        assert!(ret.iter().any(
+            |id| *id.work_type() == GenericWorkType::Property(IdProp::PMID)
+                && id.id() == "12345678"
+        ));
+        assert!(ret.iter().any(
+            |id| *id.work_type() == GenericWorkType::Property(IdProp::PMCID)
+                && id.id() == "PMC9876543"
+        ));
     }
 
     #[test]
@@ -408,7 +449,9 @@ mod tests {
         let pub_id = adapter.fetch_work_by_doi("10.1234/test").await;
         assert_eq!(pub_id, Some("10.1234/TEST".to_string()));
         assert_eq!(fetcher.captured_urls(), vec![url.to_string()]);
-        assert!(adapter.get_cached_publication_from_id("10.1234/TEST").is_some());
+        assert!(adapter
+            .get_cached_publication_from_id("10.1234/TEST")
+            .is_some());
     }
 
     #[tokio::test]
@@ -436,7 +479,11 @@ mod tests {
         ];
         let _ = adapter.get_identifier_list(&inputs).await;
         let captured = fetcher.captured_urls();
-        assert_eq!(captured.len(), 2, "expected one fetch per DOI, got {captured:?}");
+        assert_eq!(
+            captured.len(),
+            2,
+            "expected one fetch per DOI, got {captured:?}"
+        );
         assert!(captured.contains(&url_a.to_string()));
         assert!(captured.contains(&url_b.to_string()));
     }

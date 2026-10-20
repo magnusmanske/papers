@@ -31,9 +31,7 @@ fn q_from_entity_uri(uri: &str) -> Option<String> {
 /// string to paper Q-ids, applying the configured filters
 /// ([`MIN_PAPERS_PER_AUTHOR`], [`MIN_SPACES_FOR_NAME`]). Pure function so
 /// the filtering logic is unit-testable without a live SPARQL endpoint.
-fn parse_coauthor_ans_bindings(
-    bindings: &[serde_json::Value],
-) -> HashMap<String, Vec<String>> {
+fn parse_coauthor_ans_bindings(bindings: &[serde_json::Value]) -> HashMap<String, Vec<String>> {
     let pairs: Vec<(String, String)> = bindings
         .iter()
         .filter_map(|j| {
@@ -53,7 +51,10 @@ fn parse_coauthor_ans_bindings(
 }
 
 /// The `results.bindings` array of a SPARQL JSON result.
-fn bindings<'a>(result: &'a serde_json::Value, context: &str) -> Result<&'a Vec<serde_json::Value>> {
+fn bindings<'a>(
+    result: &'a serde_json::Value,
+    context: &str,
+) -> Result<&'a Vec<serde_json::Value>> {
     result["results"]["bindings"]
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("{context}: Not an array"))
@@ -72,9 +73,7 @@ fn coauthor_labels_query(qs: &[ItemId]) -> String {
 
 /// Parses the `?coauthor ?coauthorLabel` SPARQL bindings into a map from
 /// label-string to coauthor Q-ids. Pure function for unit testability.
-fn parse_coauthor_qs_bindings(
-    bindings: &[serde_json::Value],
-) -> HashMap<String, Vec<String>> {
+fn parse_coauthor_qs_bindings(bindings: &[serde_json::Value]) -> HashMap<String, Vec<String>> {
     let pairs: Vec<(String, String)> = bindings
         .iter()
         .filter_map(|j| {
@@ -108,7 +107,11 @@ impl AuthorNameString {
     /// callers use `Self::new(level, Arc::new(HttpJsonFetcher::default()))`;
     /// tests inject a `MockJsonFetcher`.
     pub fn new(logging_level: u8, fetcher: Arc<dyn JsonFetcher>) -> Self {
-        Self { logging_level, fetcher, wdqs: Wdqs::default() }
+        Self {
+            logging_level,
+            fetcher,
+            wdqs: Wdqs::default(),
+        }
     }
 
     /// Sends SPARQL queries to `wdqs` instead of the Wikidata Query Service.
@@ -170,7 +173,10 @@ impl AuthorNameString {
         if formatted.is_empty() {
             return None;
         }
-        let url = format!("https://wd-infernal.toolforge.org/initial_search/{}", formatted);
+        let url = format!(
+            "https://wd-infernal.toolforge.org/initial_search/{}",
+            formatted
+        );
         let json = self.fetcher.fetch_json(&url).await?;
         serde_json::from_value(json).ok()
     }
@@ -183,7 +189,10 @@ impl AuthorNameString {
         paper_qs: &Vec<String>,
         name2author_qs: &HashMap<String, Vec<String>>,
     ) -> Result<()> {
-        let author_q = match self.get_or_create_author(ans, cache, mw_api, name2author_qs).await {
+        let author_q = match self
+            .get_or_create_author(ans, cache, mw_api, name2author_qs)
+            .await
+        {
             Some(q) => q,
             None => return Ok(()),
         };
@@ -201,7 +210,10 @@ impl AuthorNameString {
             .await;
         if !edited_qs.is_empty() {
             let api = mw_api.read().await;
-            papers.entities_mut().reload_entities(&api, &edited_qs).await?;
+            papers
+                .entities_mut()
+                .reload_entities(&api, &edited_qs)
+                .await?;
             drop(api);
         }
         Ok(())
@@ -230,12 +242,18 @@ impl AuthorNameString {
                 "Changing {ans} to {} [#Papers ANS (was: SourceMD)]",
                 "[[".to_string() + &author_q + "]]"
             )));
-            match papers.apply_diff_for_item(original_item, item, mw_api.clone()).await {
+            match papers
+                .apply_diff_for_item(original_item, item, mw_api.clone())
+                .await
+            {
                 Ok(Some(er)) => {
                     if er.edited() {
                         self.log(
                             1,
-                            format!("Created or updated https://www.wikidata.org/wiki/{}", er.q()),
+                            format!(
+                                "Created or updated https://www.wikidata.org/wiki/{}",
+                                er.q()
+                            ),
                         );
                         edited_qs.push(er.q().to_string());
                     } else {
@@ -244,7 +262,7 @@ impl AuthorNameString {
                             format!("https://www.wikidata.org/wiki/{}, no changes ", er.q()),
                         );
                     }
-                },
+                }
                 Ok(None) => self.log(1, "No paper item ID!"),
                 Err(e) => self.log(1, format!("Error editing paper {paper_q}: {e:#}")),
             }
@@ -284,7 +302,10 @@ impl AuthorNameString {
 
         let simple_name = GenericAuthorInfo::simplify_name(ans);
         let res = cache
-            .search_wikibase(&format!("{simple_name} haswbstatement:P31=Q5"), mw_api.clone())
+            .search_wikibase(
+                &format!("{simple_name} haswbstatement:P31=Q5"),
+                mw_api.clone(),
+            )
             .await
             .ok()?;
         let author_q = if res.is_empty() {
@@ -293,7 +314,10 @@ impl AuthorNameString {
             if let Some(author_qs) = name2author_qs.get(ans) {
                 if author_qs.len() == 1 {
                     let author_q = &author_qs[0];
-                    self.log(1, format!("MATCHED AUTHOR {ans}: {simple_name} => {author_q}"));
+                    self.log(
+                        1,
+                        format!("MATCHED AUTHOR {ans}: {simple_name} => {author_q}"),
+                    );
                     Some(author_q.to_owned())
                 } else {
                     None
@@ -302,7 +326,10 @@ impl AuthorNameString {
                 None
             }
         } else {
-            self.log(2, format!("MULTIPLE POSSIBLE MATCHES FOR {ans}: {simple_name} => {res:?}"));
+            self.log(
+                2,
+                format!("MULTIPLE POSSIBLE MATCHES FOR {ans}: {simple_name} => {res:?}"),
+            );
             None
         };
         author_q
@@ -347,7 +374,10 @@ impl AuthorNameString {
                 "SELECT ?paper ?ans {{ ?paper wdt:P50 wd:{root_author_q} ; wdt:P2093 ?ans }}"
             ))
             .await?;
-        Ok(parse_coauthor_ans_bindings(bindings(&resp, "get_coauthor_ans")?))
+        Ok(parse_coauthor_ans_bindings(bindings(
+            &resp,
+            "get_coauthor_ans",
+        )?))
     }
 
     /// Get coauthors of a given author, label to author Qids. Who coauthored
@@ -367,7 +397,11 @@ impl AuthorNameString {
 
         let mut labels = Vec::new();
         for batch in coauthor_qs.chunks(LABEL_BATCH) {
-            let resp = self.wdqs.main().query_json(&coauthor_labels_query(batch)).await?;
+            let resp = self
+                .wdqs
+                .main()
+                .query_json(&coauthor_labels_query(batch))
+                .await?;
             labels.extend(bindings(&resp, "get_coauthor_qs")?.iter().cloned());
         }
         Ok(parse_coauthor_qs_bindings(&labels))
@@ -382,7 +416,9 @@ impl AuthorNameString {
         self.log(1, format!("CREATING AUTHOR {ans}"));
         let mut author = GenericAuthorInfo::new();
         author.set_name(Some(ans.clone()));
-        let author = author.get_or_create_author_item(mw_api.clone(), cache.clone(), true).await;
+        let author = author
+            .get_or_create_author_item(mw_api.clone(), cache.clone(), true)
+            .await;
         self.log(1, format!("CREATED AUTHOR {ans} => {author:?}"));
         Some(author.wikidata_item()?.to_string())
     }
@@ -405,30 +441,50 @@ mod tests {
     fn has_short_name_parts_false_for_full_names() {
         assert!(!AuthorNameString::has_short_name_parts("Jenny Clarke"));
         assert!(!AuthorNameString::has_short_name_parts("John Smith"));
-        assert!(!AuthorNameString::has_short_name_parts("Heinrich Magnus Manske"));
+        assert!(!AuthorNameString::has_short_name_parts(
+            "Heinrich Magnus Manske"
+        ));
     }
 
     #[test]
     fn format_name_for_initial_search_basic() {
-        assert_eq!(AuthorNameString::format_name_for_initial_search("Ck Clarke"), "C.K.Clarke");
-        assert_eq!(AuthorNameString::format_name_for_initial_search("C K Clarke"), "C.K.Clarke");
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("Ck Clarke"),
+            "C.K.Clarke"
+        );
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("C K Clarke"),
+            "C.K.Clarke"
+        );
     }
 
     #[test]
     fn format_name_for_initial_search_dotted() {
-        assert_eq!(AuthorNameString::format_name_for_initial_search("C.K. Clarke"), "C.K.Clarke");
-        assert_eq!(AuthorNameString::format_name_for_initial_search("H.M. Manske"), "H.M.Manske");
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("C.K. Clarke"),
+            "C.K.Clarke"
+        );
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("H.M. Manske"),
+            "H.M.Manske"
+        );
     }
 
     #[test]
     fn format_name_for_initial_search_single_initial() {
-        assert_eq!(AuthorNameString::format_name_for_initial_search("J Smith"), "J.Smith");
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("J Smith"),
+            "J.Smith"
+        );
     }
 
     #[test]
     fn format_name_for_initial_search_full_name() {
         // Full names without initials: no dots added
-        assert_eq!(AuthorNameString::format_name_for_initial_search("Jenny Clarke"), "JennyClarke");
+        assert_eq!(
+            AuthorNameString::format_name_for_initial_search("Jenny Clarke"),
+            "JennyClarke"
+        );
     }
 
     // === q_from_entity_uri =================================================
@@ -484,7 +540,10 @@ mod tests {
             ans_binding("Q3", "Jane Doe"),
         ];
         let out = parse_coauthor_ans_bindings(&bindings);
-        assert!(!out.contains_key("John Smith"), "below MIN_PAPERS_PER_AUTHOR should be dropped");
+        assert!(
+            !out.contains_key("John Smith"),
+            "below MIN_PAPERS_PER_AUTHOR should be dropped"
+        );
         assert_eq!(out.get("Jane Doe").map(Vec::len), Some(2));
     }
 
@@ -499,7 +558,10 @@ mod tests {
             ans_binding("Q4", "John Smith"),
         ];
         let out = parse_coauthor_ans_bindings(&bindings);
-        assert!(!out.contains_key("Smith"), "single-token name should be dropped");
+        assert!(
+            !out.contains_key("Smith"),
+            "single-token name should be dropped"
+        );
         assert!(out.contains_key("John Smith"));
     }
 
@@ -646,7 +708,11 @@ mod tests {
         let form = format!("http://form/?{}", String::from_utf8_lossy(&request.body));
         reqwest::Url::parse(&form)
             .ok()
-            .and_then(|url| url.query_pairs().find(|(key, _)| key == "query").map(|(_, q)| q.into_owned()))
+            .and_then(|url| {
+                url.query_pairs()
+                    .find(|(key, _)| key == "query")
+                    .map(|(_, q)| q.into_owned())
+            })
             .unwrap_or_default()
     }
 
@@ -679,7 +745,10 @@ mod tests {
         )
         .await;
 
-        let ans = ans_for(&main, &scholarly).get_coauthor_ans("Q1").await.unwrap();
+        let ans = ans_for(&main, &scholarly)
+            .get_coauthor_ans("Q1")
+            .await
+            .unwrap();
         assert_eq!(ans["Jane Doe"], ["Q10", "Q11"]);
     }
 
@@ -705,7 +774,10 @@ mod tests {
         )
         .await;
 
-        let names = ans_for(&main, &scholarly).get_coauthor_qs("Q1").await.unwrap();
+        let names = ans_for(&main, &scholarly)
+            .get_coauthor_qs("Q1")
+            .await
+            .unwrap();
         assert_eq!(names["Root Author"], ["Q1"]);
         assert_eq!(names["Co Author"], ["Q2"]);
     }
@@ -713,7 +785,10 @@ mod tests {
     #[test]
     fn coauthor_labels_query_asks_for_english_and_mul_labels() {
         let query = coauthor_labels_query(&[ItemId::new(1), ItemId::new(2)]);
-        assert!(query.contains("VALUES ?coauthor { wd:Q1 wd:Q2 }"), "{query}");
+        assert!(
+            query.contains("VALUES ?coauthor { wd:Q1 wd:Q2 }"),
+            "{query}"
+        );
         assert!(query.contains(r#"IN ("en", "mul")"#), "{query}");
         assert!(!query.contains("SERVICE"), "{query}");
     }

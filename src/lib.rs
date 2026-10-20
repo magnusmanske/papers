@@ -21,12 +21,12 @@ pub mod pmc2wikidata;
 pub mod pubmed2wikidata;
 pub mod rate_limit_log;
 pub mod scientific_publication_adapter;
-#[cfg(test)]
-pub(crate) mod test_helpers;
 pub mod semanticscholar2wikidata;
 pub mod sourcemd_bot;
 pub mod sourcemd_command;
 pub mod sourcemd_config;
+#[cfg(test)]
+pub(crate) mod test_helpers;
 pub mod wdqs;
 pub mod wikidata_interaction;
 pub mod wikidata_papers;

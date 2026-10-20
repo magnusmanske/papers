@@ -108,7 +108,8 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
     }
 
     fn has_cached_publication(&self, publication_id: &str) -> bool {
-        self.get_cached_publication_from_id(publication_id).is_some()
+        self.get_cached_publication_from_id(publication_id)
+            .is_some()
     }
 
     fn extract_extra_ids(&self, publication_id: &str) -> Vec<GenericWorkIdentifier> {
@@ -146,7 +147,11 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
                 async move { client.work(&doi).await.ok() }
             })
             .collect();
-        for work in futures::future::join_all(futures).await.into_iter().flatten() {
+        for work in futures::future::join_all(futures)
+            .await
+            .into_iter()
+            .flatten()
+        {
             self.work_cache.insert(work.doi.clone(), work);
         }
         let mut ret = vec![];
@@ -174,7 +179,11 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 
     fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
         match self.get_cached_publication_from_id(publication_id) {
-            Some(work) => work.title.iter().map(|t| LocaleString::new("en", t)).collect(),
+            Some(work) => work
+                .title
+                .iter()
+                .map(|t| LocaleString::new("en", t))
+                .collect(),
             None => vec![],
         }
     }
@@ -193,17 +202,21 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
         // Date
         if !item.has_claims_with_property("P577") {
             if let Some(statement) =
-                self.get_publication_date(publication_id).and_then(|(year, month, day)| {
-                    wb_time_from_partial(PUBLICATION_DATE, year, month, day, self.reference())
-                })
+                self.get_publication_date(publication_id)
+                    .and_then(|(year, month, day)| {
+                        wb_time_from_partial(PUBLICATION_DATE, year, month, day, self.reference())
+                    })
             {
                 item.add_claim(statement);
             }
         }
 
         // Issue/volume/page
-        let string_options =
-            vec![("P433", &work.issue), ("P478", &work.volume), ("P304", &work.page)];
+        let string_options = vec![
+            ("P433", &work.issue),
+            ("P478", &work.volume),
+            ("P304", &work.page),
+        ];
         for option in string_options {
             if !item.has_claims_with_property(option.0) {
                 if let Some(v) = option.1 {
@@ -240,7 +253,9 @@ mod tests {
     /// Helper: build a Crossref `PartialDate` from raw year/month/day
     /// optionals, matching how the upstream API hands us nested arrays.
     fn partial_date(parts: Vec<Option<u32>>) -> PartialDate {
-        PartialDate { date_parts: DateParts(vec![parts]) }
+        PartialDate {
+            date_parts: DateParts(vec![parts]),
+        }
     }
 
     // === parse_crossref_date ==============================================
@@ -300,7 +315,10 @@ mod tests {
 
     #[test]
     fn test_crossref_type_to_q_journal_article() {
-        assert_eq!(crossref_work_type_to_q("journal-article"), Some("Q13442814"));
+        assert_eq!(
+            crossref_work_type_to_q("journal-article"),
+            Some("Q13442814")
+        );
     }
 
     #[test]
@@ -352,7 +370,10 @@ mod tests {
 
     #[test]
     fn test_crossref_type_to_q_proceedings() {
-        assert_eq!(crossref_work_type_to_q("proceedings-article"), Some("Q23927052"));
+        assert_eq!(
+            crossref_work_type_to_q("proceedings-article"),
+            Some("Q23927052")
+        );
         assert_eq!(crossref_work_type_to_q("proceedings"), Some("Q1143604"));
     }
 
