@@ -31,7 +31,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 semanticscholar = "0.2"
 orcid = "0.2"
 pubmed = "0.2"
-wikibase = "0.7"
+wikibase = "0.7.9"
 wikimisc = { git = "https://github.com/magnusmanske/wikimisc", features = [
     "database",
     "entity-id",

@@ -406,7 +406,7 @@ pub trait ScientificPublicationAdapter {
                 let label = item.label_in_locale(language).map(|s| s.to_owned());
                 if let Some(title) = label {
                     item.add_claim(Statement::new_normal(
-                        Snak::new_monolingual_text("P1476", &title, language),
+                        Snak::new_monolingual_text("P1476", language, &title),
                         vec![],
                         self.reference(),
                     ))
