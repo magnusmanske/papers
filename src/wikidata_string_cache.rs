@@ -158,30 +158,14 @@ mod tests {
     use std::{thread, time::Duration};
 
     use wikibase::mediawiki::api::Api;
-    use wiremock::{
-        matchers::{method, query_param},
-        Mock, MockServer, ResponseTemplate,
-    };
+    use wiremock::MockServer;
 
     use super::*;
-    use crate::test_helpers::start_mediawiki_mock_server as start_mock_server;
+    use crate::test_helpers::{add_search_mock, start_mediawiki_mock_server as start_mock_server};
 
     const SEARCH_Q46664291: &str = include_str!("../test_data/search_found_q46664291.json");
     const SEARCH_Q15757256: &str = include_str!("../test_data/search_found_q15757256.json");
     const SEARCH_EMPTY: &str = include_str!("../test_data/search_empty.json");
-
-    /// Registers a search mock for a specific `srsearch` value.
-    async fn add_search_mock(mock_server: &MockServer, srsearch: &str, body: &'static str) {
-        Mock::given(method("GET"))
-            .and(query_param("srsearch", srsearch))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("content-type", "application/json; charset=utf-8")
-                    .set_body_string(body),
-            )
-            .mount(mock_server)
-            .await;
-    }
 
     /// Creates an `Api` connected to the mock server.
     async fn mock_api(mock_server: &MockServer) -> Arc<tokio::sync::RwLock<Api>> {

@@ -4,6 +4,7 @@ use anyhow::Result;
 use futures::prelude::*;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
+use wikimisc::{entity_id::ItemId, sparql_util::values_clause};
 
 use crate::{
     generic_author_info::GenericAuthorInfo,
@@ -21,17 +22,9 @@ const MIN_SPACES_FOR_NAME: usize = 1;
 const MAX_PROCESS_PAPERS_CONCURRENCY: usize = 5;
 
 /// Extracts a Wikidata Q-id from a URI like `"http://www.wikidata.org/entity/Q12345"`.
-///
-/// `mediawiki::Api::extract_entity_from_uri` does the same; we duplicate the
-/// trivial logic here so the SPARQL-response parsers below don't have to
-/// borrow an `Api`. Returns `None` if the suffix isn't a valid Q-id.
+/// Returns `None` if it isn't an item URI.
 fn q_from_entity_uri(uri: &str) -> Option<String> {
-    let last = uri.rsplit('/').next()?;
-    if crate::identifiers::is_qid(last) {
-        Some(last.to_string())
-    } else {
-        None
-    }
+    ItemId::from_uri(uri).ok().map(|q| q.to_string())
 }
 
 /// Parses the `?paper ?ans` SPARQL bindings into a map from author-name
@@ -52,10 +45,7 @@ fn parse_coauthor_ans_bindings(
 
     let mut ans2paper_qs: HashMap<String, Vec<String>> = HashMap::new();
     for (paper_q, ans) in pairs {
-        // Already filtered to QIDs by q_from_entity_uri, but defensive:
-        if crate::identifiers::is_qid(&paper_q) {
-            ans2paper_qs.entry(ans).or_default().push(paper_q);
-        }
+        ans2paper_qs.entry(ans).or_default().push(paper_q);
     }
     ans2paper_qs.retain(|_, v| v.len() >= MIN_PAPERS_PER_AUTHOR);
     ans2paper_qs.retain(|ans, _| ans.chars().filter(|c| *c == ' ').count() >= MIN_SPACES_FOR_NAME);
@@ -69,13 +59,13 @@ fn bindings<'a>(result: &'a serde_json::Value, context: &str) -> Result<&'a Vec<
         .ok_or_else(|| anyhow::anyhow!("{context}: Not an array"))
 }
 
-/// A query for the English and multilingual (`mul`) labels of `qs`, which
-/// must be Q-ids, as `?coauthor ?coauthorLabel` rows. Many people now carry
-/// their name only as a `mul` label.
-fn coauthor_labels_query(qs: &[String]) -> String {
-    let values = qs.iter().map(|q| format!("wd:{q}")).collect::<Vec<_>>().join(" ");
+/// A query for the English and multilingual (`mul`) labels of `qs`, as
+/// `?coauthor ?coauthorLabel` rows. Many people now carry their name only as
+/// a `mul` label.
+fn coauthor_labels_query(qs: &[ItemId]) -> String {
+    let values = values_clause("coauthor", qs.iter().copied());
     format!(
-        "SELECT DISTINCT ?coauthor (STR(?label) AS ?coauthorLabel) {{ VALUES ?coauthor {{ {values} }} \
+        "SELECT DISTINCT ?coauthor (STR(?label) AS ?coauthorLabel) {{ {values} \
          ?coauthor rdfs:label ?label FILTER(LANG(?label) IN (\"en\", \"mul\")) }}"
     )
 }
@@ -96,9 +86,7 @@ fn parse_coauthor_qs_bindings(
 
     let mut name2qs: HashMap<String, Vec<String>> = HashMap::new();
     for (author_q, name) in pairs {
-        if crate::identifiers::is_qid(&author_q) {
-            name2qs.entry(name).or_default().push(author_q);
-        }
+        name2qs.entry(name).or_default().push(author_q);
     }
     name2qs
 }
@@ -372,9 +360,9 @@ impl AuthorNameString {
                 "SELECT DISTINCT ?coauthor {{ ?paper wdt:P50 wd:{root_author_q} ; wdt:P50 ?coauthor }}"
             ))
             .await?;
-        let coauthor_qs: Vec<String> = bindings(&resp, "get_coauthor_qs")?
+        let coauthor_qs: Vec<ItemId> = bindings(&resp, "get_coauthor_qs")?
             .iter()
-            .filter_map(|j| q_from_entity_uri(j["coauthor"]["value"].as_str()?))
+            .filter_map(|j| ItemId::from_uri(j["coauthor"]["value"].as_str()?).ok())
             .collect();
 
         let mut labels = Vec::new();
@@ -724,7 +712,7 @@ mod tests {
 
     #[test]
     fn coauthor_labels_query_asks_for_english_and_mul_labels() {
-        let query = coauthor_labels_query(&["Q1".to_string(), "Q2".to_string()]);
+        let query = coauthor_labels_query(&[ItemId::new(1), ItemId::new(2)]);
         assert!(query.contains("VALUES ?coauthor { wd:Q1 wd:Q2 }"), "{query}");
         assert!(query.contains(r#"IN ("en", "mul")"#), "{query}");
         assert!(!query.contains("SERVICE"), "{query}");

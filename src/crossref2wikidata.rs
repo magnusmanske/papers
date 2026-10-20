@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use chrono::prelude::*;
 use crossref::{response::work::PartialDate, Crossref};
+
+use wikimisc::statements::retrieved_today;
 
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    adapter_helpers::{get_external_identifier_from_item, wb_time_from_partial},
+    adapter_helpers::{get_external_identifier_from_item, wb_time_from_partial, PUBLICATION_DATE},
     scientific_publication_adapter::{crossref_work_type_to_q, ScientificPublicationAdapter},
     *,
 };
@@ -168,8 +169,7 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
     }
 
     fn reference(&self) -> Vec<Reference> {
-        let now = Utc::now().format("+%Y-%m-%dT00:00:00Z").to_string();
-        vec![Reference::new(vec![Snak::new_time("P813", &now, 11)])]
+        vec![Reference::new(vec![retrieved_today()])]
     }
 
     fn get_work_titles(&self, publication_id: &str) -> Vec<LocaleString> {
@@ -192,8 +192,11 @@ impl ScientificPublicationAdapter for Crossref2Wikidata {
 
         // Date
         if !item.has_claims_with_property("P577") {
-            if let Some((year, month, day)) = self.get_publication_date(publication_id) {
-                let statement = wb_time_from_partial("P577", year, month, day, self.reference());
+            if let Some(statement) =
+                self.get_publication_date(publication_id).and_then(|(year, month, day)| {
+                    wb_time_from_partial(PUBLICATION_DATE, year, month, day, self.reference())
+                })
+            {
                 item.add_claim(statement);
             }
         }

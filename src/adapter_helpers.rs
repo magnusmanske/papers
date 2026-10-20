@@ -9,7 +9,12 @@
 //! See `audits/STATUS.md` P2-6.
 
 use regex::Regex;
-use wikibase::{Entity, EntityTrait, Reference, Snak, SnakType, Statement, Value};
+use wikibase::{Entity, EntityTrait, Reference, SnakType, Statement, Value};
+use wikimisc::{
+    date::Date,
+    entity_id::PropertyId,
+    statements::{statement, time_snak},
+};
 
 use crate::identifiers::IdProp;
 
@@ -48,30 +53,31 @@ pub fn sanitize_author_name(author_name: &str) -> String {
     author_name.replace(['†', '‡'], "").trim().to_string()
 }
 
+/// "publication date"
+pub const PUBLICATION_DATE: PropertyId = PropertyId::new(577);
+
 /// Returns a Wikidata `time` statement for the property `property` at the
 /// precision dictated by which of `year`/`month`/`day` are provided:
 /// 9 (year), 10 (month), 11 (day).
 ///
+/// A day or month that does not exist (`2021-02-30`, month 13) is dropped,
+/// lowering the precision, rather than sent to Wikidata, which would reject
+/// the whole edit. Returns `None` only for year 0, which does not exist.
+///
 /// `references` is the per-adapter reference list to attach.
 pub fn wb_time_from_partial(
-    property: &str,
+    property: PropertyId,
     year: u32,
     month: Option<u8>,
     day: Option<u8>,
     references: Vec<Reference>,
-) -> Statement {
-    let (month_str, precision) = match month {
-        Some(m) => (format!("-{m:02}"), 10u64),
-        None => ("-01".to_string(), 9),
-    };
-    let (day_str, precision) = match day {
-        Some(d) => (format!("-{d:02}"), 11u64),
-        None => ("-01".to_string(), precision),
-    };
-    let time = format!("+{year}{month_str}{day_str}T00:00:00Z");
-    // Snak::new_time wants matching types for property and value via Into<String>.
-    let snak = Snak::new_time(property.to_string(), time, precision);
-    Statement::new_normal(snak, vec![], references)
+) -> Option<Statement> {
+    let year = i64::from(year);
+    let date = Date::new(year, month, day)
+        .or_else(|_| Date::new(year, month, None))
+        .or_else(|_| Date::new(year, None, None))
+        .ok()?;
+    Some(statement(time_snak(property, &date), references))
 }
 
 /// Finds the first `string`-valued claim on `item` whose property matches
@@ -124,6 +130,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wikibase::Snak;
 
     // === strip_html_tags ===================================================
 
@@ -205,50 +212,40 @@ mod tests {
 
     // === wb_time_from_partial ===============================================
 
+    /// The time string and precision of `stmt`'s main snak.
+    fn time_of(stmt: &Statement) -> (String, u64) {
+        match stmt.main_snak().data_value().as_ref().map(|dv| dv.value()) {
+            Some(Value::Time(tv)) => (tv.time().to_string(), *tv.precision()),
+            other => panic!("Expected Time value, got {other:?}"),
+        }
+    }
+
     #[test]
     fn wb_time_year_only_has_precision_9() {
-        let stmt = wb_time_from_partial("P577", 2021, None, None, vec![]);
+        let stmt = wb_time_from_partial(PUBLICATION_DATE, 2021, None, None, vec![]).unwrap();
         assert_eq!(stmt.main_snak().property(), "P577");
-        if let Some(dv) = stmt.main_snak().data_value() {
-            if let Value::Time(tv) = dv.value() {
-                assert_eq!(tv.time(), "+2021-01-01T00:00:00Z");
-                assert_eq!(*tv.precision(), 9u64);
-            } else {
-                panic!("Expected Time value");
-            }
-        } else {
-            panic!("Expected data value");
-        }
+        assert_eq!(time_of(&stmt), ("+2021-00-00T00:00:00Z".to_string(), 9));
     }
 
     #[test]
     fn wb_time_year_month_has_precision_10() {
-        let stmt = wb_time_from_partial("P577", 2021, Some(6), None, vec![]);
-        if let Some(dv) = stmt.main_snak().data_value() {
-            if let Value::Time(tv) = dv.value() {
-                assert_eq!(tv.time(), "+2021-06-01T00:00:00Z");
-                assert_eq!(*tv.precision(), 10u64);
-            } else {
-                panic!("Expected Time value");
-            }
-        } else {
-            panic!("Expected data value");
-        }
+        let stmt = wb_time_from_partial(PUBLICATION_DATE, 2021, Some(6), None, vec![]).unwrap();
+        assert_eq!(time_of(&stmt), ("+2021-06-00T00:00:00Z".to_string(), 10));
     }
 
     #[test]
     fn wb_time_full_date_has_precision_11() {
-        let stmt = wb_time_from_partial("P577", 2021, Some(3), Some(15), vec![]);
-        if let Some(dv) = stmt.main_snak().data_value() {
-            if let Value::Time(tv) = dv.value() {
-                assert_eq!(tv.time(), "+2021-03-15T00:00:00Z");
-                assert_eq!(*tv.precision(), 11u64);
-            } else {
-                panic!("Expected Time value");
-            }
-        } else {
-            panic!("Expected data value");
-        }
+        let stmt = wb_time_from_partial(PUBLICATION_DATE, 2021, Some(3), Some(15), vec![]).unwrap();
+        assert_eq!(time_of(&stmt), ("+2021-03-15T00:00:00Z".to_string(), 11));
+    }
+
+    #[test]
+    fn wb_time_drops_parts_that_do_not_exist() {
+        let stmt = wb_time_from_partial(PUBLICATION_DATE, 2021, Some(2), Some(30), vec![]).unwrap();
+        assert_eq!(time_of(&stmt), ("+2021-02-00T00:00:00Z".to_string(), 10));
+        let stmt = wb_time_from_partial(PUBLICATION_DATE, 2021, Some(13), Some(1), vec![]).unwrap();
+        assert_eq!(time_of(&stmt), ("+2021-00-00T00:00:00Z".to_string(), 9));
+        assert!(wb_time_from_partial(PUBLICATION_DATE, 0, None, None, vec![]).is_none());
     }
 
     // === get_external_identifier_from_item ==================================

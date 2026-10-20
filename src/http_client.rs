@@ -2,8 +2,8 @@
 //!
 //! Provides a single process-wide [`reqwest::Client`] (with timeouts and
 //! a `User-Agent`), a second one with a timeout long enough for SPARQL
-//! queries, and a [`send_with_retry`] helper that retries
-//! transient failures (timeouts, connect errors, HTTP 5xx, HTTP 429)
+//! queries, and [`retry_policy`], the [`HttpRetryPolicy`] that retries
+//! transient failures (timeouts, connect errors, HTTP 5xx, 408, 429)
 //! with exponential backoff + jitter.
 //!
 //! `fetch_json` is the drop-in replacement for the previous pattern
@@ -16,37 +16,32 @@
 //! would have hit and to feed it canned responses without touching a
 //! real network. See audit P2-10.
 
-use std::future::Future;
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rand::RngExt;
-use reqwest::{Client, Response, StatusCode};
+use reqwest::Client;
+use wikimisc::http::{client_builder, HttpError, HttpRetryPolicy};
+use wikimisc::retry::{Retry, Retryable};
 
 /// What papers' requests say they are. Wikimedia's user-agent policy asks
 /// for contact information.
-pub const USER_AGENT: &str = concat!(
-    env!("CARGO_PKG_NAME"),
-    "/",
-    env!("CARGO_PKG_VERSION"),
-    " (",
-    env!("CARGO_PKG_REPOSITORY"),
-    ")"
-);
+pub const USER_AGENT: &str = wikimisc::user_agent!();
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// WDQS gives a query up to 60 s; this leaves room for sending the result.
 const SPARQL_TIMEOUT: Duration = Duration::from_secs(90);
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const DEFAULT_POOL_MAX_IDLE_PER_HOST: usize = 8;
 
+/// Retries after the first attempt, and the waits between them.
+const RETRIES: u32 = 3;
+const RETRY_BASE_DELAY: Duration = Duration::from_millis(250);
+const RETRY_MAX_DELAY: Duration = Duration::from_secs(5);
+
 fn build_client(timeout: Duration) -> Client {
-    Client::builder()
-        .user_agent(USER_AGENT)
+    client_builder(USER_AGENT)
         .timeout(timeout)
-        .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
         .pool_idle_timeout(DEFAULT_POOL_IDLE_TIMEOUT)
         .pool_max_idle_per_host(DEFAULT_POOL_MAX_IDLE_PER_HOST)
         .build()
@@ -65,105 +60,41 @@ pub fn sparql_http_client() -> &'static Client {
     HTTP.get_or_init(|| build_client(SPARQL_TIMEOUT))
 }
 
-/// Retry policy for transient HTTP failures.
-#[derive(Debug, Clone)]
-pub struct RetryConfig {
-    pub max_attempts: u32,
-    pub base_delay: Duration,
-    pub max_delay: Duration,
-}
-
-impl Default for RetryConfig {
-    fn default() -> Self {
-        Self {
-            max_attempts: 4,
-            base_delay: Duration::from_millis(250),
-            max_delay: Duration::from_secs(5),
-        }
-    }
-}
-
-fn is_retriable_status(status: StatusCode) -> bool {
-    status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS
-}
-
-fn is_retriable_error(err: &reqwest::Error) -> bool {
-    err.is_timeout() || err.is_connect()
-}
-
-/// Sends an HTTP request, retrying transient failures.
-///
-/// `make_req` is invoked once per attempt and must return a fresh
-/// `Future` each call (so the request can be re-sent).
-///
-/// Retries:
-/// - on `reqwest::Error::is_timeout()` or `is_connect()`
-/// - on HTTP `5xx` and HTTP `429`
-///
-/// Does not retry on other 4xx — those are deterministic.
-pub async fn send_with_retry<F, Fut>(
-    config: &RetryConfig,
-    mut make_req: F,
-) -> reqwest::Result<Response>
-where
-    F: FnMut() -> Fut,
-    Fut: Future<Output = reqwest::Result<Response>>,
-{
-    let mut delay = config.base_delay;
-    let mut attempt: u32 = 0;
-    loop {
-        attempt += 1;
-        let outcome = make_req().await;
-        let retriable = match &outcome {
-            Ok(resp) => is_retriable_status(resp.status()),
-            Err(e) => is_retriable_error(e),
-        };
-        if !retriable || attempt >= config.max_attempts {
-            if attempt > 1 {
-                match &outcome {
-                    Ok(resp) if is_retriable_status(resp.status()) => {
-                        tracing::error!(
-                            status = resp.status().as_u16(),
-                            attempt,
-                            "HTTP gave up on retriable status"
-                        );
-                    },
-                    Err(e) if is_retriable_error(e) => {
-                        tracing::error!(error = %e, attempt, "HTTP gave up on retriable error");
-                    },
-                    _ => {},
-                }
-            }
-            return outcome;
-        }
-        match &outcome {
-            Ok(resp) => tracing::warn!(
-                status = resp.status().as_u16(),
-                attempt,
-                "HTTP transient status, retrying"
-            ),
-            Err(e) => tracing::warn!(error = %e, attempt, "HTTP transient error, retrying"),
-        }
-        let cap_ms = delay.as_millis() as u64;
-        let jitter_ms = if cap_ms == 0 { 0 } else { rand::rng().random_range(0..=cap_ms) };
-        tokio::time::sleep(delay + Duration::from_millis(jitter_ms / 2)).await;
-        delay = std::cmp::min(delay.saturating_mul(2), config.max_delay);
-    }
+/// The retry policy for transient HTTP failures: 3 retries, waiting
+/// 250 ms, 500 ms, 1 s (each plus up to half again as jitter, never more
+/// than 5 s). A `Retry-After` is honoured up to that 5 s cap; a longer
+/// one is cut down to it rather than ending the retries.
+pub fn retry_policy() -> HttpRetryPolicy {
+    HttpRetryPolicy::new(RETRIES)
+        .with_initial_backoff(RETRY_BASE_DELAY)
+        .with_max_wait(RETRY_MAX_DELAY)
+        .with_jitter()
+        .clamp_retry_after()
+        .on_retry(|retry: &Retry<'_, HttpError>| {
+            tracing::warn!(
+                error = %retry.error,
+                attempt = retry.retry,
+                "HTTP transient failure, retrying"
+            );
+        })
 }
 
 /// GET `url` and decode the response body as JSON, retrying transient
-/// failures with the default [`RetryConfig`].
+/// failures with the default [`retry_policy`].
 ///
 /// Returns `None` on transport failure, non-2xx response (after
 /// retries), or JSON parse failure. Logs failures via `tracing`.
 pub async fn fetch_json(url: &str) -> Option<serde_json::Value> {
-    fetch_json_with(url, &RetryConfig::default()).await
+    fetch_json_with(url, &retry_policy()).await
 }
 
-pub async fn fetch_json_with(url: &str, config: &RetryConfig) -> Option<serde_json::Value> {
-    let client = http_client();
-    let resp = match send_with_retry(config, || client.get(url).send()).await {
+pub async fn fetch_json_with(url: &str, policy: &HttpRetryPolicy) -> Option<serde_json::Value> {
+    let resp = match policy.send(http_client().get(url)).await {
         Ok(r) => r,
+        Err(e) if e.is_retryable() && policy.retries() > 0 => {
+            tracing::error!(error = %e, url, "HTTP gave up on retriable failure");
+            return None;
+        },
         Err(e) => {
             tracing::warn!(error = %e, url, "HTTP request failed");
             return None;
@@ -200,19 +131,25 @@ pub trait JsonFetcher: std::fmt::Debug + Send + Sync {
 }
 
 /// Production [`JsonFetcher`] backed by the shared [`reqwest::Client`]
-/// and the [`send_with_retry`] helper.
+/// and an [`HttpRetryPolicy`].
 ///
-/// Stateless modulo the [`RetryConfig`]; cheap to clone (the underlying
+/// Stateless modulo the retry policy; cheap to clone (the underlying
 /// HTTP client is a process-wide `OnceLock<Client>`).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct HttpJsonFetcher {
-    retry: RetryConfig,
+    retry: HttpRetryPolicy,
+}
+
+impl Default for HttpJsonFetcher {
+    fn default() -> Self {
+        Self::with_retry(retry_policy())
+    }
 }
 
 impl HttpJsonFetcher {
     /// Override the retry policy. Useful for tests that want a fast
-    /// fail-path; production should stick with [`RetryConfig::default`].
-    pub fn with_retry(retry: RetryConfig) -> Self {
+    /// fail-path; production should stick with [`retry_policy`].
+    pub fn with_retry(retry: HttpRetryPolicy) -> Self {
         Self { retry }
     }
 }
@@ -279,12 +216,10 @@ mod tests {
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    fn fast_retry() -> RetryConfig {
-        RetryConfig {
-            max_attempts: 4,
-            base_delay: Duration::from_millis(1),
-            max_delay: Duration::from_millis(5),
-        }
+    fn fast_retry() -> HttpRetryPolicy {
+        retry_policy()
+            .with_initial_backoff(Duration::from_millis(1))
+            .with_max_wait(Duration::from_millis(5))
     }
 
     #[tokio::test]
@@ -341,7 +276,7 @@ mod tests {
     #[tokio::test]
     async fn gives_up_after_max_attempts_on_503() {
         let server = MockServer::start().await;
-        // max_attempts = 4 in fast_retry; expect exactly 4 calls before giveup.
+        // 3 retries in fast_retry; expect exactly 4 calls before giveup.
         Mock::given(method("GET"))
             .respond_with(ResponseTemplate::new(503))
             .expect(4)
@@ -395,11 +330,27 @@ mod tests {
         assert_eq!(json, None);
     }
 
+    #[tokio::test]
+    async fn retry_after_beyond_the_cap_still_retries() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "3600"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"ok":1}"#))
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/x", server.uri());
+        let json = fetch_json_with(&url, &fast_retry()).await;
+        assert_eq!(json, Some(serde_json::json!({"ok": 1})));
+    }
+
     #[test]
-    fn retry_config_default_is_sane() {
-        let c = RetryConfig::default();
-        assert!(c.max_attempts >= 2);
-        assert!(c.base_delay <= c.max_delay);
+    fn retry_policy_retries() {
+        assert_eq!(retry_policy().retries(), RETRIES);
     }
 
     #[test]

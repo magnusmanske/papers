@@ -10,7 +10,7 @@
 #![cfg(test)]
 
 use wiremock::matchers::{method, query_param};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 /// Pre-recorded `meta=siteinfo` response from `wikidata.org/w/api.php`.
 /// Lets `mediawiki::Api::new(&mock.uri())` succeed without touching the
@@ -32,4 +32,30 @@ pub(crate) async fn start_mediawiki_mock_server() -> MockServer {
         .mount(&mock_server)
         .await;
     mock_server
+}
+
+/// The decoded form field `key` of a POST request.
+fn form_field(request: &Request, key: &str) -> Option<String> {
+    // A form body is encoded like a URL's query string.
+    let form = format!("http://form/?{}", String::from_utf8_lossy(&request.body));
+    reqwest::Url::parse(&form)
+        .ok()?
+        .query_pairs()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.into_owned())
+}
+
+/// Registers a search (`list=search`) mock for a specific `srsearch` value.
+/// Searches are POSTed as forms.
+pub(crate) async fn add_search_mock(mock_server: &MockServer, srsearch: &str, body: &'static str) {
+    let srsearch = srsearch.to_string();
+    Mock::given(method("POST"))
+        .and(move |request: &Request| form_field(request, "srsearch").as_deref() == Some(&srsearch))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/json; charset=utf-8")
+                .set_body_string(body),
+        )
+        .mount(mock_server)
+        .await;
 }

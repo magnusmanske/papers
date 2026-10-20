@@ -5,7 +5,8 @@ use semanticscholar::*;
 
 use self::identifiers::{GenericWorkIdentifier, GenericWorkType, IdProp};
 use crate::{
-    adapter_helpers::wb_time_from_partial, generic_author_info::GenericAuthorInfo,
+    adapter_helpers::{wb_time_from_partial, PUBLICATION_DATE},
+    generic_author_info::GenericAuthorInfo,
     scientific_publication_adapter::ScientificPublicationAdapter, *,
 };
 
@@ -164,9 +165,9 @@ impl ScientificPublicationAdapter for Semanticscholar2Wikidata {
         };
 
         if !item.has_claims_with_property("P577") {
-            if let Some(year) = work.year {
-                let statement =
-                    wb_time_from_partial("P577", year as u32, None, None, self.reference());
+            if let Some(statement) = work.year.and_then(|year| {
+                wb_time_from_partial(PUBLICATION_DATE, year as u32, None, None, self.reference())
+            }) {
                 item.add_claim(statement);
             }
         }

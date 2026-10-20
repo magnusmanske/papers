@@ -7,6 +7,7 @@ use self::identifiers::{GenericWorkIdentifier, IdProp};
 use crate::{
     adapter_helpers::{
         get_external_identifier_from_item, strip_html_tags, titles_are_equal, wb_time_from_partial,
+        PUBLICATION_DATE,
     },
     generic_author_info::GenericAuthorInfo,
     *,
@@ -360,9 +361,10 @@ pub trait ScientificPublicationAdapter {
         if item.has_claims_with_property("P577") {
             return;
         }
-        if let Some(pubdate) = self.get_publication_date(publication_id) {
-            let statement =
-                wb_time_from_partial("P577", pubdate.0, pubdate.1, pubdate.2, self.reference());
+        let statement = self.get_publication_date(publication_id).and_then(|(year, month, day)| {
+            wb_time_from_partial(PUBLICATION_DATE, year, month, day, self.reference())
+        });
+        if let Some(statement) = statement {
             item.add_claim(statement);
         }
     }

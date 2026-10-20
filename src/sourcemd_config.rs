@@ -314,7 +314,7 @@ impl SourceMD {
     }
 
     pub async fn create_mw_api(ini_file: &str) -> Result<Api> {
-        let mut mw_api = Api::new("https://www.wikidata.org/w/api.php").await?;
+        let mut mw_api = crate::wikidata_interaction::wikidata().api().await?;
         // File::with_name(..) is shorthand for File::from(Path::new(..))
         let settings = Config::builder().add_source(File::with_name(ini_file)).build()?;
         match settings.get_string("user.token") {

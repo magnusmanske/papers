@@ -1,30 +1,33 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::{Arc, OnceLock};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 use wikibase::{entity_diff::*, mediawiki::api::Api, *};
+use wikimisc::wikidata::Wikidata;
+
+use crate::http_client::{http_client, USER_AGENT};
+
+/// How many items a search returns: the API's default.
+const SEARCH_LIMIT: usize = 10;
+
+/// The process-wide Wikidata client, for read-only API calls over plain HTTP.
+/// It uses the shared [`http_client`], so its calls share that connection
+/// pool (its own 60 s per-request timeout still applies).
+pub fn wikidata() -> &'static Wikidata {
+    static WIKIDATA: OnceLock<Wikidata> = OnceLock::new();
+    WIKIDATA.get_or_init(|| Wikidata::with_client(USER_AGENT, http_client().clone()))
+}
 
 #[async_trait]
 pub trait WikidataInteraction {
+    /// The items (Q-ids) a full-text search on the wiki of `mw_api` finds,
+    /// best match first, at most [`SEARCH_LIMIT`].
     async fn search_wikibase(&self, query: &str, mw_api: Arc<RwLock<Api>>) -> Result<Vec<String>> {
-        let params: HashMap<_, _> = vec![
-            ("action", "query"),
-            ("list", "search"),
-            ("srnamespace", "0"),
-            ("srsearch", query),
-        ]
-        .into_iter()
-        .map(|(x, y)| (x.to_string(), y.to_string()))
-        .collect();
-        let res = mw_api.read().await.get_query_api_json(&params).await?;
-        match res["query"]["search"].as_array() {
-            Some(items) => Ok(items
-                .iter()
-                .filter_map(|item| item["title"].as_str().map(|s| s.to_string()))
-                .collect()),
-            None => Ok(vec![]),
-        }
+        let mut wikidata = wikidata().clone();
+        wikidata.set_api_url(mw_api.read().await.api_url());
+        let items = wikidata.search_items(query, SEARCH_LIMIT).await?;
+        Ok(items.iter().map(ToString::to_string).collect())
     }
 
     /// Creates a new Wikidata entity from `item`'s diff against an empty
@@ -61,13 +64,10 @@ pub trait WikidataInteraction {
 
 #[cfg(test)]
 mod tests {
-    use wiremock::{
-        matchers::{method, query_param},
-        Mock, MockServer, ResponseTemplate,
-    };
+    use wiremock::MockServer;
 
     use super::*;
-    use crate::test_helpers::start_mediawiki_mock_server as start_mock_server;
+    use crate::test_helpers::{add_search_mock, start_mediawiki_mock_server as start_mock_server};
 
     const SEARCH_Q46664291: &str = include_str!("../test_data/search_found_q46664291.json");
     const SEARCH_EMPTY: &str = include_str!("../test_data/search_empty.json");
@@ -75,18 +75,6 @@ mod tests {
     /// Bare trait implementor for unit-testing the default trait methods.
     struct DummyInteractor;
     impl WikidataInteraction for DummyInteractor {}
-
-    async fn add_search_mock(mock_server: &MockServer, srsearch: &str, body: &'static str) {
-        Mock::given(method("GET"))
-            .and(query_param("srsearch", srsearch))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("content-type", "application/json; charset=utf-8")
-                    .set_body_string(body),
-            )
-            .mount(mock_server)
-            .await;
-    }
 
     async fn mock_api(mock_server: &MockServer) -> Arc<RwLock<Api>> {
         Arc::new(RwLock::new(Api::new(&mock_server.uri()).await.unwrap()))

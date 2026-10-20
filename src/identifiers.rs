@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use regex::Regex;
+use wikimisc::entity_id::ItemId;
 
 const PROP_PMID: &str = "P698";
 const PROP_PMCID: &str = "P932";
@@ -134,14 +135,14 @@ pub fn is_pubmed_id(id: &str) -> bool {
 }
 
 lazy_static::lazy_static! {
-    static ref RE_QID:   Regex = Regex::new(r"^Q\d+$").expect("RE_QID");
     static ref RE_PMCID: Regex = Regex::new(r"^PMC\d+$").expect("RE_PMCID");
     static ref RE_ORCID: Regex = Regex::new(r"^\d{4}-\d{4}-\d{4}-\d{4}$").expect("RE_ORCID");
 }
 
-/// Returns `true` if `s` is a Wikidata Q-ID like `"Q12345"`.
+/// Returns `true` if `s` is a Wikidata Q-ID like `"Q12345"`, in canonical
+/// form (no lowercase `q`, leading zeros, `Q0` or whitespace).
 pub fn is_qid(s: &str) -> bool {
-    RE_QID.is_match(s)
+    s.parse::<ItemId>().is_ok()
 }
 
 /// Returns `true` if `s` is a PMCID like `"PMC1234567"`.
@@ -193,6 +194,8 @@ mod tests {
         assert!(!is_qid(" Q12"));       // leading space
         assert!(!is_qid("Q12abc"));     // mixed
         assert!(!is_qid("P12"));        // property, not item
+        assert!(!is_qid("Q0"));
+        assert!(!is_qid("Q012"));       // leading zero
         assert!(!is_qid("Q12\nQ34"));   // multi-line (anchors are line-anchored by default? regex has ^$ so only matches a single line)
     }
 

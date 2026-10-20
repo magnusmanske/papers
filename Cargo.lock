@@ -2050,7 +2050,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -2089,7 +2089,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -3565,10 +3565,13 @@ dependencies = [
 
 [[package]]
 name = "wikimisc"
-version = "0.2.0"
-source = "git+https://github.com/magnusmanske/wikimisc#0645c4002026d385c2c0600889dd8bfe714e9835"
+version = "0.3.0"
 dependencies = [
+ "chrono",
  "csv",
+ "futures",
+ "httpdate",
+ "mediawiki",
  "regex",
  "reqwest 0.13.5",
  "serde",
@@ -3578,6 +3581,7 @@ dependencies = [
  "tokio",
  "toolforge",
  "urlencoding",
+ "wikibase",
 ]
 
 [[package]]
@@ -3586,7 +3590,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
