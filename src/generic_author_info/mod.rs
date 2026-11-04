@@ -1,13 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::{anyhow, Result};
 use deunicode::deunicode;
 use regex::Regex;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 
 use crate::{
-    wikidata_interaction::WikidataInteraction, wikidata_string_cache::WikidataStringCache, *,
+    error::{Error, Result},
+    wikidata_interaction::WikidataInteraction,
+    wikidata_string_cache::WikidataStringCache,
+    *,
 };
 
 const SCORE_LIST_NUMBER: u16 = 5;
@@ -329,11 +331,10 @@ impl GenericAuthorInfo {
             self.wikidata_item = author2.wikidata_item.clone();
         } else if author2.wikidata_item.is_none() {
         } else if self.wikidata_item != author2.wikidata_item {
-            return Err(anyhow!(
-                "GenericAuthorInfo::merge_from: Different items {:?} and {:?}, skipping",
-                self.wikidata_item,
-                author2.wikidata_item
-            ));
+            return Err(Error::ConflictingAuthorItems {
+                first: self.wikidata_item.clone(),
+                second: author2.wikidata_item.clone(),
+            });
         }
         if self.list_number.is_none() {
             self.list_number = author2.list_number.clone();

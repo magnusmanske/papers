@@ -1808,9 +1808,8 @@ dependencies = [
 
 [[package]]
 name = "papers"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
- "anyhow",
  "arxiv-rs",
  "async-trait",
  "chrono",
@@ -1830,6 +1829,7 @@ dependencies = [
  "semanticscholar",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "tracing-subscriber",

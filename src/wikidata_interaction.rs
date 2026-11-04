@@ -1,12 +1,14 @@
 use std::sync::{Arc, OnceLock};
 
-use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 use wikibase::{entity_diff::*, mediawiki::api::Api, *};
 use wikimisc::wikidata::Wikidata;
 
-use crate::http_client::{http_client, USER_AGENT};
+use crate::{
+    error::Result,
+    http_client::{http_client, USER_AGENT},
+};
 
 /// How many items a search returns: the API's default.
 const SEARCH_LIMIT: usize = 10;
@@ -50,9 +52,7 @@ pub trait WikidataInteraction {
         // soon as apply_diff returns to keep the lock window minimal.
         let new_json = {
             let mut mw_api = mw_api.write().await;
-            diff.apply_diff(&mut mw_api, &diff)
-                .await
-                .map_err(|e| anyhow!("create_item: apply_diff failed: {e}"))?
+            diff.apply_diff(&mut mw_api, &diff).await?
         };
         Ok(EntityDiff::get_entity_id(&new_json))
     }

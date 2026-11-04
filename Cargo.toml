@@ -1,6 +1,6 @@
 [package]
 name = "papers"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Magnus Manske <magnusmanske@googlemail.com>"]
 edition = "2021"
 description = "A library to allow creation and updates of Wikidata items for scientific publications, authors, and related info"
@@ -22,7 +22,7 @@ rayon = "1"
 tokio = { version = "^1", features = ["full", "rt-multi-thread"] }
 futures = "0.3"
 async-trait = "0.1"
-anyhow = "1"
+thiserror = "2"
 rand = "0.10"        # 0.10 moved `random_range` onto `RngExt`; do not widen across majors
 pico-args = "0.5"
 deunicode = "1"

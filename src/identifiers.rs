@@ -18,8 +18,13 @@ pub enum IdProp {
     SemanticScholar,
 }
 
+/// Parsing an [`IdProp`] from a string failed.
+#[derive(Debug, thiserror::Error)]
+#[error("Invalid ID property: {0}")]
+pub struct InvalidIdProp(pub String);
+
 impl FromStr for IdProp {
-    type Err = String;
+    type Err = InvalidIdProp;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().trim() {
@@ -28,7 +33,7 @@ impl FromStr for IdProp {
             PROP_DOI => Ok(IdProp::DOI),
             PROP_ARXIV => Ok(IdProp::ARXIV),
             PROP_SEMANTIC_SCHOLAR => Ok(IdProp::SemanticScholar),
-            _ => Err(format!("Invalid ID property: {s}")),
+            _ => Err(InvalidIdProp(s.to_string())),
         }
     }
 }

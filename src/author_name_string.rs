@@ -1,12 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::Result;
 use futures::prelude::*;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
 use wikimisc::{entity_id::ItemId, sparql_util::values_clause};
 
 use crate::{
+    error::{Error, Result},
     generic_author_info::GenericAuthorInfo,
     http_client::{HttpJsonFetcher, JsonFetcher},
     wdqs::Wdqs,
@@ -53,11 +53,11 @@ fn parse_coauthor_ans_bindings(bindings: &[serde_json::Value]) -> HashMap<String
 /// The `results.bindings` array of a SPARQL JSON result.
 fn bindings<'a>(
     result: &'a serde_json::Value,
-    context: &str,
+    context: &'static str,
 ) -> Result<&'a Vec<serde_json::Value>> {
     result["results"]["bindings"]
         .as_array()
-        .ok_or_else(|| anyhow::anyhow!("{context}: Not an array"))
+        .ok_or(Error::InvalidSparqlResult { context })
 }
 
 /// A query for the English and multilingual (`mul`) labels of `qs`, as
@@ -344,7 +344,7 @@ impl AuthorNameString {
         self.log(1, format!("Processing {}", root_author_q));
         // It goes into SPARQL queries.
         if !crate::identifiers::is_qid(&root_author_q) {
-            anyhow::bail!("not a Q-id: {root_author_q}");
+            return Err(Error::InvalidQid(root_author_q));
         }
         let mut author = GenericAuthorInfo::new();
         author.set_wikidata_item(Some(root_author_q.to_owned()));

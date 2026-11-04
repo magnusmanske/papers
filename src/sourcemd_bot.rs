@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
 use tokio::sync::RwLock;
 
 use self::sourcemd_command::SourceMDcommandMode;
 use crate::{
+    error::{Error, Result},
     generic_author_info::GenericAuthorInfo,
     identifiers::{GenericWorkIdentifier, IdProp},
     sourcemd_command::SourceMDcommand,
@@ -38,10 +38,7 @@ impl SourceMDbot {
 
     pub async fn start(&self) -> Result<()> {
         let config = self.config.read().await;
-        config
-            .restart_batch(self.batch_id)
-            .await
-            .with_context(|| format!("starting batch #{}", self.batch_id))?;
+        config.restart_batch(self.batch_id).await?;
         config.set_batch_running(self.batch_id).await;
         Ok(())
     }
@@ -55,8 +52,7 @@ impl SourceMDbot {
                     .read()
                     .await
                     .deactivate_batch_run(self.batch_id)
-                    .await
-                    .with_context(|| format!("deactivating batch #{}", self.batch_id))?;
+                    .await?;
                 return Ok(false);
             }
         };
@@ -91,11 +87,10 @@ impl SourceMDbot {
             }
             SourceMDcommandMode::EditPaperForOrcidAuthor => Ok(false), // TODO
             SourceMDcommandMode::CreateBookFromIsbn => Ok(false),      // TODO
-            other => Err(anyhow!(
-                "Unrecognized command '{}' on command #{}",
-                other,
-                command.id
-            )),
+            other => Err(Error::UnrecognizedCommand {
+                mode: other.to_string(),
+                command_id: command.id,
+            }),
         }
     }
 
@@ -115,18 +110,12 @@ impl SourceMDbot {
                 )
                 .await
         } else {
-            return Err(anyhow!(
-                "Not a Wikidata item, nor an ORCID ID {}",
-                identifier
-            ));
+            return Err(Error::InvalidAuthorIdentifier(identifier.to_string()));
         }
 
         // Paranoia
         if author.wikidata_item().is_none() {
-            return Err(anyhow!(
-                "Failed to get/create author item for {}",
-                identifier
-            ));
+            return Err(Error::AuthorItemCreation(identifier.to_string()));
         }
 
         Ok(author)
@@ -161,11 +150,10 @@ impl SourceMDbot {
                     self.config.read().await.mw_api(),
                     &command.identifier,
                 )
-                .await
-                .with_context(|| format!("update {}", command.identifier))?;
+                .await?;
             return result
                 .map(|_| true)
-                .ok_or_else(|| anyhow!("Can't update {}", command.identifier));
+                .ok_or_else(|| Error::CannotUpdate(command.identifier.clone()));
         }
 
         // Others: regex-recognised formats
@@ -197,8 +185,7 @@ impl SourceMDbot {
         ids = wdp.update_from_paper_ids(&ids).await;
         let result = wdp
             .create_or_update_item_from_ids(self.config.read().await.mw_api(), &ids)
-            .await
-            .with_context(|| format!("create_or_update for command #{}", command.id))?;
+            .await?;
         match result {
             Some(er) => {
                 if command.q.is_empty() {
@@ -221,12 +208,6 @@ impl SourceMDbot {
             .await
             .set_command_status(command, status, message.map(|s| s.to_string()))
             .await
-            .with_context(|| {
-                format!(
-                    "set_command_status({status}) for command {} in batch #{}",
-                    command.id, self.batch_id
-                )
-            })
     }
 
     async fn get_next_command(&self) -> Result<Option<SourceMDcommand>> {

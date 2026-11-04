@@ -8,8 +8,6 @@
 //! `tracing::info!` line on recovery so operators can see when the
 //! outage cleared.
 
-use anyhow::Error;
-
 /// Returns true if `consecutive` is a "log point": 1, 2, 4, 8, 16, …
 ///
 /// Pulled out as a free function so the policy is trivial to unit-test
@@ -39,7 +37,7 @@ impl ConsecutiveErrorLog {
     /// Record a failure. Logs at `error` level on the 1st, 2nd, 4th, 8th, …
     /// consecutive call. The `consecutive` count is included in the log
     /// so operators can see at a glance how long the streak has lasted.
-    pub fn note_error(&mut self, err: &Error) {
+    pub fn note_error<E: std::fmt::Display>(&mut self, err: &E) {
         self.consecutive = self.consecutive.saturating_add(1);
         if should_log_at(self.consecutive) {
             tracing::error!(
@@ -73,7 +71,12 @@ impl ConsecutiveErrorLog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::anyhow;
+    use crate::error::Error;
+
+    /// A cheap error value for exercising `note_error`.
+    fn boom() -> Error {
+        Error::InvalidQid("boom".to_string())
+    }
 
     #[test]
     fn should_log_at_powers_of_two() {
@@ -100,18 +103,18 @@ mod tests {
     fn note_error_increments_counter() {
         let mut log = ConsecutiveErrorLog::new("test");
         assert_eq!(log.consecutive(), 0);
-        log.note_error(&anyhow!("boom"));
+        log.note_error(&boom());
         assert_eq!(log.consecutive(), 1);
-        log.note_error(&anyhow!("boom"));
+        log.note_error(&boom());
         assert_eq!(log.consecutive(), 2);
     }
 
     #[test]
     fn note_success_resets_counter() {
         let mut log = ConsecutiveErrorLog::new("test");
-        log.note_error(&anyhow!("boom"));
-        log.note_error(&anyhow!("boom"));
-        log.note_error(&anyhow!("boom"));
+        log.note_error(&boom());
+        log.note_error(&boom());
+        log.note_error(&boom());
         assert_eq!(log.consecutive(), 3);
         log.note_success();
         assert_eq!(log.consecutive(), 0);
@@ -134,9 +137,9 @@ mod tests {
         // note_error 4 billion times in a test is not actually feasible.
         // We rely on saturating_add via the public API by inspecting state.
         log.consecutive = u32::MAX - 1;
-        log.note_error(&anyhow!("boom"));
+        log.note_error(&boom());
         assert_eq!(log.consecutive(), u32::MAX);
-        log.note_error(&anyhow!("boom"));
+        log.note_error(&boom());
         // Saturated — no panic, no wraparound.
         assert_eq!(log.consecutive(), u32::MAX);
     }

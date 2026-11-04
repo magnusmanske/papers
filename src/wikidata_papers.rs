@@ -3,7 +3,6 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, Context, Result};
 use rayon::prelude::*;
 use tokio::sync::RwLock;
 use wikibase::mediawiki::api::Api;
@@ -13,9 +12,11 @@ use self::{
     wikidata_interaction::WikidataInteraction,
 };
 use crate::{
+    error::{Error, Result},
     generic_author_info::GenericAuthorInfo,
     scientific_publication_adapter::ScientificPublicationAdapter,
-    wikidata_string_cache::WikidataStringCache, *,
+    wikidata_string_cache::WikidataStringCache,
+    *,
 };
 
 pub type Spas = Box<dyn ScientificPublicationAdapter + Sync>;
@@ -440,7 +441,10 @@ impl WikidataPapers {
                     .entities
                     .load_entity(&api, q.clone())
                     .await
-                    .with_context(|| format!("load_entity({q})"))?
+                    .map_err(|e| Error::LoadEntity {
+                        q: q.clone(),
+                        source: e,
+                    })?
                     .to_owned();
                 drop(api);
                 original_item = item.clone();
@@ -525,9 +529,7 @@ impl WikidataPapers {
             // doesn't keep blocking other writers.
             let new_json = {
                 let mut api = mw_api.write().await;
-                diff.apply_diff(&mut api, &diff)
-                    .await
-                    .map_err(|e| anyhow!("apply_diff_for_item: apply_diff failed: {e}"))?
+                diff.apply_diff(&mut api, &diff).await?
                 // `api` (the write lock guard) drops here.
             };
             match EntityDiff::get_entity_id(&new_json) {

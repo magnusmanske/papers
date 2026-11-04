@@ -12,8 +12,13 @@ pub enum SourceMDcommandMode {
     CreateBookFromIsbn,
 }
 
+/// Parsing a [`SourceMDcommandMode`] from a database value failed.
+#[derive(Debug, thiserror::Error)]
+#[error("Invalid command: {0}")]
+pub struct InvalidCommandMode(pub String);
+
 impl FromStr for SourceMDcommandMode {
-    type Err = String;
+    type Err = InvalidCommandMode;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().trim() {
@@ -24,7 +29,7 @@ impl FromStr for SourceMDcommandMode {
             }
             "EDIT_PAPER_FOR_ORCID_AUTHOR" => Ok(SourceMDcommandMode::EditPaperForOrcidAuthor),
             "CREATE_BOOK_FROM_ISBN" => Ok(SourceMDcommandMode::CreateBookFromIsbn),
-            _ => Err(format!("Invalid command: {s}")),
+            _ => Err(InvalidCommandMode(s.to_string())),
         }
     }
 }

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
 use chrono::prelude::*;
 use config::{Config, File};
 use dashmap::DashSet;
@@ -13,7 +12,10 @@ use wikimisc::mysql_async::prelude::Queryable;
 use wikimisc::mysql_async::TxOpts;
 use wikimisc::toolforge::pool::ToolsDbPool;
 
-use crate::sourcemd_command::SourceMDcommand;
+use crate::{
+    error::{Error, Result},
+    sourcemd_command::SourceMDcommand,
+};
 
 /// The SourceMD tool's database on ToolsDB
 const DATABASE: &str = "s52680__sourcemd_batches_p";
@@ -29,8 +31,8 @@ struct Db {
 }
 
 impl Db {
-    async fn conn(&self) -> Result<my::Conn> {
-        Ok(self.pool.connect(&self.database).await?)
+    async fn conn(&self) -> wikimisc::toolforge::Result<my::Conn> {
+        self.pool.connect(&self.database).await
     }
 }
 
@@ -74,13 +76,10 @@ impl SourceMD {
     /// `init()` has not been run. All DB-touching public methods flow through
     /// here so error context is uniform.
     async fn conn(&self) -> Result<my::Conn> {
-        let db = self
-            .db
-            .as_ref()
-            .ok_or_else(|| anyhow!("no MySQL pool configured"))?;
+        let db = self.db.as_ref().ok_or(Error::NoDatabasePool)?;
         db.conn()
             .await
-            .context("checking out MySQL connection from pool")
+            .map_err(|e| Error::connection("checking out MySQL connection from pool", e))
     }
 
     pub async fn restart_batch(&self, batch_id: i64) -> Result<()> {
@@ -88,24 +87,37 @@ impl SourceMD {
         let mut txn = conn
             .start_transaction(TxOpts::default())
             .await
-            .with_context(|| format!("restart_batch: opening txn for batch {batch_id}"))?;
+            .map_err(|e| {
+                Error::query(
+                    format!("restart_batch: opening txn for batch {batch_id}"),
+                    e,
+                )
+            })?;
         txn.exec_drop(
             r#"UPDATE `batch` SET `status`="RUNNING",`last_action`=? WHERE id=?"#,
             (self.timestamp(), batch_id),
         )
         .await
-        .with_context(|| format!("restart_batch: setting batch {batch_id} RUNNING"))?;
+        .map_err(|e| {
+            Error::query(
+                format!("restart_batch: setting batch {batch_id} RUNNING"),
+                e,
+            )
+        })?;
         txn.exec_drop(
             r#"UPDATE `command` SET `status`="TODO",`note`="" WHERE `status`="RUNNING" AND `batch_id`=?"#,
             (batch_id,),
         )
         .await
-        .with_context(|| {
-            format!("restart_batch: resetting RUNNING commands of batch {batch_id} to TODO")
+        .map_err(|e| {
+            Error::query(
+                format!("restart_batch: resetting RUNNING commands of batch {batch_id} to TODO"),
+                e,
+            )
         })?;
         txn.commit()
             .await
-            .with_context(|| format!("restart_batch: commit for batch {batch_id}"))?;
+            .map_err(|e| Error::query(format!("restart_batch: commit for batch {batch_id}"), e))?;
         Ok(())
     }
 
@@ -146,7 +158,7 @@ impl SourceMD {
                 _ => -1,
             })
             .await
-            .context("get_next_batch query")?;
+            .map_err(|e| Error::query("get_next_batch query", e))?;
         for id in candidates {
             if id < 0 {
                 continue;
@@ -176,16 +188,14 @@ impl SourceMD {
     }
 
     pub async fn check_batch_not_stopped(&self, batch_id: i64) -> Result<()> {
-        let mut conn = self.conn().await.with_context(|| {
-            format!("check_batch_not_stopped: getting DB handle for batch {batch_id}")
-        })?;
+        let mut conn = self.conn().await?;
         let sql = r#"SELECT 1 FROM batch WHERE id=? AND `status` NOT IN ('RUNNING','TODO')"#;
         let stopped: Option<i64> = conn
             .exec_first(sql, (batch_id,))
             .await
-            .with_context(|| format!("check_batch_not_stopped: batch {batch_id}"))?;
+            .map_err(|e| Error::query(format!("check_batch_not_stopped: batch {batch_id}"), e))?;
         if stopped.is_some() {
-            return Err(anyhow!("batch #{batch_id} is not RUNNING or TODO"));
+            return Err(Error::BatchNotRunning { batch_id });
         }
         Ok(())
     }
@@ -195,17 +205,22 @@ impl SourceMD {
         let mut txn = conn
             .start_transaction(TxOpts::default())
             .await
-            .with_context(|| format!("set_batch_status: opening txn for batch {batch_id}"))?;
+            .map_err(|e| {
+                Error::query(
+                    format!("set_batch_status: opening txn for batch {batch_id}"),
+                    e,
+                )
+            })?;
         txn.exec_drop(
             r#"UPDATE `batch` SET `status`=?,`last_action`=? WHERE id=?"#,
             (status, self.timestamp(), batch_id),
         )
         .await
-        .with_context(|| format!("set_batch_status: batch {batch_id} -> {status}"))?;
+        .map_err(|e| Error::query(format!("set_batch_status: batch {batch_id} -> {status}"), e))?;
         self.update_batch_stats(batch_id, &mut txn).await?;
-        txn.commit()
-            .await
-            .with_context(|| format!("set_batch_status: commit for batch {batch_id}"))?;
+        txn.commit().await.map_err(|e| {
+            Error::query(format!("set_batch_status: commit for batch {batch_id}"), e)
+        })?;
         Ok(())
     }
 
@@ -219,7 +234,7 @@ impl SourceMD {
         let row: Option<my::Row> = conn
             .exec_first(sql, (batch_id,))
             .await
-            .with_context(|| format!("get_next_command: batch {batch_id}"))?;
+            .map_err(|e| Error::query(format!("get_next_command: batch {batch_id}"), e))?;
         Ok(row.and_then(SourceMDcommand::new_from_row))
     }
 
@@ -233,8 +248,11 @@ impl SourceMD {
         let mut txn = conn
             .start_transaction(TxOpts::default())
             .await
-            .with_context(|| {
-                format!("set_command_status: opening txn for command {}", command.id)
+            .map_err(|e| {
+                Error::query(
+                    format!("set_command_status: opening txn for command {}", command.id),
+                    e,
+                )
             })?;
         txn.exec_drop(
             r#"UPDATE `command` SET `status`=?,`note`=?,`q`=? WHERE `id`=?"#,
@@ -246,16 +264,22 @@ impl SourceMD {
             ),
         )
         .await
-        .with_context(|| {
-            format!(
-                "set_command_status: command {} -> {}",
-                command.id, new_status
+        .map_err(|e| {
+            Error::query(
+                format!(
+                    "set_command_status: command {} -> {}",
+                    command.id, new_status
+                ),
+                e,
             )
         })?;
         self.update_batch_stats(command.batch_id, &mut txn).await?;
-        txn.commit()
-            .await
-            .with_context(|| format!("set_command_status: commit for command {}", command.id))?;
+        txn.commit().await.map_err(|e| {
+            Error::query(
+                format!("set_command_status: commit for command {}", command.id),
+                e,
+            )
+        })?;
         Ok(())
     }
 
@@ -278,7 +302,12 @@ impl SourceMD {
                 (status, cnt)
             })
             .await
-            .with_context(|| format!("update_batch_stats: aggregating batch {batch_id}"))?;
+            .map_err(|e| {
+                Error::query(
+                    format!("update_batch_stats: aggregating batch {batch_id}"),
+                    e,
+                )
+            })?;
 
         let mut j = json!({"TOTAL": 0});
         let mut total: i64 = 0;
@@ -298,7 +327,12 @@ impl SourceMD {
             (j.to_string(), batch_id),
         )
         .await
-        .with_context(|| format!("update_batch_stats: writing overview for batch {batch_id}"))?;
+        .map_err(|e| {
+            Error::query(
+                format!("update_batch_stats: writing overview for batch {batch_id}"),
+                e,
+            )
+        })?;
         Ok(())
     }
 
@@ -320,22 +354,24 @@ impl SourceMD {
             .my_cnf_path(ini_file)
             .connect_timeout(CONNECT_TIMEOUT)
             .build()
-            .with_context(|| format!("reading the database credentials from '{ini_file}'"))?;
+            .map_err(|e| {
+                Error::connection(
+                    format!("reading the database credentials from '{ini_file}'"),
+                    e,
+                )
+            })?;
         info!(server = %pool.server(), database, "MySQL pool created");
         self.db = Some(Db {
             pool,
             database: database.to_string(),
         });
-        let mut conn = self
-            .conn()
-            .await
-            .context("could not connect to the SourceMD database")?;
+        let mut conn = self.conn().await?;
         conn.exec_drop(
             r#"UPDATE `batch` SET `status`='TODO' WHERE status='RUNNING'"#,
             (),
         )
         .await
-        .context("resetting RUNNING batches to TODO on startup")?;
+        .map_err(|e| Error::query("resetting RUNNING batches to TODO on startup", e))?;
         Ok(())
     }
 
@@ -344,7 +380,11 @@ impl SourceMD {
         // File::with_name(..) is shorthand for File::from(Path::new(..))
         let settings = Config::builder()
             .add_source(File::with_name(ini_file))
-            .build()?;
+            .build()
+            .map_err(|e| Error::ConfigFile {
+                path: ini_file.to_string(),
+                source: e,
+            })?;
         match settings.get_string("user.token") {
             Ok(token) => {
                 // Use OAuth2 token

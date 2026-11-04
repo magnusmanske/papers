@@ -54,7 +54,7 @@ async fn command_ans(ini_file: &str) {
         .lock()
         .lines()
         // trunk-ignore(clippy/lines_filter_map_ok)
-        .map_while(Result::ok)
+        .map_while(std::result::Result::ok)
         .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty())
         .map(|line| ans.process_author_q(line, &mw_api, &cache))
@@ -162,7 +162,7 @@ enum BotTick {
     /// so the outer loop can rate-limit the logging — a sustained outage
     /// produces a tick every 5 s, and we don't want one error line per
     /// tick. See `papers::rate_limit_log::ConsecutiveErrorLog`.
-    DbError(anyhow::Error),
+    DbError(papers::Error),
 }
 
 async fn run_bot(config: Arc<RwLock<SourceMD>>, cache: Arc<WikidataStringCache>) -> BotTick {

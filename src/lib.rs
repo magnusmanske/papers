@@ -10,6 +10,7 @@ pub mod arxiv2wikidata;
 pub mod author_name_string;
 pub mod crossref2wikidata;
 pub mod datacite2wikidata;
+pub mod error;
 pub mod europepmc2wikidata;
 pub mod generic_author_info;
 pub mod http_client;
@@ -31,3 +32,5 @@ pub mod wdqs;
 pub mod wikidata_interaction;
 pub mod wikidata_papers;
 pub mod wikidata_string_cache;
+
+pub use error::{Error, Result};
